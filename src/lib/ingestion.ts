@@ -1,9 +1,10 @@
 import { createHash } from "crypto";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { parseMarkdown, flattenSections } from "./parser";
-import { generateEmbedding, estimateTokens, EmbeddingContext } from "./embeddings";
+import { generateEmbedding, estimateTokens } from "./embeddings";
 import { generateSummary, generateArticleSummary, extractKeywords } from "./summarization";
 import { Node, NodeType } from "./types";
+import { findExistingNode } from "./node-identity";
 
 const PARAGRAPH_TOKEN_THRESHOLD = 1000;
 
@@ -25,6 +26,7 @@ export async function ingestArticle(
   const filename = sourcePath.split("/").pop() || sourcePath;
   const parsed = parseMarkdown(content, filename);
   const flatSections = flattenSections(parsed.sections);
+  const articleContentHash = hash(parsed.content);
 
   // Calculate total work: 1 article + sections + paragraphs
   let totalParagraphs = 0;
@@ -39,81 +41,123 @@ export async function ingestArticle(
     callbacks?.onProgress?.(item, completed, totalWork);
   };
 
-  // 1. Create article node
-  const articleSummary = await generateArticleSummary(
-    parsed.title,
-    parsed.content
-  );
-  const articleEmbedding = await generateEmbedding(articleSummary, {
-    type: "article-summary",
-    article: parsed.title,
+  // 1. Check if article already exists for this source_path
+  const existingArticle = await findExistingNode(supabase, "article", {
+    source_path: sourcePath,
   });
 
-  const { data: articleNode, error: articleError } = await supabase
-    .from("nodes")
-    .insert({
-      content: null,  // articles only use summary
-      summary: articleSummary,
-      content_hash: hash(parsed.content),
-      embedding: articleEmbedding,
-      node_type: "article" as NodeType,
-      source_path: sourcePath,
-      header_level: null,
-    })
-    .select()
-    .single();
+  let articleNode: Node;
 
-  if (articleError) throw articleError;
-  report(`Article: ${parsed.title}`);
-
-  // Map to track section nodes for parent-child relationships
-  const sectionNodes: Map<string, Node> = new Map();
-
-  // 2. Create section nodes
-  for (let i = 0; i < flatSections.length; i++) {
-    const section = flatSections[i];
-    const sectionContent = section.content || section.title;
-
-    const summary = await generateSummary(sectionContent, {
-      articleTitle: parsed.title,
-      sectionPath: section.path,
-    });
-    const embedding = await generateEmbedding(summary, {
-      type: "section-summary",
+  if (existingArticle) {
+    if (existingArticle.content_hash === articleContentHash) {
+      // Article exists with same content - reuse it
+      articleNode = existingArticle;
+      console.log(`[Skip] Article already exists: "${parsed.title}"`);
+      report(`Article: ${parsed.title} (existing)`);
+    } else {
+      // Content changed - for now, skip with warning
+      // TODO: Handle content updates (delete old + recreate, or update in place)
+      console.warn(`[Import] Article "${parsed.title}" content changed, skipping (not implemented)`);
+      return existingArticle.id;
+    }
+  } else {
+    // Create new article node
+    const articleSummary = await generateArticleSummary(
+      parsed.title,
+      parsed.content
+    );
+    const articleEmbedding = await generateEmbedding(articleSummary, {
+      type: "article-summary",
       article: parsed.title,
-      section: section.path.join(" > "),
     });
 
-    const { data: sectionNode, error: sectionError } = await supabase
+    const { data: newArticle, error: articleError } = await supabase
       .from("nodes")
       .insert({
-        content: null,  // sections only use summary
-        summary,
-        content_hash: hash(sectionContent),
-        embedding,
-        node_type: "section" as NodeType,
+        content: null,  // articles only use summary
+        summary: articleSummary,
+        content_hash: articleContentHash,
+        embedding: articleEmbedding,
+        node_type: "article" as NodeType,
         source_path: sourcePath,
-        header_level: section.level,
+        header_level: null,
       })
       .select()
       .single();
 
-    if (sectionError) throw sectionError;
-    sectionNodes.set(section.path.join("/"), sectionNode);
-    report(`Section: ${section.title}`);
+    if (articleError) throw articleError;
+    articleNode = newArticle;
+    report(`Article: ${parsed.title}`);
+  }
 
-    // Create containment edge to parent
+  // Map to track section nodes for parent-child relationships
+  const sectionNodes: Map<string, Node> = new Map();
+
+  // 2. Create or reuse section nodes
+  for (let i = 0; i < flatSections.length; i++) {
+    const section = flatSections[i];
+    const sectionContent = section.content || section.title;
+    const sectionContentHash = hash(sectionContent);
+
+    // Check if section already exists for this source_path + content_hash
+    const existingSection = await findExistingNode(supabase, "section", {
+      source_path: sourcePath,
+      content_hash: sectionContentHash,
+    });
+
+    let sectionNode: Node;
+
+    if (existingSection) {
+      // Reuse existing section
+      sectionNode = existingSection;
+      console.log(`[Skip] Section already exists: "${parsed.title}" > ${section.title}`);
+      report(`Section: ${section.title} (existing)`);
+    } else {
+      // Create new section
+      const summary = await generateSummary(sectionContent, {
+        articleTitle: parsed.title,
+        sectionPath: section.path,
+      });
+      const embedding = await generateEmbedding(summary, {
+        type: "section-summary",
+        article: parsed.title,
+        section: section.path.join(" > "),
+      });
+
+      const { data: newSection, error: sectionError } = await supabase
+        .from("nodes")
+        .insert({
+          content: null,  // sections only use summary
+          summary,
+          content_hash: sectionContentHash,
+          embedding,
+          node_type: "section" as NodeType,
+          source_path: sourcePath,
+          header_level: section.level,
+        })
+        .select()
+        .single();
+
+      if (sectionError) throw sectionError;
+      sectionNode = newSection;
+      report(`Section: ${section.title}`);
+    }
+
+    sectionNodes.set(section.path.join("/"), sectionNode);
+
+    // Create containment edge to parent (ignore if already exists)
     const parentPath = section.path.slice(0, -1).join("/");
     const parentId = parentPath
       ? sectionNodes.get(parentPath)?.id
       : articleNode.id;
 
     if (parentId) {
-      await supabase.from("containment_edges").insert({
-        parent_id: parentId,
-        child_id: sectionNode.id,
-        position: i,
-      });
+      await supabase.from("containment_edges")
+        .upsert({
+          parent_id: parentId,
+          child_id: sectionNode.id,
+          position: i,
+        }, { onConflict: "parent_id,child_id" });
     }
 
     // 3. Create paragraph nodes for this section
@@ -121,19 +165,18 @@ export async function ingestArticle(
       const paragraph = section.paragraphs[j];
       const contentHash = hash(paragraph);
 
-      // Check if paragraph already exists
-      const { data: existingNode } = await supabase
-        .from("nodes")
-        .select("id")
-        .eq("content_hash", contentHash)
-        .eq("node_type", "paragraph")
-        .single();
+      // Check if paragraph already exists (scoped to this article)
+      const existingParagraph = await findExistingNode(supabase, "paragraph", {
+        source_path: sourcePath,
+        content_hash: contentHash,
+      });
 
       let paragraphNodeId: string;
 
-      if (existingNode) {
+      if (existingParagraph) {
         // Reuse existing node
-        paragraphNodeId = existingNode.id;
+        paragraphNodeId = existingParagraph.id;
+        console.log(`[Skip] Paragraph already exists: "${parsed.title}" > ${section.title} > para ${j + 1}`);
       } else {
         // Create new node
         const tokens = estimateTokens(paragraph);
@@ -175,13 +218,15 @@ export async function ingestArticle(
 
         if (paragraphError) throw paragraphError;
         paragraphNodeId = paragraphNode.id;
+      }
 
-        await supabase.from("containment_edges").insert({
+      // Create containment edge (upsert to handle existing)
+      await supabase.from("containment_edges")
+        .upsert({
           parent_id: sectionNode.id,
           child_id: paragraphNodeId,
           position: j,
-        });
-      }
+        }, { onConflict: "parent_id,child_id" });
 
       // Check if keywords already exist for this node
       const { count: existingKeywordCount } = await supabase
@@ -189,7 +234,9 @@ export async function ingestArticle(
         .select("*", { count: "exact", head: true })
         .eq("node_id", paragraphNodeId);
 
-      if (!existingKeywordCount) {
+      if (existingKeywordCount) {
+        console.log(`[Skip] Keywords already exist: "${parsed.title}" > ${section.title} > para ${j + 1}`);
+      } else {
         // Extract and store keywords
         const keywords = await extractKeywords(paragraph, {
           articleTitle: parsed.title,
