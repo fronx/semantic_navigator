@@ -2,11 +2,17 @@ import Anthropic from "@anthropic-ai/sdk";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+function formatLocation(articleTitle: string, sectionPath: string[]): string {
+  return sectionPath.length > 0
+    ? `"${articleTitle}" > ${sectionPath.join(" > ")}`
+    : `"${articleTitle}"`;
+}
+
 export async function extractKeywords(
   content: string,
   context: { articleTitle: string; sectionPath: string[] }
 ): Promise<string[]> {
-  console.log(`[Claude] Extracting keywords from ${content.length} chars`);
+  console.log(`[Claude] Extracting keywords: ${formatLocation(context.articleTitle, context.sectionPath)}`);
   const contextInfo =
     context.sectionPath.length > 0
       ? `This is from the article "${context.articleTitle}", section: ${context.sectionPath.join(" > ")}`
@@ -52,7 +58,7 @@ export async function generateSummary(
   content: string,
   context: { articleTitle: string; sectionPath: string[] }
 ): Promise<string> {
-  console.log(`[Claude] Generating summary for ${content.length} chars`);
+  console.log(`[Claude] Generating summary: ${formatLocation(context.articleTitle, context.sectionPath)}`);
   const contextInfo =
     context.sectionPath.length > 0
       ? `This is from the article "${context.articleTitle}", section: ${context.sectionPath.join(" > ")}`
@@ -82,7 +88,7 @@ export async function generateArticleSummary(
   title: string,
   content: string
 ): Promise<string> {
-  console.log(`[Claude] Generating article summary for "${title}" (${content.length} chars)`);
+  console.log(`[Claude] Generating article summary: "${title}"`);
   const response = await anthropic.messages.create({
     model: "claude-haiku-4-5-20251001",
     max_tokens: 500,

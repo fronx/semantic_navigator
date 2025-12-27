@@ -1,7 +1,7 @@
 import { createHash } from "crypto";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { parseMarkdown, flattenSections } from "./parser";
-import { generateEmbedding, estimateTokens } from "./embeddings";
+import { generateEmbedding, estimateTokens, EmbeddingContext } from "./embeddings";
 import { generateSummary, generateArticleSummary, extractKeywords } from "./summarization";
 import { Node, NodeType } from "./types";
 
@@ -44,7 +44,10 @@ export async function ingestArticle(
     parsed.title,
     parsed.content
   );
-  const articleEmbedding = await generateEmbedding(articleSummary);
+  const articleEmbedding = await generateEmbedding(articleSummary, {
+    type: "article-summary",
+    article: parsed.title,
+  });
 
   const { data: articleNode, error: articleError } = await supabase
     .from("nodes")
@@ -75,7 +78,11 @@ export async function ingestArticle(
       articleTitle: parsed.title,
       sectionPath: section.path,
     });
-    const embedding = await generateEmbedding(summary);
+    const embedding = await generateEmbedding(summary, {
+      type: "section-summary",
+      article: parsed.title,
+      section: section.path.join(" > "),
+    });
 
     const { data: sectionNode, error: sectionError } = await supabase
       .from("nodes")
@@ -133,14 +140,23 @@ export async function ingestArticle(
         let paragraphSummary: string | null = null;
         let paragraphEmbedding: number[];
 
+        const sectionLabel = section.path.join(" > ");
         if (tokens >= PARAGRAPH_TOKEN_THRESHOLD) {
           paragraphSummary = await generateSummary(paragraph, {
             articleTitle: parsed.title,
             sectionPath: section.path,
           });
-          paragraphEmbedding = await generateEmbedding(paragraphSummary);
+          paragraphEmbedding = await generateEmbedding(paragraphSummary, {
+            type: "paragraph-summary",
+            article: parsed.title,
+            section: sectionLabel,
+          });
         } else {
-          paragraphEmbedding = await generateEmbedding(paragraph);
+          paragraphEmbedding = await generateEmbedding(paragraph, {
+            type: "paragraph",
+            article: parsed.title,
+            section: sectionLabel,
+          });
         }
 
         const { data: paragraphNode, error: paragraphError } = await supabase
@@ -181,7 +197,12 @@ export async function ingestArticle(
         });
 
         for (const keyword of keywords) {
-          const keywordEmbedding = await generateEmbedding(keyword);
+          const keywordEmbedding = await generateEmbedding(keyword, {
+            type: "keyword",
+            article: parsed.title,
+            section: section.path.join(" > "),
+            keyword,
+          });
           await supabase.from("keywords").insert({
             keyword,
             embedding: keywordEmbedding,
