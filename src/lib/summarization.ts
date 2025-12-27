@@ -26,9 +26,24 @@ export async function extractKeywords(
         role: "user",
         content: `${contextInfo}
 
-Extract 1-5 key concepts or topics from this content. Only include as many as are genuinely distinct and meaningful - don't pad with weak keywords. Return ONLY a JSON array of lowercase single words or short phrases (2-3 words max). These will be used as search keywords.
+Extract 1-5 key concepts or topics from this content that would help someone find it via search.
 
-Example output: ["consciousness", "free will"]
+Requirements for good keywords:
+- Single words or short noun phrases (max 3 words)
+- Represent concepts, topics, or named entities (people, papers, techniques)
+- Lowercase unless it's a proper noun or acronym
+
+Do NOT use as keywords:
+- Full sentences or clauses
+- Section headings or titles from the text
+- Quotes or phrases copied verbatim from the content
+- Meta-commentary (e.g. "key insight", "main argument")
+- Dates, attributions, or formatting artifacts
+
+Good: ["active inference", "free energy principle", "Karl Friston"]
+Bad: ["The key insight here is that agency emerges from...", "Section 3: Agency"]
+
+Return ONLY a JSON array. Include only genuinely distinct concepts - fewer is better than padding.
 
 Content:
 ${content}`,
