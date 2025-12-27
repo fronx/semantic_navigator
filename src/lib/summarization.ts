@@ -6,6 +6,7 @@ export async function extractKeywords(
   content: string,
   context: { articleTitle: string; sectionPath: string[] }
 ): Promise<string[]> {
+  console.log(`[Claude] Extracting keywords from ${content.length} chars`);
   const contextInfo =
     context.sectionPath.length > 0
       ? `This is from the article "${context.articleTitle}", section: ${context.sectionPath.join(" > ")}`
@@ -51,6 +52,7 @@ export async function generateSummary(
   content: string,
   context: { articleTitle: string; sectionPath: string[] }
 ): Promise<string> {
+  console.log(`[Claude] Generating summary for ${content.length} chars`);
   const contextInfo =
     context.sectionPath.length > 0
       ? `This is from the article "${context.articleTitle}", section: ${context.sectionPath.join(" > ")}`
@@ -80,6 +82,7 @@ export async function generateArticleSummary(
   title: string,
   content: string
 ): Promise<string> {
+  console.log(`[Claude] Generating article summary for "${title}" (${content.length} chars)`);
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-20250514",
     max_tokens: 500,

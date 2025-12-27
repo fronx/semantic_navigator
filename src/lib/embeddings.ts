@@ -3,6 +3,7 @@ import OpenAI from "openai";
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export async function generateEmbedding(text: string): Promise<number[]> {
+  console.log(`[OpenAI] Generating embedding for ${text.length} chars`);
   const response = await openai.embeddings.create({
     model: "text-embedding-3-small",
     input: text,
@@ -13,6 +14,8 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return [];
 
+  const totalChars = texts.reduce((sum, t) => sum + t.length, 0);
+  console.log(`[OpenAI] Generating ${texts.length} embeddings for ${totalChars} chars total`);
   const response = await openai.embeddings.create({
     model: "text-embedding-3-small",
     input: texts,
