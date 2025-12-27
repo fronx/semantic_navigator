@@ -24,23 +24,46 @@ A navigable semantic database for personal knowledge bases. Relationships are de
 
 ## Setup
 
+### 1. Install dependencies
+
 ```bash
-# Install dependencies
 npm install
-
-# Set up environment variables
-cp .env.example .env.local
-# Edit .env.local with your API keys
-
-# Run development server
-npm run dev
 ```
 
-Required environment variables:
-- `SUPABASE_URL` - your Supabase project URL
-- `SUPABASE_ANON_KEY` - Supabase anonymous key
+### 2. Set up Supabase
+
+Create a project at [supabase.com](https://supabase.com), then:
+
+```bash
+# Link to your Supabase project
+npx supabase login
+npx supabase link --project-ref your-project-ref
+
+# Apply database schema and migrations
+npx supabase db push
+```
+
+Or manually run `supabase/schema.sql` in the Supabase SQL Editor.
+
+### 3. Configure environment
+
+```bash
+cp .env.example .env.local
+```
+
+Required variables:
+- `NEXT_PUBLIC_SUPABASE_URL` - your Supabase project URL
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Supabase publishable key
+- `SUPABASE_SERVICE_ROLE_KEY` - Supabase secret key (for server-side operations)
 - `OPENAI_API_KEY` - for embeddings
 - `ANTHROPIC_API_KEY` - for summarization
+- `VAULT_PATH` - path to your Obsidian vault
+
+### 4. Run
+
+```bash
+npm run dev
+```
 
 ## Usage
 
@@ -48,6 +71,16 @@ Required environment variables:
 2. Point it at your Obsidian vault folder
 3. Select files/folders to import (with cost estimates shown)
 4. Browse and search your knowledge base semantically
+
+## Database Migrations
+
+Schema changes are in `supabase/migrations/`. To apply:
+
+```bash
+npx supabase db push
+```
+
+Or run the SQL files manually in the Supabase SQL Editor.
 
 ## Design
 

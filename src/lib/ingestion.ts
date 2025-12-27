@@ -49,7 +49,7 @@ export async function ingestArticle(
   const { data: articleNode, error: articleError } = await supabase
     .from("nodes")
     .insert({
-      content: parsed.content,
+      content: null,  // articles only use summary
       summary: articleSummary,
       content_hash: hash(parsed.content),
       embedding: articleEmbedding,
@@ -80,7 +80,7 @@ export async function ingestArticle(
     const { data: sectionNode, error: sectionError } = await supabase
       .from("nodes")
       .insert({
-        content: sectionContent,
+        content: null,  // sections only use summary
         summary,
         content_hash: hash(sectionContent),
         embedding,

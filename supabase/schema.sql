@@ -2,9 +2,11 @@
 create extension if not exists vector;
 
 -- Nodes table
+-- Note: content is only populated for paragraph nodes.
+-- Articles and sections have content = NULL (they use summary for display).
 create table nodes (
   id uuid primary key default gen_random_uuid(),
-  content text not null,
+  content text,  -- only populated for paragraphs
   summary text,
   content_hash text not null,
   embedding vector(1536),  -- text-embedding-3-small dimension

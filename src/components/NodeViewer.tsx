@@ -6,8 +6,35 @@ import { Node } from "@/lib/types";
 interface NodeData {
   node: Node;
   children: Node[] | null;
-  parent: { id: string; node_type: string; summary: string } | null;
-  backlinks: { id: string; node_type: string; summary: string }[] | null;
+  parent: { id: string; node_type: string; summary: string | null } | null;
+  backlinks: { id: string; node_type: string; summary: string | null }[] | null;
+}
+
+interface NodeViewModel {
+  id: string;
+  nodeType: string;
+  sourcePath: string;
+  headerLevel: number | null;
+  displayText: string;
+  preview: string;
+}
+
+function toViewModel(node: Node): NodeViewModel {
+  const displayText = node.content || node.summary || "";
+  const preview = (node.summary || node.content || "").slice(0, 60);
+
+  return {
+    id: node.id,
+    nodeType: node.node_type,
+    sourcePath: node.source_path,
+    headerLevel: node.header_level,
+    displayText,
+    preview,
+  };
+}
+
+function toPreview(node: { summary?: string | null; content?: string | null; node_type: string }): string {
+  return (node.summary || node.content || node.node_type).slice(0, 60);
 }
 
 interface Props {
@@ -60,6 +87,10 @@ export function NodeViewer({ nodeId, onNavigate }: Props) {
   }
 
   const { node, children, parent, backlinks } = data;
+  const vm = toViewModel(node);
+  const childViewModels = children?.map(toViewModel) || [];
+  const parentPreview = parent ? toPreview(parent) : null;
+  const backlinkPreviews = backlinks?.map((b) => ({ id: b.id, preview: toPreview(b) })) || [];
 
   return (
     <div className="border rounded-lg bg-white dark:bg-zinc-900 overflow-hidden">
@@ -67,13 +98,13 @@ export function NodeViewer({ nodeId, onNavigate }: Props) {
       <div className="p-4 border-b dark:border-zinc-700">
         <div className="flex items-center gap-2 mb-2">
           <span className="text-xs px-2 py-0.5 bg-zinc-200 dark:bg-zinc-700 rounded">
-            {node.node_type}
+            {vm.nodeType}
           </span>
-          {node.header_level && (
-            <span className="text-xs text-zinc-500">H{node.header_level}</span>
+          {vm.headerLevel && (
+            <span className="text-xs text-zinc-500">H{vm.headerLevel}</span>
           )}
         </div>
-        <div className="text-xs text-zinc-500">{node.source_path}</div>
+        <div className="text-xs text-zinc-500">{vm.sourcePath}</div>
       </div>
 
       {/* Navigation */}
@@ -83,44 +114,35 @@ export function NodeViewer({ nodeId, onNavigate }: Props) {
             onClick={() => onNavigate(parent.id)}
             className="text-sm text-blue-600 hover:underline"
           >
-            Zoom out: {parent.summary?.slice(0, 50) || parent.node_type}...
+            Zoom out: {parentPreview}...
           </button>
-        </div>
-      )}
-
-      {/* Summary */}
-      {node.summary && (
-        <div className="p-4 border-b dark:border-zinc-700 bg-blue-50 dark:bg-blue-900/20">
-          <div className="text-xs text-zinc-500 mb-1">Summary</div>
-          <div className="text-sm">{node.summary}</div>
         </div>
       )}
 
       {/* Content */}
       <div className="p-4 border-b dark:border-zinc-700">
-        <div className="text-xs text-zinc-500 mb-1">Content</div>
         <div className="text-sm whitespace-pre-wrap max-h-64 overflow-y-auto">
-          {node.content}
+          {vm.displayText}
         </div>
       </div>
 
       {/* Children */}
-      {children && children.length > 0 && (
+      {childViewModels.length > 0 && (
         <div className="p-4 border-b dark:border-zinc-700">
           <div className="text-xs text-zinc-500 mb-2">
-            Children ({children.length})
+            Children ({childViewModels.length})
           </div>
           <div className="space-y-1">
-            {children.map((child) => (
+            {childViewModels.map((child) => (
               <button
                 key={child.id}
                 onClick={() => onNavigate(child.id)}
                 className="block w-full text-left p-2 text-sm rounded hover:bg-zinc-100 dark:hover:bg-zinc-800"
               >
                 <span className="text-xs px-1 py-0.5 bg-zinc-200 dark:bg-zinc-700 rounded mr-2">
-                  {child.node_type}
+                  {child.nodeType}
                 </span>
-                {child.summary?.slice(0, 60) || child.content.slice(0, 60)}...
+                {child.preview}...
               </button>
             ))}
           </div>
@@ -128,19 +150,19 @@ export function NodeViewer({ nodeId, onNavigate }: Props) {
       )}
 
       {/* Backlinks */}
-      {backlinks && backlinks.length > 0 && (
+      {backlinkPreviews.length > 0 && (
         <div className="p-4">
           <div className="text-xs text-zinc-500 mb-2">
-            Backlinks ({backlinks.length})
+            Backlinks ({backlinkPreviews.length})
           </div>
           <div className="space-y-1">
-            {backlinks.map((link) => (
+            {backlinkPreviews.map((link) => (
               <button
                 key={link.id}
                 onClick={() => onNavigate(link.id)}
                 className="block w-full text-left p-2 text-sm rounded hover:bg-zinc-100 dark:hover:bg-zinc-800"
               >
-                {link.summary?.slice(0, 60)}...
+                {link.preview}...
               </button>
             ))}
           </div>

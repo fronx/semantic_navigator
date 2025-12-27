@@ -2,7 +2,7 @@ export type NodeType = "article" | "section" | "paragraph";
 
 export interface Node {
   id: string;
-  content: string;
+  content: string | null;  // only populated for paragraph nodes
   summary: string | null;
   content_hash: string;
   embedding: number[] | null;
