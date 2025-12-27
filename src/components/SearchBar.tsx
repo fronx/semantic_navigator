@@ -2,6 +2,11 @@
 
 import { useState } from "react";
 
+interface MatchedKeyword {
+  keyword: string;
+  similarity: number;
+}
+
 interface SearchResult {
   id: string;
   content: string;
@@ -9,6 +14,7 @@ interface SearchResult {
   node_type: string;
   source_path: string;
   similarity: number;
+  matched_keywords: MatchedKeyword[];
 }
 
 interface Props {
@@ -62,13 +68,27 @@ export function SearchBar({ onSelectNode }: Props) {
               onClick={() => onSelectNode(result.id)}
               className="w-full text-left p-3 border rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800 dark:border-zinc-700"
             >
-              <div className="flex items-center gap-2 mb-1">
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
                 <span className="text-xs px-2 py-0.5 bg-zinc-200 dark:bg-zinc-700 rounded">
                   {result.node_type}
                 </span>
                 <span className="text-xs text-zinc-500">
                   {(result.similarity * 100).toFixed(0)}% match
                 </span>
+                {result.matched_keywords?.length > 0 && (
+                  <>
+                    <span className="text-xs text-zinc-400">via</span>
+                    {result.matched_keywords.map((kw) => (
+                      <span
+                        key={kw.keyword}
+                        className="text-xs px-2 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded"
+                        title={`${(kw.similarity * 100).toFixed(0)}% match`}
+                      >
+                        {kw.keyword}
+                      </span>
+                    ))}
+                  </>
+                )}
               </div>
               <div className="text-sm font-medium truncate">
                 {result.summary || result.content.slice(0, 100)}
