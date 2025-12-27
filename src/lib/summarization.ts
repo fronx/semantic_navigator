@@ -13,7 +13,7 @@ export async function extractKeywords(
       : `This is the full article "${context.articleTitle}"`;
 
   const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model: "claude-haiku-4-5-20251001",
     max_tokens: 200,
     messages: [
       {
@@ -59,7 +59,7 @@ export async function generateSummary(
       : `This is the full article "${context.articleTitle}"`;
 
   const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model: "claude-haiku-4-5-20251001",
     max_tokens: 500,
     messages: [
       {
@@ -84,7 +84,7 @@ export async function generateArticleSummary(
 ): Promise<string> {
   console.log(`[Claude] Generating article summary for "${title}" (${content.length} chars)`);
   const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model: "claude-haiku-4-5-20251001",
     max_tokens: 500,
     messages: [
       {

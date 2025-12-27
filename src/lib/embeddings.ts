@@ -2,8 +2,32 @@ import OpenAI from "openai";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-export async function generateEmbedding(text: string): Promise<number[]> {
-  console.log(`[OpenAI] Generating embedding for ${text.length} chars`);
+export interface EmbeddingContext {
+  type: "article-summary" | "section-summary" | "paragraph" | "paragraph-summary" | "keyword";
+  article: string;
+  section?: string;
+  keyword?: string;
+}
+
+function formatContext(ctx: EmbeddingContext): string {
+  const location = ctx.section ? `"${ctx.article}" > ${ctx.section}` : `"${ctx.article}"`;
+  switch (ctx.type) {
+    case "keyword":
+      return `keyword "${ctx.keyword}" in ${location}`;
+    case "article-summary":
+      return `article summary: ${location}`;
+    case "section-summary":
+      return `section summary: ${location}`;
+    case "paragraph-summary":
+      return `paragraph summary: ${location}`;
+    case "paragraph":
+      return `paragraph: ${location}`;
+  }
+}
+
+export async function generateEmbedding(text: string, context?: EmbeddingContext): Promise<number[]> {
+  const what = context ? formatContext(context) : `${text.length} chars`;
+  console.log(`[OpenAI] Embedding ${what}`);
   const response = await openai.embeddings.create({
     model: "text-embedding-3-small",
     input: text,
