@@ -2,10 +2,9 @@
 
 export interface ImportProgressState {
   phase: "idle" | "importing" | "complete";
-  currentFile: string;
-  fileProgress: { completed: number; total: number };
-  overallProgress: { filesCompleted: number; totalFiles: number };
-  recentItems: string[];
+  completed: number;
+  total: number;
+  activeFiles: string[];
   error?: string;
   successful?: number;
   failed?: number;
@@ -33,7 +32,7 @@ export function ImportProgress({ progress, onDismiss }: Props) {
     return null;
   }
 
-  const { overallProgress, fileProgress, currentFile, recentItems, phase } = progress;
+  const { completed, total, activeFiles, phase } = progress;
 
   return (
     <div className="border rounded-lg p-4 bg-white dark:bg-zinc-900 space-y-4">
@@ -65,35 +64,20 @@ export function ImportProgress({ progress, onDismiss }: Props) {
       {/* Overall progress */}
       <div>
         <div className="flex justify-between text-sm mb-1">
-          <span>Overall Progress</span>
+          <span>Progress</span>
           <span className="text-zinc-500">
-            {overallProgress.filesCompleted} / {overallProgress.totalFiles} files
+            {completed} / {total} files
           </span>
         </div>
-        <ProgressBar value={overallProgress.filesCompleted} max={overallProgress.totalFiles} />
+        <ProgressBar value={completed} max={total} />
       </div>
 
-      {/* Current file progress */}
-      {phase === "importing" && currentFile && (
-        <div>
-          <div className="flex justify-between text-sm mb-1">
-            <span className="truncate max-w-[200px]" title={currentFile}>
-              {currentFile}
-            </span>
-            <span className="text-zinc-500">
-              {fileProgress.completed} / {fileProgress.total} items
-            </span>
-          </div>
-          <ProgressBar value={fileProgress.completed} max={fileProgress.total} />
-        </div>
-      )}
-
-      {/* Recent items log */}
-      {recentItems.length > 0 && (
-        <div className="text-xs text-zinc-500 space-y-0.5 max-h-24 overflow-y-auto">
-          {recentItems.map((item, i) => (
-            <div key={i} className="truncate">
-              {item}
+      {/* Active files */}
+      {phase === "importing" && activeFiles.length > 0 && (
+        <div className="text-xs text-zinc-500 space-y-0.5">
+          {activeFiles.map((file) => (
+            <div key={file} className="truncate">
+              {file}
             </div>
           ))}
         </div>

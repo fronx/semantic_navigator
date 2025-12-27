@@ -16,6 +16,8 @@ npx supabase db push # Apply database migrations
 
 Run scripts with: `npx tsx scripts/<script>.ts`
 
+**Note**: Let the user run `npm run dev` in their own terminal rather than running it from Claude. This keeps the dev server visible and controllable by the user.
+
 ## Architecture
 
 Semantic Navigator is a knowledge base tool that imports markdown files, atomizes them into a hierarchy (article > section > paragraph), and enables semantic search via embeddings.

@@ -10,10 +10,9 @@ type Tab = "search" | "import";
 
 const initialProgressState: ImportProgressState = {
   phase: "idle",
-  currentFile: "",
-  fileProgress: { completed: 0, total: 0 },
-  overallProgress: { filesCompleted: 0, totalFiles: 0 },
-  recentItems: [],
+  completed: 0,
+  total: 0,
+  activeFiles: [],
 };
 
 export default function Home() {
@@ -76,35 +75,15 @@ export default function Home() {
         case "start":
           return {
             ...prev,
-            overallProgress: { filesCompleted: 0, totalFiles: data.totalFiles as number },
+            total: data.totalFiles as number,
           };
 
-        case "file-start":
+        case "progress":
           return {
             ...prev,
-            currentFile: data.file as string,
-            fileProgress: { completed: 0, total: 0 },
-          };
-
-        case "progress": {
-          const newItems = [...prev.recentItems, data.item as string].slice(-8);
-          return {
-            ...prev,
-            fileProgress: {
-              completed: data.completed as number,
-              total: data.total as number,
-            },
-            recentItems: newItems,
-          };
-        }
-
-        case "file-complete":
-          return {
-            ...prev,
-            overallProgress: {
-              ...prev.overallProgress,
-              filesCompleted: data.filesCompleted as number,
-            },
+            completed: data.completed as number,
+            total: data.total as number,
+            activeFiles: data.activeFiles as string[],
           };
 
         case "complete":
@@ -113,7 +92,7 @@ export default function Home() {
             phase: "complete",
             successful: data.successful as number,
             failed: data.failed as number,
-            currentFile: "",
+            activeFiles: [],
           };
 
         default:
