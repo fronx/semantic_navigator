@@ -5,9 +5,10 @@ import { VaultEntry } from "@/lib/types";
 
 interface Props {
   onImport: (paths: string[]) => void;
+  disabled?: boolean;
 }
 
-export function VaultBrowser({ onImport }: Props) {
+export function VaultBrowser({ onImport, disabled }: Props) {
   const [currentPath, setCurrentPath] = useState("");
   const [entries, setEntries] = useState<VaultEntry[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -134,9 +135,14 @@ export function VaultBrowser({ onImport }: Props) {
           </div>
           <button
             onClick={() => onImport(Array.from(selected))}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            disabled={disabled}
+            className={`px-4 py-2 rounded text-white ${
+              disabled
+                ? "bg-zinc-400 cursor-not-allowed"
+                : "bg-blue-600 hover:bg-blue-700"
+            }`}
           >
-            Import Selected
+            {disabled ? "Importing..." : "Import Selected"}
           </button>
         </div>
       )}

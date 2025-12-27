@@ -4,33 +4,122 @@ import { useState } from "react";
 import { VaultBrowser } from "@/components/VaultBrowser";
 import { SearchBar } from "@/components/SearchBar";
 import { NodeViewer } from "@/components/NodeViewer";
+import { ImportProgress, ImportProgressState } from "@/components/ImportProgress";
 
 type Tab = "search" | "import";
+
+const initialProgressState: ImportProgressState = {
+  phase: "idle",
+  currentFile: "",
+  fileProgress: { completed: 0, total: 0 },
+  overallProgress: { filesCompleted: 0, totalFiles: 0 },
+  recentItems: [],
+};
 
 export default function Home() {
   const [tab, setTab] = useState<Tab>("search");
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
-  const [importStatus, setImportStatus] = useState<{
-    loading: boolean;
-    message: string;
-  } | null>(null);
+  const [importProgress, setImportProgress] = useState<ImportProgressState>(initialProgressState);
 
   async function handleImport(paths: string[]) {
-    setImportStatus({ loading: true, message: "Importing..." });
-
-    const res = await fetch("/api/import", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ paths }),
+    setImportProgress({
+      ...initialProgressState,
+      phase: "importing",
     });
 
-    const data = await res.json();
-    setImportStatus({
-      loading: false,
-      message: `Imported ${data.successful}/${data.total} files`,
-    });
+    try {
+      const response = await fetch("/api/import/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paths }),
+      });
 
-    setTimeout(() => setImportStatus(null), 5000);
+      if (!response.ok || !response.body) {
+        throw new Error("Failed to start import");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        let eventType = "";
+        for (const line of lines) {
+          if (line.startsWith("event: ")) {
+            eventType = line.slice(7);
+          } else if (line.startsWith("data: ") && eventType) {
+            const data = JSON.parse(line.slice(6));
+            handleSSEEvent(eventType, data);
+            eventType = "";
+          }
+        }
+      }
+    } catch (error) {
+      setImportProgress((prev) => ({
+        ...prev,
+        phase: "complete",
+        error: error instanceof Error ? error.message : "Unknown error",
+      }));
+    }
+  }
+
+  function handleSSEEvent(event: string, data: Record<string, unknown>) {
+    setImportProgress((prev) => {
+      switch (event) {
+        case "start":
+          return {
+            ...prev,
+            overallProgress: { filesCompleted: 0, totalFiles: data.totalFiles as number },
+          };
+
+        case "file-start":
+          return {
+            ...prev,
+            currentFile: data.file as string,
+            fileProgress: { completed: 0, total: 0 },
+          };
+
+        case "progress": {
+          const newItems = [...prev.recentItems, data.item as string].slice(-8);
+          return {
+            ...prev,
+            fileProgress: {
+              completed: data.completed as number,
+              total: data.total as number,
+            },
+            recentItems: newItems,
+          };
+        }
+
+        case "file-complete":
+          return {
+            ...prev,
+            overallProgress: {
+              ...prev.overallProgress,
+              filesCompleted: data.filesCompleted as number,
+            },
+          };
+
+        case "complete":
+          return {
+            ...prev,
+            phase: "complete",
+            successful: data.successful as number,
+            failed: data.failed as number,
+            currentFile: "",
+          };
+
+        default:
+          return prev;
+      }
+    });
   }
 
   return (
@@ -66,16 +155,13 @@ export default function Home() {
           </button>
         </div>
 
-        {/* Import Status */}
-        {importStatus && (
-          <div
-            className={`mb-4 p-3 rounded-lg ${
-              importStatus.loading
-                ? "bg-blue-100 dark:bg-blue-900/30"
-                : "bg-green-100 dark:bg-green-900/30"
-            }`}
-          >
-            {importStatus.message}
+        {/* Import Progress */}
+        {importProgress.phase !== "idle" && (
+          <div className="mb-4">
+            <ImportProgress
+              progress={importProgress}
+              onDismiss={() => setImportProgress(initialProgressState)}
+            />
           </div>
         )}
 
@@ -85,7 +171,10 @@ export default function Home() {
             {tab === "search" ? (
               <SearchBar onSelectNode={setSelectedNode} />
             ) : (
-              <VaultBrowser onImport={handleImport} />
+              <VaultBrowser
+                onImport={handleImport}
+                disabled={importProgress.phase === "importing"}
+              />
             )}
           </div>
           <div>
