@@ -5,8 +5,9 @@ import { VaultBrowser } from "@/components/VaultBrowser";
 import { SearchBar } from "@/components/SearchBar";
 import { NodeViewer } from "@/components/NodeViewer";
 import { ImportProgress, ImportProgressState } from "@/components/ImportProgress";
+import { MapView } from "@/components/MapView";
 
-type Tab = "search" | "import";
+type Tab = "search" | "import" | "map";
 
 const initialProgressState: ImportProgressState = {
   phase: "idle",
@@ -132,6 +133,16 @@ export default function Home() {
           >
             Import
           </button>
+          <button
+            onClick={() => setTab("map")}
+            className={`px-4 py-2 rounded-lg ${
+              tab === "map"
+                ? "bg-blue-600 text-white"
+                : "bg-white dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700"
+            }`}
+          >
+            Map
+          </button>
         </div>
 
         {/* Import Progress */}
@@ -145,21 +156,25 @@ export default function Home() {
         )}
 
         {/* Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div>
-            {tab === "search" ? (
-              <SearchBar onSelectNode={setSelectedNode} />
-            ) : (
-              <VaultBrowser
-                onImport={handleImport}
-                disabled={importProgress.phase === "importing"}
-              />
-            )}
+        {tab === "map" ? (
+          <MapView />
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div>
+              {tab === "search" ? (
+                <SearchBar onSelectNode={setSelectedNode} />
+              ) : (
+                <VaultBrowser
+                  onImport={handleImport}
+                  disabled={importProgress.phase === "importing"}
+                />
+              )}
+            </div>
+            <div>
+              <NodeViewer nodeId={selectedNode} onNavigate={setSelectedNode} />
+            </div>
           </div>
-          <div>
-            <NodeViewer nodeId={selectedNode} onNavigate={setSelectedNode} />
-          </div>
-        </div>
+        )}
       </main>
     </div>
   );

@@ -12,6 +12,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
     "@supabase/supabase-js": "^2.89.0",
+    "d3": "^7.9.0",
     "mdast-util-from-markdown": "^2.0.2",
     "next": "16.1.1",
     "openai": "^6.15.0",
@@ -22,6 +23,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/d3": "^7.4.3",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
