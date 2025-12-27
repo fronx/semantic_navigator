@@ -40,7 +40,11 @@ Semantic Navigator is a knowledge base tool that imports markdown files, atomize
 - `containment_edges`: Parent-child hierarchy (article → sections → paragraphs)
 - `backlink_edges`: Wiki-links between articles
 
-**Keywords**: Each paragraph has extracted keywords stored in `keywords` table for enhanced search.
+**Keywords** (stored in `keywords` table):
+- Each paragraph has extracted keywords for enhanced search
+- Keywords have their own embeddings (`vector(1536)`) for semantic matching
+- Linked to paragraph nodes via `node_id` foreign key
+- Used in both search (similarity matching) and the Map view (article clustering)
 
 ### Core Files
 
@@ -56,12 +60,35 @@ Semantic Navigator is a knowledge base tool that imports markdown files, atomize
 - `POST /api/import/stream` - SSE-based import with progress updates
 - `GET /api/vault` - Browse vault directory
 - `GET /api/nodes/[id]` - Fetch node with children
+- `GET /api/map` - Graph data for keyword-article visualization
+
+### UI Components
+
+- `src/components/SearchBar.tsx` - Semantic search with keyword matching display
+- `src/components/VaultBrowser.tsx` - File picker for importing markdown files
+- `src/components/NodeViewer.tsx` - Display node content and children
+- `src/components/MapView.tsx` - D3 force-directed graph of articles and keywords
 
 ### Database
 
 Uses Supabase with pgvector extension. Migrations in `supabase/migrations/`. Apply with `npx supabase db push`.
 
 The `search_similar` RPC function performs cosine similarity search and returns matched keywords.
+
+### Traversing the Hierarchy
+
+To find an article from a keyword or paragraph:
+1. Keywords link to paragraphs via `keywords.node_id`
+2. Paragraphs link to sections/articles via `containment_edges.child_id` → `parent_id`
+3. May need 1-2 hops: paragraph → section → article, or paragraph → article directly
+
+Example pattern (used in `/api/map`):
+```sql
+-- Get parent of a paragraph
+SELECT parent_id FROM containment_edges WHERE child_id = <paragraph_id>
+-- Check if parent is article (node_type = 'article') or section
+-- If section, query again to get the article
+```
 
 ## Environment
 
