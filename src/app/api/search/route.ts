@@ -10,14 +10,20 @@ export async function POST(request: NextRequest) {
   }
 
   const supabase = createServerClient();
+
+  console.log("[search] Query:", query, "limit:", limit, "nodeType:", nodeType);
+
   const queryEmbedding = await generateEmbedding(query);
+  console.log("[search] Embedding generated, length:", queryEmbedding?.length);
 
   const { data, error } = await supabase.rpc("search_similar", {
     query_embedding: queryEmbedding,
-    match_threshold: 0.5,
+    match_threshold: 0.1,
     match_count: limit,
     filter_node_type: nodeType || null,
   });
+
+  console.log("[search] RPC result - error:", error, "data count:", data?.length);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

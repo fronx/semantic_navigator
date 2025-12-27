@@ -2,7 +2,7 @@ import { createHash } from "crypto";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { parseMarkdown, flattenSections } from "./parser";
 import { generateEmbedding, estimateTokens } from "./embeddings";
-import { generateSummary, generateArticleSummary } from "./summarization";
+import { generateSummary, generateArticleSummary, extractKeywords } from "./summarization";
 import { Node, NodeType } from "./types";
 
 const PARAGRAPH_TOKEN_THRESHOLD = 1000;
@@ -112,42 +112,83 @@ export async function ingestArticle(
     // 3. Create paragraph nodes for this section
     for (let j = 0; j < section.paragraphs.length; j++) {
       const paragraph = section.paragraphs[j];
-      const tokens = estimateTokens(paragraph);
+      const contentHash = hash(paragraph);
 
-      let paragraphSummary: string | null = null;
-      let paragraphEmbedding: number[];
+      // Check if paragraph already exists
+      const { data: existingNode } = await supabase
+        .from("nodes")
+        .select("id")
+        .eq("content_hash", contentHash)
+        .eq("node_type", "paragraph")
+        .single();
 
-      if (tokens >= PARAGRAPH_TOKEN_THRESHOLD) {
-        paragraphSummary = await generateSummary(paragraph, {
+      let paragraphNodeId: string;
+
+      if (existingNode) {
+        // Reuse existing node
+        paragraphNodeId = existingNode.id;
+      } else {
+        // Create new node
+        const tokens = estimateTokens(paragraph);
+        let paragraphSummary: string | null = null;
+        let paragraphEmbedding: number[];
+
+        if (tokens >= PARAGRAPH_TOKEN_THRESHOLD) {
+          paragraphSummary = await generateSummary(paragraph, {
+            articleTitle: parsed.title,
+            sectionPath: section.path,
+          });
+          paragraphEmbedding = await generateEmbedding(paragraphSummary);
+        } else {
+          paragraphEmbedding = await generateEmbedding(paragraph);
+        }
+
+        const { data: paragraphNode, error: paragraphError } = await supabase
+          .from("nodes")
+          .insert({
+            content: paragraph,
+            summary: paragraphSummary,
+            content_hash: contentHash,
+            embedding: paragraphEmbedding,
+            node_type: "paragraph" as NodeType,
+            source_path: sourcePath,
+            header_level: null,
+          })
+          .select()
+          .single();
+
+        if (paragraphError) throw paragraphError;
+        paragraphNodeId = paragraphNode.id;
+
+        await supabase.from("containment_edges").insert({
+          parent_id: sectionNode.id,
+          child_id: paragraphNodeId,
+          position: j,
+        });
+      }
+
+      // Check if keywords already exist for this node
+      const { count: existingKeywordCount } = await supabase
+        .from("keywords")
+        .select("*", { count: "exact", head: true })
+        .eq("node_id", paragraphNodeId);
+
+      if (!existingKeywordCount) {
+        // Extract and store keywords
+        const keywords = await extractKeywords(paragraph, {
           articleTitle: parsed.title,
           sectionPath: section.path,
         });
-        paragraphEmbedding = await generateEmbedding(paragraphSummary);
-      } else {
-        paragraphEmbedding = await generateEmbedding(paragraph);
+
+        for (const keyword of keywords) {
+          const keywordEmbedding = await generateEmbedding(keyword);
+          await supabase.from("keywords").insert({
+            keyword,
+            embedding: keywordEmbedding,
+            node_id: paragraphNodeId,
+          });
+        }
       }
-
-      const { data: paragraphNode, error: paragraphError } = await supabase
-        .from("nodes")
-        .insert({
-          content: paragraph,
-          summary: paragraphSummary,
-          content_hash: hash(paragraph),
-          embedding: paragraphEmbedding,
-          node_type: "paragraph" as NodeType,
-          source_path: sourcePath,
-          header_level: null,
-        })
-        .select()
-        .single();
-
-      if (paragraphError) throw paragraphError;
-
-      await supabase.from("containment_edges").insert({
-        parent_id: sectionNode.id,
-        child_id: paragraphNode.id,
-        position: j,
-      });
 
       report(`Paragraph ${j + 1}/${section.paragraphs.length}`);
     }
