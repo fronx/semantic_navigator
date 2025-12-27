@@ -1,9 +1,19 @@
+import { fromMarkdown } from "mdast-util-from-markdown";
+import type { Heading, Paragraph, PhrasingContent } from "mdast";
 import { ParsedArticle, ParsedSection } from "./types";
 
 // Strip YAML frontmatter from markdown
 function stripFrontmatter(content: string): string {
   const frontmatterRegex = /^---\n[\s\S]*?\n---\n?/;
   return content.replace(frontmatterRegex, "").trim();
+}
+
+// Fix malformed multi-line linked images (common in Substack exports)
+// Converts: [\n\n![](image)\n\n](url) -> [![](image)](url)
+function fixMultilineLinkedImages(content: string): string {
+  // Match: [ + whitespace + ![alt](image) + whitespace + ](url)
+  const pattern = /\[\s*(!\[[^\]]*\]\([^)]*\))\s*\]\(([^)]*)\)/g;
+  return content.replace(pattern, "[$1]($2)");
 }
 
 // Extract [[wiki-links]] from content
@@ -14,83 +24,100 @@ function extractBacklinks(content: string): string[] {
   while ((match = linkRegex.exec(content)) !== null) {
     links.push(match[1]);
   }
-  return [...new Set(links)]; // dedupe
+  return [...new Set(links)];
 }
 
-// Split content into paragraphs by \n\n
-function splitParagraphs(content: string): string[] {
-  return content
-    .split(/\n\n+/)
-    .map((p) => p.trim())
-    .filter((p) => p.length > 0);
+// Extract text content from phrasing content, skipping images
+function extractText(nodes: PhrasingContent[]): string {
+  const parts: string[] = [];
+  for (const node of nodes) {
+    if (node.type === "text") {
+      parts.push(node.value);
+    } else if (node.type === "image") {
+      // Skip images entirely
+    } else if ("children" in node) {
+      // Recurse into emphasis, strong, link, etc.
+      parts.push(extractText(node.children as PhrasingContent[]));
+    }
+  }
+  // Collapse multiple spaces into one (from removed images)
+  return parts.join("").replace(/  +/g, " ");
 }
 
-// Parse markdown into hierarchical sections
+// Check if a paragraph has meaningful text content (not just images/whitespace)
+function hasMeaningfulText(paragraph: Paragraph): boolean {
+  const text = extractText(paragraph.children).trim();
+  return text.length > 0;
+}
+
+// Parse markdown into hierarchical sections using AST
 export function parseMarkdown(
   content: string,
   filename: string
 ): ParsedArticle {
-  const cleanContent = stripFrontmatter(content);
+  const withoutFrontmatter = stripFrontmatter(content);
+  const cleanContent = fixMultilineLinkedImages(withoutFrontmatter);
   const backlinks = extractBacklinks(cleanContent);
-
-  // Get title from filename (without .md)
   const title = filename.replace(/\.md$/, "");
 
-  // Split by headers
-  const headerRegex = /^(#{1,6})\s+(.+)$/gm;
+  const tree = fromMarkdown(cleanContent);
   const sections: ParsedSection[] = [];
   const stack: { section: ParsedSection; level: number }[] = [];
 
-  let lastIndex = 0;
-  let preamble = "";
-  let match;
+  // Collect paragraphs for the current section
+  let currentParagraphs: string[] = [];
 
-  // Reset regex
-  headerRegex.lastIndex = 0;
-
-  while ((match = headerRegex.exec(cleanContent)) !== null) {
-    const beforeHeader = cleanContent.slice(lastIndex, match.index).trim();
-    if (lastIndex === 0 && beforeHeader) {
-      preamble = beforeHeader;
-    } else if (stack.length > 0 && beforeHeader) {
+  function flushParagraphs() {
+    if (stack.length > 0 && currentParagraphs.length > 0) {
       const current = stack[stack.length - 1].section;
-      current.paragraphs = splitParagraphs(beforeHeader);
-      current.content = beforeHeader;
+      current.paragraphs = currentParagraphs;
+      current.content = currentParagraphs.join("\n\n");
     }
-
-    const level = match[1].length;
-    const sectionTitle = match[2];
-
-    const newSection: ParsedSection = {
-      title: sectionTitle,
-      level,
-      content: "",
-      children: [],
-      paragraphs: [],
-    };
-
-    // Pop stack until we find a parent with lower level
-    while (stack.length > 0 && stack[stack.length - 1].level >= level) {
-      stack.pop();
-    }
-
-    if (stack.length === 0) {
-      sections.push(newSection);
-    } else {
-      stack[stack.length - 1].section.children.push(newSection);
-    }
-
-    stack.push({ section: newSection, level });
-    lastIndex = match.index + match[0].length;
+    currentParagraphs = [];
   }
 
-  // Handle remaining content after last header
-  const remaining = cleanContent.slice(lastIndex).trim();
-  if (remaining && stack.length > 0) {
-    const current = stack[stack.length - 1].section;
-    current.paragraphs = splitParagraphs(remaining);
-    current.content = remaining;
+  for (const node of tree.children) {
+    if (node.type === "heading") {
+      flushParagraphs();
+
+      const heading = node as Heading;
+      const level = heading.depth;
+      const sectionTitle = extractText(heading.children as PhrasingContent[]);
+
+      const newSection: ParsedSection = {
+        title: sectionTitle,
+        level,
+        content: "",
+        children: [],
+        paragraphs: [],
+      };
+
+      // Pop stack until we find a parent with lower level
+      while (stack.length > 0 && stack[stack.length - 1].level >= level) {
+        stack.pop();
+      }
+
+      if (stack.length === 0) {
+        sections.push(newSection);
+      } else {
+        stack[stack.length - 1].section.children.push(newSection);
+      }
+
+      stack.push({ section: newSection, level });
+    } else if (node.type === "paragraph") {
+      const paragraph = node as Paragraph;
+      if (hasMeaningfulText(paragraph)) {
+        const text = extractText(paragraph.children).trim();
+        if (text) {
+          currentParagraphs.push(text);
+        }
+      }
+    }
+    // Skip other node types (images, thematic breaks, etc.)
   }
+
+  // Flush any remaining paragraphs
+  flushParagraphs();
 
   return {
     title,
@@ -106,7 +133,7 @@ export interface FlatSection {
   level: number;
   content: string;
   paragraphs: string[];
-  path: string[]; // ancestor titles
+  path: string[];
 }
 
 export function flattenSections(
