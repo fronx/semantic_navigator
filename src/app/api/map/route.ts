@@ -5,11 +5,14 @@ export interface MapNode {
   id: string;
   type: "keyword" | "article";
   label: string;
+  size?: number; // Content size (summary length) for scaling node radius
 }
 
 export interface MapEdge {
   source: string;
   target: string;
+  // For keyword-keyword edges, indicates semantic similarity (0-1)
+  similarity?: number;
 }
 
 export interface MapData {
@@ -17,175 +20,99 @@ export interface MapData {
   edges: MapEdge[];
 }
 
+interface SimilarityPair {
+  keyword_id: string;
+  keyword_text: string;
+  article_id: string;
+  article_path: string;
+  article_size: number;
+  similar_keyword_id: string;
+  similar_keyword_text: string;
+  similar_article_id: string;
+  similar_article_path: string;
+  similar_article_size: number;
+  similarity: number;
+}
+
+/**
+ * Build a semantic map of articles connected through similar keywords.
+ *
+ * Graph structure:
+ *   Article A ──→ keyword "agency" ←──┐
+ *                                     │ similarity edge
+ *   Article B ──→ keyword "agents"  ←─┘
+ *
+ * Articles cluster together because their keywords are connected through
+ * semantic similarity edges.
+ */
 export async function GET() {
   const supabase = createServerClient();
 
-  // Get keyword → article relationships by walking up containment tree
-  const { data: relationships, error: relError } = await supabase.rpc(
-    "get_keyword_article_relationships"
-  );
+  // Get semantically similar keyword pairs across articles
+  const { data: pairs, error } = await supabase.rpc("get_article_keyword_graph", {
+    similarity_threshold: 0.75,
+  });
 
-  if (relError) {
-    // If the function doesn't exist yet, fall back to a direct query approach
-    console.log("[map] RPC not found, using direct query");
-    return await getMapDataDirect(supabase);
+  if (error) {
+    console.error("[map] Error fetching keyword graph:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return buildMapResponse(relationships);
-}
-
-async function getMapDataDirect(
-  supabase: ReturnType<typeof createServerClient>
-) {
-  // Get all keywords with their node_ids
-  const { data: keywords, error: kwError } = await supabase
-    .from("keywords")
-    .select("keyword, node_id");
-
-  if (kwError) {
-    return NextResponse.json({ error: kwError.message }, { status: 500 });
-  }
-
-  if (!keywords || keywords.length === 0) {
+  if (!pairs || pairs.length === 0) {
+    console.log("[map] No similar keyword pairs found");
     return NextResponse.json({ nodes: [], edges: [] });
   }
 
-  // Get all paragraph → article mappings by traversing containment_edges
-  // We need to recursively walk up from each paragraph to find its article
-  const paragraphIds = [...new Set(keywords.map((k) => k.node_id))];
+  return buildSemanticMap(pairs as SimilarityPair[]);
+}
 
-  // Get the ancestor chain for each paragraph
-  const { data: ancestorData, error: ancestorError } = await supabase
-    .from("containment_edges")
-    .select(
-      `
-      child_id,
-      parent:nodes!containment_edges_parent_id_fkey(id, node_type, source_path)
-    `
-    )
-    .in("child_id", paragraphIds);
-
-  if (ancestorError) {
-    return NextResponse.json({ error: ancestorError.message }, { status: 500 });
-  }
-
-  // Build paragraph → article mapping by walking up the tree
-  // This is a simplified approach - for deep hierarchies we'd need recursion
-  const paragraphToArticle = new Map<
-    string,
-    { id: string; source_path: string }
-  >();
-
-  // First pass: direct parents that are articles
-  type ParentNode = { id: string; node_type: string; source_path: string };
-  const needsParent = new Set<string>();
-  for (const edge of ancestorData || []) {
-    // Supabase returns single object for FK joins, but TS may infer array
-    const parent = edge.parent as unknown as ParentNode | null;
-    if (parent?.node_type === "article") {
-      paragraphToArticle.set(edge.child_id, {
-        id: parent.id,
-        source_path: parent.source_path,
-      });
-    } else if (parent) {
-      needsParent.add(parent.id);
-    }
-  }
-
-  // Second pass: get parents of sections
-  if (needsParent.size > 0) {
-    const { data: sectionParents } = await supabase
-      .from("containment_edges")
-      .select(
-        `
-        child_id,
-        parent:nodes!containment_edges_parent_id_fkey(id, node_type, source_path)
-      `
-      )
-      .in("child_id", [...needsParent]);
-
-    const sectionToArticle = new Map<
-      string,
-      { id: string; source_path: string }
-    >();
-    for (const edge of sectionParents || []) {
-      const parent = edge.parent as unknown as ParentNode | null;
-      if (parent?.node_type === "article") {
-        sectionToArticle.set(edge.child_id, {
-          id: parent.id,
-          source_path: parent.source_path,
-        });
-      }
-    }
-
-    // Map paragraphs through their section parents
-    for (const edge of ancestorData || []) {
-      const parent = edge.parent as unknown as ParentNode | null;
-      if (parent && !paragraphToArticle.has(edge.child_id)) {
-        const article = sectionToArticle.get(parent.id);
-        if (article) {
-          paragraphToArticle.set(edge.child_id, article);
-        }
-      }
-    }
-  }
-
-  // Build keyword → articles mapping to count articles per keyword
-  const keywordToArticles = new Map<string, Set<string>>();
-
-  for (const kw of keywords) {
-    const article = paragraphToArticle.get(kw.node_id);
-    if (article) {
-      if (!keywordToArticles.has(kw.keyword)) {
-        keywordToArticles.set(kw.keyword, new Set());
-      }
-      keywordToArticles.get(kw.keyword)!.add(article.id);
-    }
-  }
-
-  // Filter to keywords used by at least 2 articles
-  const multiArticleKeywords = new Set<string>();
-  for (const [keyword, articles] of keywordToArticles) {
-    if (articles.size >= 2) {
-      multiArticleKeywords.add(keyword);
-    }
-  }
-
-  // Build the graph with filtered keywords
-  const keywordNodes = new Map<string, MapNode>();
+function buildSemanticMap(pairs: SimilarityPair[]) {
   const articleNodes = new Map<string, MapNode>();
+  const keywordNodes = new Map<string, MapNode>();
   const edges: MapEdge[] = [];
   const edgeSet = new Set<string>();
 
-  for (const kw of keywords) {
-    if (!multiArticleKeywords.has(kw.keyword)) continue;
-
-    const article = paragraphToArticle.get(kw.node_id);
-    if (!article) continue;
-
-    const keywordId = `kw:${kw.keyword}`;
-    if (!keywordNodes.has(keywordId)) {
-      keywordNodes.set(keywordId, {
-        id: keywordId,
-        type: "keyword",
-        label: kw.keyword,
-      });
+  function addArticleNode(id: string, path: string, size: number) {
+    const artNodeId = `art:${id}`;
+    if (!articleNodes.has(artNodeId)) {
+      const label = path.split("/").pop()?.replace(".md", "") || path;
+      articleNodes.set(artNodeId, { id: artNodeId, type: "article", label, size });
     }
+    return artNodeId;
+  }
 
-    const articleId = `art:${article.id}`;
-    if (!articleNodes.has(articleId)) {
-      const label = article.source_path.split("/").pop()?.replace(".md", "") || article.source_path;
-      articleNodes.set(articleId, {
-        id: articleId,
-        type: "article",
-        label,
-      });
+  function addKeywordNode(text: string) {
+    // Key by text to deduplicate identical keywords across articles
+    const kwNodeId = `kw:${text}`;
+    if (!keywordNodes.has(kwNodeId)) {
+      keywordNodes.set(kwNodeId, { id: kwNodeId, type: "keyword", label: text });
     }
+    return kwNodeId;
+  }
 
-    const edgeKey = `${articleId}-${keywordId}`;
+  function addEdge(source: string, target: string, similarity?: number) {
+    const edgeKey = [source, target].sort().join("-");
     if (!edgeSet.has(edgeKey)) {
       edgeSet.add(edgeKey);
-      edges.push({ source: articleId, target: keywordId });
+      edges.push(similarity ? { source, target, similarity } : { source, target });
+    }
+  }
+
+  for (const pair of pairs) {
+    // Create nodes for both articles and keywords
+    const art1Id = addArticleNode(pair.article_id, pair.article_path, pair.article_size);
+    const art2Id = addArticleNode(pair.similar_article_id, pair.similar_article_path, pair.similar_article_size);
+    const kw1Id = addKeywordNode(pair.keyword_text);
+    const kw2Id = addKeywordNode(pair.similar_keyword_text);
+
+    // Create edges: article → keyword (ownership)
+    addEdge(art1Id, kw1Id);
+    addEdge(art2Id, kw2Id);
+
+    // Create edge: keyword ↔ keyword (semantic similarity)
+    // Skip if same keyword text (would be a self-loop after deduplication)
+    if (kw1Id !== kw2Id) {
+      addEdge(kw1Id, kw2Id, pair.similarity);
     }
   }
 
@@ -198,67 +125,10 @@ async function getMapDataDirect(
     keywordNodes.size,
     "keywords,",
     edges.length,
-    "edges"
+    "edges (including",
+    pairs.length,
+    "similarity edges)"
   );
-
-  return NextResponse.json({ nodes, edges });
-}
-
-function buildMapResponse(
-  relationships: { keyword: string; article_id: string; source_path: string }[]
-) {
-  // Count articles per keyword
-  const keywordToArticles = new Map<string, Set<string>>();
-  for (const rel of relationships) {
-    if (!keywordToArticles.has(rel.keyword)) {
-      keywordToArticles.set(rel.keyword, new Set());
-    }
-    keywordToArticles.get(rel.keyword)!.add(rel.article_id);
-  }
-
-  // Filter to keywords used by at least 2 articles
-  const multiArticleKeywords = new Set<string>();
-  for (const [keyword, articles] of keywordToArticles) {
-    if (articles.size >= 2) {
-      multiArticleKeywords.add(keyword);
-    }
-  }
-
-  const keywordNodes = new Map<string, MapNode>();
-  const articleNodes = new Map<string, MapNode>();
-  const edges: MapEdge[] = [];
-  const edgeSet = new Set<string>();
-
-  for (const rel of relationships) {
-    if (!multiArticleKeywords.has(rel.keyword)) continue;
-
-    const keywordId = `kw:${rel.keyword}`;
-    if (!keywordNodes.has(keywordId)) {
-      keywordNodes.set(keywordId, {
-        id: keywordId,
-        type: "keyword",
-        label: rel.keyword,
-      });
-    }
-
-    const articleId = `art:${rel.article_id}`;
-    if (!articleNodes.has(articleId)) {
-      const label = rel.source_path.split("/").pop()?.replace(".md", "") || rel.source_path;
-      articleNodes.set(articleId, {
-        id: articleId,
-        type: "article",
-        label,
-      });
-    }
-
-    const edgeKey = `${articleId}-${keywordId}`;
-    if (!edgeSet.has(edgeKey)) {
-      edgeSet.add(edgeKey);
-      edges.push({ source: articleId, target: keywordId });
-    }
-  }
-
-  const nodes = [...articleNodes.values(), ...keywordNodes.values()];
 
   return NextResponse.json({ nodes, edges });
 }

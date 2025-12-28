@@ -2,7 +2,14 @@ import { createHash } from "crypto";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { parseMarkdown, flattenSections } from "./parser";
 import { generateEmbedding, estimateTokens } from "./embeddings";
-import { generateSummary, generateArticleSummary, extractKeywords } from "./summarization";
+import {
+  generateSummary,
+  generateArticleSummary,
+  extractKeywords,
+  reduceKeywordsForSection,
+  reduceKeywordsForArticle,
+  SectionKeywords,
+} from "./summarization";
 import { Node, NodeType } from "./types";
 import { findExistingNode } from "./node-identity";
 
@@ -260,9 +267,99 @@ export async function ingestArticle(
 
       report(`Paragraph ${j + 1}/${section.paragraphs.length}`);
     }
+
+    // 3b. Bubble keywords up to section level
+    const { count: existingSectionKeywords } = await supabase
+      .from("keywords")
+      .select("*", { count: "exact", head: true })
+      .eq("node_id", sectionNode.id);
+
+    if (!existingSectionKeywords) {
+      // Get all paragraph IDs for this section
+      const { data: sectionParaEdges } = await supabase
+        .from("containment_edges")
+        .select("child_id")
+        .eq("parent_id", sectionNode.id);
+
+      if (sectionParaEdges && sectionParaEdges.length > 0) {
+        const paraIds = sectionParaEdges.map((e) => e.child_id);
+
+        // Get all keywords for these paragraphs
+        const { data: paraKeywords } = await supabase
+          .from("keywords")
+          .select("keyword")
+          .in("node_id", paraIds);
+
+        if (paraKeywords && paraKeywords.length > 0) {
+          const keywordList = paraKeywords.map((k) => k.keyword);
+          const sectionTitle = sectionNode.summary || section.title;
+          const reducedKeywords = await reduceKeywordsForSection(sectionTitle, keywordList);
+
+          for (const keyword of reducedKeywords) {
+            const keywordEmbedding = await generateEmbedding(keyword, {
+              type: "keyword",
+              article: parsed.title,
+              section: section.path.join(" > "),
+              keyword,
+            });
+            await supabase.from("keywords").insert({
+              keyword,
+              embedding: keywordEmbedding,
+              node_id: sectionNode.id,
+            });
+          }
+        }
+      }
+    } else {
+      console.log(`[Skip] Section keywords already exist: "${parsed.title}" > ${section.title}`);
+    }
   }
 
-  // 4. Create backlink edges (resolve targets later when all articles imported)
+  // 4. Bubble keywords up to article level
+  const { count: existingArticleKeywords } = await supabase
+    .from("keywords")
+    .select("*", { count: "exact", head: true })
+    .eq("node_id", articleNode.id);
+
+  if (!existingArticleKeywords) {
+    // Gather section keywords
+    const sectionKeywordsList: SectionKeywords[] = [];
+
+    for (const [path, sectionNode] of sectionNodes) {
+      const { data: sectionKws } = await supabase
+        .from("keywords")
+        .select("keyword")
+        .eq("node_id", sectionNode.id);
+
+      if (sectionKws && sectionKws.length > 0) {
+        sectionKeywordsList.push({
+          title: sectionNode.summary || path,
+          keywords: sectionKws.map((k) => k.keyword),
+        });
+      }
+    }
+
+    if (sectionKeywordsList.length > 0) {
+      const reducedKeywords = await reduceKeywordsForArticle(parsed.title, sectionKeywordsList);
+
+      for (const keyword of reducedKeywords) {
+        const keywordEmbedding = await generateEmbedding(keyword, {
+          type: "keyword",
+          article: parsed.title,
+          keyword,
+        });
+        await supabase.from("keywords").insert({
+          keyword,
+          embedding: keywordEmbedding,
+          node_id: articleNode.id,
+        });
+      }
+    }
+  } else {
+    console.log(`[Skip] Article keywords already exist: "${parsed.title}"`);
+  }
+
+  // 5. Create backlink edges (resolve targets later when all articles imported)
   // For now, store as pending backlinks that can be resolved in a second pass
   for (const linkText of parsed.backlinks) {
     // Find target article by name

@@ -9,6 +9,7 @@ interface SimNode extends d3.SimulationNodeDatum, MapNode {}
 interface SimLink extends d3.SimulationLinkDatum<SimNode> {
   source: SimNode | string;
   target: SimNode | string;
+  similarity?: number;
 }
 
 export function MapView() {
@@ -45,6 +46,7 @@ export function MapView() {
       .map((e) => ({
         source: nodeMap.get(e.source)!,
         target: nodeMap.get(e.target)!,
+        similarity: e.similarity,
       }))
       .filter((l) => l.source && l.target);
 
@@ -59,6 +61,17 @@ export function MapView() {
 
     svg.call(zoom);
 
+    // Scale article radius by content size (sqrt for good visual spread)
+    const sizeScale = d3.scaleSqrt()
+      .domain([400, 2000]) // summary length range
+      .range([25, 80])
+      .clamp(true);
+
+    const getNodeRadius = (d: SimNode) => {
+      if (d.type === "keyword") return 18;
+      return sizeScale(d.size || 400);
+    };
+
     // Force simulation
     const simulation = d3
       .forceSimulation<SimNode>(nodes)
@@ -67,11 +80,14 @@ export function MapView() {
         d3
           .forceLink<SimNode, SimLink>(links)
           .id((d) => d.id)
-          .distance(80)
+          // Shorter distance for high-similarity keyword pairs
+          .distance((d) => d.similarity ? 40 + (1 - d.similarity) * 100 : 120)
+          // Stronger pull for high-similarity pairs
+          .strength((d) => d.similarity ? 0.5 + d.similarity * 0.5 : 0.3)
       )
-      .force("charge", d3.forceManyBody().strength(-200))
+      .force("charge", d3.forceManyBody().strength(-300))
       .force("center", d3.forceCenter(width / 2, height / 2))
-      .force("collision", d3.forceCollide().radius(30));
+      .force("collision", d3.forceCollide<SimNode>().radius((d) => getNodeRadius(d) + 10));
 
     // Draw edges
     const link = g
@@ -81,7 +97,7 @@ export function MapView() {
       .selectAll("line")
       .data(links)
       .join("line")
-      .attr("stroke-width", 1);
+      .attr("stroke-width", 3);
 
     // Draw nodes
     const node = g
@@ -111,7 +127,7 @@ export function MapView() {
     // Circles for nodes
     node
       .append("circle")
-      .attr("r", (d) => (d.type === "article" ? 8 : 6))
+      .attr("r", getNodeRadius)
       .attr("fill", (d) => (d.type === "article" ? "#3b82f6" : "#10b981"))
       .attr("stroke", "#fff")
       .attr("stroke-width", 1.5);
@@ -120,9 +136,9 @@ export function MapView() {
     node
       .append("text")
       .text((d) => d.label)
-      .attr("x", 12)
-      .attr("y", 4)
-      .attr("font-size", "11px")
+      .attr("x", (d) => getNodeRadius(d) + 8)
+      .attr("y", 8)
+      .attr("font-size", "24px")
       .attr("fill", "currentColor")
       .attr("class", "dark:fill-zinc-300 fill-zinc-700");
 
@@ -143,7 +159,7 @@ export function MapView() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-12rem)] bg-white dark:bg-zinc-900 rounded-lg border dark:border-zinc-800">
+      <div className="flex items-center justify-center h-[calc(100vh-7rem)] bg-white dark:bg-zinc-900 rounded-lg border dark:border-zinc-800">
         <span className="text-zinc-500">Loading map...</span>
       </div>
     );
@@ -151,7 +167,7 @@ export function MapView() {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-12rem)] bg-white dark:bg-zinc-900 rounded-lg border dark:border-zinc-800">
+      <div className="flex items-center justify-center h-[calc(100vh-7rem)] bg-white dark:bg-zinc-900 rounded-lg border dark:border-zinc-800">
         <span className="text-red-500">Error: {error}</span>
       </div>
     );
@@ -159,14 +175,14 @@ export function MapView() {
 
   if (!data || data.nodes.length === 0) {
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-12rem)] bg-white dark:bg-zinc-900 rounded-lg border dark:border-zinc-800">
+      <div className="flex items-center justify-center h-[calc(100vh-7rem)] bg-white dark:bg-zinc-900 rounded-lg border dark:border-zinc-800">
         <span className="text-zinc-500">No data to display. Import some articles first.</span>
       </div>
     );
   }
 
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-lg border dark:border-zinc-800 overflow-hidden flex flex-col h-[calc(100vh-12rem)]">
+    <div className="bg-white dark:bg-zinc-900 rounded-lg border dark:border-zinc-800 overflow-hidden flex flex-col h-[calc(100vh-7rem)]">
       <div className="p-2 border-b dark:border-zinc-800 flex gap-4 text-xs text-zinc-500 shrink-0">
         <span className="flex items-center gap-1">
           <span className="w-3 h-3 rounded-full bg-blue-500 inline-block" />

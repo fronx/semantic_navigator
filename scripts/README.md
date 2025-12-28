@@ -3,8 +3,10 @@
 Utility scripts for database inspection and maintenance. Run with:
 
 ```bash
-npx tsx --env-file=.env.local scripts/<script>.ts
+npm run script scripts/<script>.ts
 ```
+
+This uses the `script` npm command which auto-loads `.env.local`.
 
 ## Available Scripts
 
@@ -13,7 +15,7 @@ npx tsx --env-file=.env.local scripts/<script>.ts
 Look up specific nodes by UUID.
 
 ```bash
-npx tsx --env-file=.env.local scripts/query-nodes.ts <uuid> [uuid...]
+npm run script scripts/query-nodes.ts <uuid> [uuid...]
 ```
 
 ### check-keywords.ts

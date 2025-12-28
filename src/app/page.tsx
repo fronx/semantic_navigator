@@ -105,45 +105,44 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
       <header className="border-b bg-white dark:bg-zinc-900 dark:border-zinc-800">
-        <div className="max-w-6xl mx-auto px-4 py-4">
+        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
           <h1 className="text-xl font-semibold">Semantic Navigator</h1>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setTab("search")}
+              className={`px-4 py-1.5 rounded-lg text-sm ${
+                tab === "search"
+                  ? "bg-blue-600 text-white"
+                  : "bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+              }`}
+            >
+              Search
+            </button>
+            <button
+              onClick={() => setTab("import")}
+              className={`px-4 py-1.5 rounded-lg text-sm ${
+                tab === "import"
+                  ? "bg-blue-600 text-white"
+                  : "bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+              }`}
+            >
+              Import
+            </button>
+            <button
+              onClick={() => setTab("map")}
+              className={`px-4 py-1.5 rounded-lg text-sm ${
+                tab === "map"
+                  ? "bg-blue-600 text-white"
+                  : "bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+              }`}
+            >
+              Map
+            </button>
+          </div>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 py-6">
-        {/* Tab Navigation */}
-        <div className="flex gap-4 mb-6">
-          <button
-            onClick={() => setTab("search")}
-            className={`px-4 py-2 rounded-lg ${
-              tab === "search"
-                ? "bg-blue-600 text-white"
-                : "bg-white dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700"
-            }`}
-          >
-            Search
-          </button>
-          <button
-            onClick={() => setTab("import")}
-            className={`px-4 py-2 rounded-lg ${
-              tab === "import"
-                ? "bg-blue-600 text-white"
-                : "bg-white dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700"
-            }`}
-          >
-            Import
-          </button>
-          <button
-            onClick={() => setTab("map")}
-            className={`px-4 py-2 rounded-lg ${
-              tab === "map"
-                ? "bg-blue-600 text-white"
-                : "bg-white dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700"
-            }`}
-          >
-            Map
-          </button>
-        </div>
+      <main className="max-w-6xl mx-auto px-4 py-4">
 
         {/* Import Progress */}
         {importProgress.phase !== "idle" && (

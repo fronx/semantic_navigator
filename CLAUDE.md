@@ -14,7 +14,7 @@ npx tsc --noEmit     # Type check without emitting
 npx supabase db push # Apply database migrations
 ```
 
-Run scripts with: `npx tsx scripts/<script>.ts`
+Run scripts with: `npm run script scripts/<script>.ts` (auto-loads .env.local)
 
 **Note**: Let the user run `npm run dev` in their own terminal rather than running it from Claude. This keeps the dev server visible and controllable by the user.
 
@@ -74,6 +74,43 @@ Semantic Navigator is a knowledge base tool that imports markdown files, atomize
 Uses Supabase with pgvector extension. Migrations in `supabase/migrations/`. Apply with `npx supabase db push`.
 
 The `search_similar` RPC function performs cosine similarity search and returns matched keywords.
+
+### Database Migrations
+
+**Applying migrations:**
+```bash
+npx supabase db push  # Push pending migrations to remote database
+```
+
+**Evolving uncommitted migrations (before git commit):**
+
+To modify a migration that's been applied to remote but not yet committed to git:
+
+```bash
+# 1. Manually undo the migration's changes (run in Supabase SQL Editor)
+DROP FUNCTION IF EXISTS function_name(args);
+
+# 2. Mark the migration as reverted in Supabase's tracking
+npx supabase migration repair 007 --status reverted --linked
+
+# 3. Edit the migration file locally
+
+# 4. Re-apply
+npx supabase db push
+```
+
+**Warning:** Never use `migration down --linked` on a database with data you care about. It resets the ENTIRE database (drops all tables) and reapplies migrations from scratch.
+
+**Rolling back deployed migrations (after git commit/deploy):**
+
+Supabase migrations are forward-only. To undo a deployed migration:
+1. Create a NEW migration that reverses the changes
+2. Never try to edit or remove already-deployed migration files
+
+**Local development reset:**
+```bash
+npx supabase db reset  # Resets LOCAL database only (safe)
+```
 
 ### Traversing the Hierarchy
 
