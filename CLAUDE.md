@@ -70,6 +70,7 @@ Semantic Navigator is a knowledge base tool that imports markdown files, atomize
 - `src/components/VaultBrowser.tsx` - File picker for importing markdown files
 - `src/components/NodeViewer.tsx` - Display node content and children
 - `src/components/MapView.tsx` - D3 force-directed graph of articles and keywords
+- `src/components/ImportProgress.tsx` - SSE-based import progress display
 
 ### Database
 
@@ -138,3 +139,7 @@ Requires `.env.local` with:
 - `VAULT_PATH` (local path to markdown files)
 
 **Important**: Never read `.env.local` directly. Access environment variables implicitly through the NPM environment (e.g., `process.env.OPENAI_API_KEY` in code, or by running scripts via `npx tsx`).
+
+## Documentation
+
+See `docs/README.md` for architecture documentation, ADRs, and investigation notes.
