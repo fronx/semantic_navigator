@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
 import type { MapData, MapNode, MapEdge } from "@/app/api/map/route";
+import { colors } from "@/lib/colors";
+import { createHoverTooltip } from "@/lib/d3-utils";
 
 interface SimNode extends d3.SimulationNodeDatum, MapNode {}
 
@@ -92,7 +94,7 @@ export function MapView() {
     // Draw edges
     const link = g
       .append("g")
-      .attr("stroke", "#999")
+      .attr("stroke", colors.edge.default)
       .attr("stroke-opacity", 0.4)
       .selectAll("line")
       .data(links)
@@ -128,19 +130,31 @@ export function MapView() {
     node
       .append("circle")
       .attr("r", getNodeRadius)
-      .attr("fill", (d) => (d.type === "article" ? "#3b82f6" : "#10b981"))
+      .attr("fill", (d) => (d.type === "article" ? colors.node.article : colors.node.keyword))
       .attr("stroke", "#fff")
       .attr("stroke-width", 1.5);
 
-    // Labels
+    // Labels for keyword nodes only (articles show on hover)
     node
+      .filter((d) => d.type === "keyword")
       .append("text")
       .text((d) => d.label)
       .attr("x", (d) => getNodeRadius(d) + 8)
-      .attr("y", 8)
+      .attr("y", 4)
       .attr("font-size", "24px")
       .attr("fill", "currentColor")
-      .attr("class", "dark:fill-zinc-300 fill-zinc-700");
+      .attr("class", "dark:fill-zinc-300 fill-zinc-700")
+      .style("pointer-events", "none");
+
+    // Hover tooltip for article nodes (rendered last = on top)
+    const tooltip = createHoverTooltip(g);
+    node
+      .filter((d) => d.type === "article")
+      .on("mouseenter", (_, d) => {
+        const offset = getNodeRadius(d) * 0.7;
+        tooltip.show(d.label, d.x! + offset + 8, d.y! + offset + 16);
+      })
+      .on("mouseleave", () => tooltip.hide());
 
     simulation.on("tick", () => {
       link
