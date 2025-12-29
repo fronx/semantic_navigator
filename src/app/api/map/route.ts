@@ -43,9 +43,13 @@ interface SimilarityPair {
  *   Article B ──→ keyword "agents"  ←─┘
  *
  * Articles cluster together because their keywords are connected through
- * semantic similarity edges.
+ * semantic similarity edges. Additionally, each keyword is connected to its
+ * 2 nearest semantic neighbors (using 256-dim truncated embeddings).
  */
-export async function GET() {
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const includeNeighbors = searchParams.get("neighbors") !== "false";
+
   const supabase = createServerClient();
 
   // Get semantically similar keyword pairs across articles
@@ -63,10 +67,97 @@ export async function GET() {
     return NextResponse.json({ nodes: [], edges: [] });
   }
 
-  return buildSemanticMap(pairs as SimilarityPair[]);
+  const typedPairs = pairs as SimilarityPair[];
+
+  // Collect unique keyword texts and one representative ID per text
+  const keywordTextToId = new Map<string, string>();
+  for (const pair of typedPairs) {
+    if (!keywordTextToId.has(pair.keyword_text)) {
+      keywordTextToId.set(pair.keyword_text, pair.keyword_id);
+    }
+    if (!keywordTextToId.has(pair.similar_keyword_text)) {
+      keywordTextToId.set(pair.similar_keyword_text, pair.similar_keyword_id);
+    }
+  }
+
+  // Fetch 256-dim embeddings for these keywords
+  const keywordIds = [...keywordTextToId.values()];
+  const { data: keywordEmbeddings, error: embError } = await supabase
+    .from("keywords")
+    .select("id, keyword, embedding_256")
+    .in("id", keywordIds);
+
+  if (embError) {
+    console.error("[map] Error fetching keyword embeddings:", embError);
+    return NextResponse.json({ error: embError.message }, { status: 500 });
+  }
+
+  // Build text → embedding map
+  const keywordTextToEmbedding = new Map<string, number[]>();
+  for (const kw of keywordEmbeddings || []) {
+    if (kw.embedding_256) {
+      // Supabase returns vectors as strings
+      const emb = typeof kw.embedding_256 === "string"
+        ? JSON.parse(kw.embedding_256)
+        : kw.embedding_256;
+      keywordTextToEmbedding.set(kw.keyword, emb);
+    }
+  }
+
+  return buildSemanticMap(typedPairs, keywordTextToEmbedding, includeNeighbors);
 }
 
-function buildSemanticMap(pairs: SimilarityPair[]) {
+/**
+ * Compute cosine similarity between two unit vectors (just dot product).
+ */
+function cosineSimilarity(a: number[], b: number[]): number {
+  let dot = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+  }
+  return dot;
+}
+
+/**
+ * For each keyword, find its top-K nearest neighbors from the embedding map.
+ */
+function computeKNearestNeighbors(
+  embeddings: Map<string, number[]>,
+  k: number
+): Array<{ source: string; target: string; similarity: number }> {
+  const keywords = [...embeddings.keys()];
+  const results: Array<{ source: string; target: string; similarity: number }> = [];
+
+  for (const kwA of keywords) {
+    const embA = embeddings.get(kwA)!;
+    const neighbors: Array<{ keyword: string; similarity: number }> = [];
+
+    for (const kwB of keywords) {
+      if (kwA === kwB) continue;
+      const embB = embeddings.get(kwB)!;
+      const sim = cosineSimilarity(embA, embB);
+      neighbors.push({ keyword: kwB, similarity: sim });
+    }
+
+    // Sort by similarity descending and take top K
+    neighbors.sort((a, b) => b.similarity - a.similarity);
+    for (let i = 0; i < Math.min(k, neighbors.length); i++) {
+      results.push({
+        source: `kw:${kwA}`,
+        target: `kw:${neighbors[i].keyword}`,
+        similarity: neighbors[i].similarity,
+      });
+    }
+  }
+
+  return results;
+}
+
+function buildSemanticMap(
+  pairs: SimilarityPair[],
+  keywordEmbeddings: Map<string, number[]>,
+  includeNeighbors: boolean
+) {
   const articleNodes = new Map<string, MapNode>();
   const keywordNodes = new Map<string, MapNode>();
   const edges: MapEdge[] = [];
@@ -94,7 +185,7 @@ function buildSemanticMap(pairs: SimilarityPair[]) {
     const edgeKey = [source, target].sort().join("-");
     if (!edgeSet.has(edgeKey)) {
       edgeSet.add(edgeKey);
-      edges.push(similarity ? { source, target, similarity } : { source, target });
+      edges.push(similarity !== undefined ? { source, target, similarity } : { source, target });
     }
   }
 
@@ -116,6 +207,19 @@ function buildSemanticMap(pairs: SimilarityPair[]) {
     }
   }
 
+  // Optionally compute 2-nearest neighbors for each keyword and add those edges
+  // Scale similarity by 0.5 so these secondary connections are weaker than primary cross-article ones
+  let newNeighborEdges = 0;
+  if (includeNeighbors) {
+    const NEIGHBOR_EDGE_WEIGHT = 0.5;
+    const neighborEdges = computeKNearestNeighbors(keywordEmbeddings, 2);
+    for (const edge of neighborEdges) {
+      const beforeSize = edgeSet.size;
+      addEdge(edge.source, edge.target, edge.similarity * NEIGHBOR_EDGE_WEIGHT);
+      if (edgeSet.size > beforeSize) newNeighborEdges++;
+    }
+  }
+
   const nodes = [...articleNodes.values(), ...keywordNodes.values()];
 
   console.log(
@@ -125,9 +229,7 @@ function buildSemanticMap(pairs: SimilarityPair[]) {
     keywordNodes.size,
     "keywords,",
     edges.length,
-    "edges (including",
-    pairs.length,
-    "similarity edges)"
+    "edges (" + newNeighborEdges + " new from 2-NN)"
   );
 
   return NextResponse.json({ nodes, edges });

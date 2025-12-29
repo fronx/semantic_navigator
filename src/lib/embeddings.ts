@@ -52,3 +52,15 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
 export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
+
+/**
+ * Truncate an embedding to fewer dimensions and re-normalize.
+ * OpenAI's text-embedding-3-* models use Matryoshka representation learning,
+ * so truncated embeddings remain meaningful with minimal accuracy loss.
+ */
+export function truncateEmbedding(embedding: number[], dims: number): number[] {
+  const truncated = embedding.slice(0, dims);
+  const norm = Math.sqrt(truncated.reduce((sum, x) => sum + x * x, 0));
+  if (norm === 0) return truncated;
+  return truncated.map(x => x / norm);
+}

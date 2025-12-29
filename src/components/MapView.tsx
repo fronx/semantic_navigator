@@ -27,12 +27,14 @@ export function MapView({ searchQuery }: Props) {
   const [data, setData] = useState<MapData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showNeighbors, setShowNeighbors] = useState(false);
 
   const { articleSimilarities, keywordSimilarities } = useMapSearch(searchQuery);
   useMapFilterOpacity(nodeSelectionRef, linkSelectionRef, articleSimilarities, keywordSimilarities);
 
   useEffect(() => {
-    fetch("/api/map")
+    setLoading(true);
+    fetch(`/api/map?neighbors=${showNeighbors}`)
       .then((res) => res.json())
       .then((data) => {
         setData(data);
@@ -42,7 +44,7 @@ export function MapView({ searchQuery }: Props) {
         setError(err.message);
         setLoading(false);
       });
-  }, []);
+  }, [showNeighbors]);
 
   useEffect(() => {
     if (!data || !svgRef.current) return;
@@ -221,6 +223,15 @@ export function MapView({ searchQuery }: Props) {
           <span className="w-3 h-3 rounded-full bg-emerald-500 inline-block" />
           Keywords ({data.nodes.filter((n) => n.type === "keyword").length})
         </span>
+        <label className="flex items-center gap-1 ml-auto cursor-pointer">
+          <input
+            type="checkbox"
+            checked={showNeighbors}
+            onChange={(e) => setShowNeighbors(e.target.checked)}
+            className="w-3 h-3"
+          />
+          Neighbor links
+        </label>
       </div>
       <svg
         ref={svgRef}

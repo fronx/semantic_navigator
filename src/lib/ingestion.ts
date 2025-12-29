@@ -1,7 +1,7 @@
 import { createHash } from "crypto";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { parseMarkdown, flattenSections } from "./parser";
-import { generateEmbedding, estimateTokens } from "./embeddings";
+import { generateEmbedding, estimateTokens, truncateEmbedding } from "./embeddings";
 import {
   generateSummary,
   generateArticleSummary,
@@ -260,6 +260,7 @@ export async function ingestArticle(
           await supabase.from("keywords").insert({
             keyword,
             embedding: keywordEmbedding,
+            embedding_256: truncateEmbedding(keywordEmbedding, 256),
             node_id: paragraphNodeId,
           });
         }
@@ -305,6 +306,7 @@ export async function ingestArticle(
             await supabase.from("keywords").insert({
               keyword,
               embedding: keywordEmbedding,
+              embedding_256: truncateEmbedding(keywordEmbedding, 256),
               node_id: sectionNode.id,
             });
           }
@@ -351,6 +353,7 @@ export async function ingestArticle(
         await supabase.from("keywords").insert({
           keyword,
           embedding: keywordEmbedding,
+          embedding_256: truncateEmbedding(keywordEmbedding, 256),
           node_id: articleNode.id,
         });
       }
