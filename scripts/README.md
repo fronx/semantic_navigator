@@ -38,3 +38,7 @@ Find paragraph nodes with junk content patterns:
 - Broken link closures
 
 Reports matching nodes with their IDs for manual review.
+
+### test-map-api.ts
+
+Test the `/api/map` endpoint and display statistics about the graph data (node counts, edge counts, similarity distribution).
