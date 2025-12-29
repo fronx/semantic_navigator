@@ -5,8 +5,13 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// Server-side client with service role for admin operations
+// Server-side client with service role for admin operations (singleton)
+let serverClient: ReturnType<typeof createClient> | null = null;
+
 export function createServerClient() {
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-  return createClient(supabaseUrl, serviceRoleKey);
+  if (!serverClient) {
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+    serverClient = createClient(supabaseUrl, serviceRoleKey);
+  }
+  return serverClient;
 }
