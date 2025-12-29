@@ -2,6 +2,10 @@
 
 ## Architecture
 
+### Features
+
+- [Filtered Map View](architecture/filtered-map-view.md) - Exploring articles by filtering out query-related keywords to reveal hidden connections
+
 ### Investigations
 
 - [Search Performance Investigation](architecture/search-performance-investigation.md) - Root cause analysis of search timeouts (resolved: PostgreSQL query planner behavior with explicit null parameters)

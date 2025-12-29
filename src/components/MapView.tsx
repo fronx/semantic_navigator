@@ -18,9 +18,13 @@ interface SimLink extends d3.SimulationLinkDatum<SimNode> {
 
 interface Props {
   searchQuery: string;
+  filterQuery: string | null;
+  synonymThreshold: number;
+  onKeywordClick?: (keyword: string) => void;
+  onClearFilter?: () => void;
 }
 
-export function MapView({ searchQuery }: Props) {
+export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordClick, onClearFilter }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const nodeSelectionRef = useRef<d3.Selection<SVGGElement, SimNode, SVGGElement, unknown> | null>(null);
   const linkSelectionRef = useRef<d3.Selection<SVGLineElement, SimLink, SVGGElement, unknown> | null>(null);
@@ -34,7 +38,13 @@ export function MapView({ searchQuery }: Props) {
 
   useEffect(() => {
     setLoading(true);
-    fetch(`/api/map?neighbors=${showNeighbors}`)
+    const params = new URLSearchParams();
+    params.set("neighbors", String(showNeighbors));
+    if (filterQuery) {
+      params.set("query", filterQuery);
+      params.set("synonymThreshold", String(synonymThreshold));
+    }
+    fetch(`/api/map?${params}`)
       .then((res) => res.json())
       .then((data) => {
         setData(data);
@@ -44,7 +54,7 @@ export function MapView({ searchQuery }: Props) {
         setError(err.message);
         setLoading(false);
       });
-  }, [showNeighbors]);
+  }, [showNeighbors, filterQuery, synonymThreshold]);
 
   useEffect(() => {
     if (!data || !svgRef.current) return;
@@ -152,8 +162,9 @@ export function MapView({ searchQuery }: Props) {
       .attr("stroke-width", 1.5);
 
     // Labels for keyword nodes only (articles show on hover)
-    node
-      .filter((d) => d.type === "keyword")
+    const keywordNodes = node.filter((d) => d.type === "keyword");
+
+    keywordNodes
       .append("text")
       .text((d) => d.label)
       .attr("x", (d) => getNodeRadius(d) + 8)
@@ -162,6 +173,16 @@ export function MapView({ searchQuery }: Props) {
       .attr("fill", "currentColor")
       .attr("class", "dark:fill-zinc-300 fill-zinc-700")
       .style("pointer-events", "none");
+
+    // Click handler for keyword nodes
+    if (onKeywordClick) {
+      keywordNodes
+        .style("cursor", "pointer")
+        .on("click", (event, d) => {
+          event.stopPropagation();
+          onKeywordClick(d.label);
+        });
+    }
 
     // Hover tooltip for article nodes (rendered last = on top)
     const tooltip = createHoverTooltip(g);
@@ -223,6 +244,27 @@ export function MapView({ searchQuery }: Props) {
           <span className="w-3 h-3 rounded-full bg-emerald-500 inline-block" />
           Keywords ({data.nodes.filter((n) => n.type === "keyword").length})
         </span>
+        {data.searchMeta && (
+          <span className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+            <span>Context:</span>
+            {data.searchMeta.premiseKeywords.slice(0, 5).map((kw, i) => (
+              <span key={i} className="px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900 rounded text-xs">
+                {kw}
+              </span>
+            ))}
+            {data.searchMeta.premiseKeywords.length > 5 && (
+              <span className="text-xs">+{data.searchMeta.premiseKeywords.length - 5} more</span>
+            )}
+            {onClearFilter && (
+              <button
+                onClick={onClearFilter}
+                className="px-1.5 py-0.5 bg-zinc-200 dark:bg-zinc-700 rounded hover:bg-zinc-300 dark:hover:bg-zinc-600"
+              >
+                Clear
+              </button>
+            )}
+          </span>
+        )}
         <label className="flex items-center gap-1 ml-auto cursor-pointer">
           <input
             type="checkbox"

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase";
+import { generateEmbedding, truncateEmbedding } from "@/lib/embeddings";
 
 export interface MapNode {
   id: string;
@@ -18,6 +19,12 @@ export interface MapEdge {
 export interface MapData {
   nodes: MapNode[];
   edges: MapEdge[];
+  searchMeta?: {
+    query: string;
+    synonymThreshold: number;
+    filteredKeywordCount: number;
+    premiseKeywords: string[];  // keywords that matched the query (filtered out as synonyms)
+  };
 }
 
 interface SimilarityPair {
@@ -49,8 +56,17 @@ interface SimilarityPair {
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const includeNeighbors = searchParams.get("neighbors") !== "false";
+  const query = searchParams.get("query");
+  // synonymThreshold: keywords MORE similar than this to the query are filtered out
+  // The query acts as a "premise" - we remove it and its synonyms to see remaining structure
+  const synonymThreshold = parseFloat(searchParams.get("synonymThreshold") || "0.85");
 
   const supabase = createServerClient();
+
+  // If query provided, return filtered map (excludes synonyms of the query)
+  if (query && query.trim()) {
+    return getFilteredMap(supabase, query.trim(), synonymThreshold, includeNeighbors);
+  }
 
   // Get semantically similar keyword pairs across articles
   const { data: pairs, error } = await supabase.rpc("get_article_keyword_graph", {
@@ -153,7 +169,7 @@ function computeKNearestNeighbors(
   return results;
 }
 
-function buildSemanticMap(
+function buildSemanticMapData(
   pairs: SimilarityPair[],
   keywordEmbeddings: Map<string, number[]>,
   includeNeighbors: boolean
@@ -209,28 +225,275 @@ function buildSemanticMap(
 
   // Optionally compute 2-nearest neighbors for each keyword and add those edges
   // Scale similarity by 0.5 so these secondary connections are weaker than primary cross-article ones
-  let newNeighborEdges = 0;
   if (includeNeighbors) {
     const NEIGHBOR_EDGE_WEIGHT = 0.5;
     const neighborEdges = computeKNearestNeighbors(keywordEmbeddings, 2);
     for (const edge of neighborEdges) {
-      const beforeSize = edgeSet.size;
       addEdge(edge.source, edge.target, edge.similarity * NEIGHBOR_EDGE_WEIGHT);
-      if (edgeSet.size > beforeSize) newNeighborEdges++;
     }
   }
 
   const nodes = [...articleNodes.values(), ...keywordNodes.values()];
 
+  return {
+    nodes,
+    edges,
+    articleCount: articleNodes.size,
+    keywordCount: keywordNodes.size,
+  };
+}
+
+function buildSemanticMap(
+  pairs: SimilarityPair[],
+  keywordEmbeddings: Map<string, number[]>,
+  includeNeighbors: boolean
+) {
+  const result = buildSemanticMapData(pairs, keywordEmbeddings, includeNeighbors);
+
   console.log(
     "[map] Loaded",
-    articleNodes.size,
+    result.articleCount,
     "articles,",
-    keywordNodes.size,
+    result.keywordCount,
     "keywords,",
-    edges.length,
-    "edges (" + newNeighborEdges + " new from 2-NN)"
+    result.edges.length,
+    "edges"
   );
 
-  return NextResponse.json({ nodes, edges });
+  return NextResponse.json({ nodes: result.nodes, edges: result.edges });
+}
+
+/**
+ * Fallback when no cross-article keyword pairs exist: show matching articles
+ * with their non-synonym keywords, connected only by article→keyword edges.
+ */
+async function getFallbackFilteredMap(
+  supabase: ReturnType<typeof createServerClient>,
+  embedding256: number[],
+  synonymThreshold: number,
+  premiseKeywords: string[],
+  query: string
+) {
+  // Query for matching articles and their non-synonym keywords
+  const { data: articleKeywords, error } = await supabase
+    .from("keywords")
+    .select(`
+      id,
+      keyword,
+      embedding_256,
+      node_id,
+      nodes!inner (
+        id,
+        source_path,
+        summary,
+        node_type
+      )
+    `)
+    .eq("nodes.node_type", "article")
+    .not("embedding_256", "is", null);
+
+  if (error) {
+    console.error("[map] Error fetching fallback keywords:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  // Collect article info and keywords by similarity
+  const articleInfo = new Map<string, { path: string; size: number; hasMatch: boolean }>();
+  const keywordsByArticle = new Map<string, Array<{ keyword: string; similarity: number }>>();
+
+  for (const kw of articleKeywords || []) {
+    if (!kw.embedding_256 || !kw.nodes) continue;
+    const node = kw.nodes as { id: string; source_path: string; summary: string | null };
+    const emb = typeof kw.embedding_256 === "string" ? JSON.parse(kw.embedding_256) : kw.embedding_256;
+    const sim = cosineSimilarity(embedding256, emb);
+
+    // Track article info
+    if (!articleInfo.has(node.id)) {
+      articleInfo.set(node.id, {
+        path: node.source_path,
+        size: node.summary?.length || 0,
+        hasMatch: false,
+      });
+    }
+
+    // Mark as matching if any keyword >= threshold
+    if (sim >= synonymThreshold) {
+      articleInfo.get(node.id)!.hasMatch = true;
+    }
+
+    // Collect all keywords per article (we'll filter later)
+    if (!keywordsByArticle.has(node.id)) {
+      keywordsByArticle.set(node.id, []);
+    }
+    keywordsByArticle.get(node.id)!.push({ keyword: kw.keyword, similarity: sim });
+  }
+
+  // Build nodes and edges for matching articles
+  const nodes: MapNode[] = [];
+  const edges: MapEdge[] = [];
+  const addedKeywords = new Set<string>();
+
+  for (const [articleId, info] of articleInfo) {
+    if (!info.hasMatch) continue; // Skip articles that don't match
+
+    const artNodeId = `art:${articleId}`;
+    const label = info.path.split("/").pop()?.replace(".md", "") || info.path;
+    nodes.push({ id: artNodeId, type: "article", label, size: info.size });
+
+    // Add non-synonym keywords for this article
+    const keywords = keywordsByArticle.get(articleId) || [];
+    const nonSynonymKeywords = keywords.filter(kw => kw.similarity < synonymThreshold);
+
+    for (const kw of nonSynonymKeywords) {
+      const kwNodeId = `kw:${kw.keyword}`;
+      if (!addedKeywords.has(kw.keyword)) {
+        addedKeywords.add(kw.keyword);
+        nodes.push({ id: kwNodeId, type: "keyword", label: kw.keyword });
+      }
+      edges.push({ source: artNodeId, target: kwNodeId });
+    }
+  }
+
+  const articleCount = nodes.filter(n => n.type === "article").length;
+  const keywordCount = addedKeywords.size;
+
+  console.log(
+    "[map] Fallback filtered map for query:",
+    query,
+    "-",
+    articleCount,
+    "articles,",
+    keywordCount,
+    "keywords (no cross-article edges)"
+  );
+
+  return NextResponse.json({
+    nodes,
+    edges,
+    searchMeta: {
+      query,
+      synonymThreshold,
+      filteredKeywordCount: keywordCount,
+      premiseKeywords,
+    },
+  });
+}
+
+/**
+ * Build a filtered map by excluding keywords that are synonyms of the query.
+ * The query acts as a "premise" - we factor it out to see the remaining structure.
+ */
+async function getFilteredMap(
+  supabase: ReturnType<typeof createServerClient>,
+  query: string,
+  synonymThreshold: number,
+  includeNeighbors: boolean
+) {
+  // Generate embedding for query and truncate to 256 dims
+  const fullEmbedding = await generateEmbedding(query);
+  const embedding256 = truncateEmbedding(fullEmbedding, 256);
+
+  // Call RPC to get keyword pairs from matching articles, excluding synonyms
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: pairs, error } = await (supabase.rpc as any)("get_filtered_map", {
+    query_embedding_256: JSON.stringify(embedding256),
+    match_threshold: synonymThreshold,  // slider controls article match threshold
+    keyword_similarity_threshold: 0.75,
+  });
+
+  if (error) {
+    console.error("[map] Error fetching filtered map:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  const typedPairs = (pairs || []) as SimilarityPair[];
+
+  // Fetch premise keywords (those that matched the query, i.e. >= threshold)
+  // These are the "synonyms" that got filtered out
+  const { data: premiseData } = await supabase
+    .from("keywords")
+    .select("keyword, embedding_256")
+    .not("embedding_256", "is", null);
+
+  const premiseKeywords: string[] = [];
+  if (premiseData) {
+    for (const kw of premiseData) {
+      if (kw.embedding_256) {
+        const emb = typeof kw.embedding_256 === "string"
+          ? JSON.parse(kw.embedding_256)
+          : kw.embedding_256;
+        const sim = cosineSimilarity(embedding256, emb);
+        if (sim >= synonymThreshold) {
+          premiseKeywords.push(kw.keyword);
+        }
+      }
+    }
+  }
+  // Deduplicate and sort by relevance (we only have unique keywords anyway)
+  const uniquePremiseKeywords = [...new Set(premiseKeywords)];
+
+  // If no cross-article keyword pairs, fall back to showing articles with their keywords
+  // (just without keyword↔keyword similarity edges)
+  if (typedPairs.length === 0) {
+    console.log("[map] No keyword pairs found, falling back to article-keyword graph");
+    return getFallbackFilteredMap(supabase, embedding256, synonymThreshold, uniquePremiseKeywords, query);
+  }
+
+  // Collect unique keyword texts and one representative ID per text
+  const keywordTextToId = new Map<string, string>();
+  for (const pair of typedPairs) {
+    if (!keywordTextToId.has(pair.keyword_text)) {
+      keywordTextToId.set(pair.keyword_text, pair.keyword_id);
+    }
+    if (!keywordTextToId.has(pair.similar_keyword_text)) {
+      keywordTextToId.set(pair.similar_keyword_text, pair.similar_keyword_id);
+    }
+  }
+
+  // Fetch 256-dim embeddings for neighbor computation
+  let keywordTextToEmbedding = new Map<string, number[]>();
+  if (includeNeighbors) {
+    const keywordIds = [...keywordTextToId.values()];
+    const { data: keywordEmbeddings, error: embError } = await supabase
+      .from("keywords")
+      .select("id, keyword, embedding_256")
+      .in("id", keywordIds);
+
+    if (!embError && keywordEmbeddings) {
+      for (const kw of keywordEmbeddings || []) {
+        if (kw.embedding_256) {
+          const emb = typeof kw.embedding_256 === "string"
+            ? JSON.parse(kw.embedding_256)
+            : kw.embedding_256;
+          keywordTextToEmbedding.set(kw.keyword, emb);
+        }
+      }
+    }
+  }
+
+  // Reuse the same graph building logic
+  const result = buildSemanticMapData(typedPairs, keywordTextToEmbedding, includeNeighbors);
+
+  console.log(
+    "[map] Filtered map for query:",
+    query,
+    "- excluded synonyms above",
+    synonymThreshold,
+    "-",
+    result.articleCount,
+    "articles,",
+    result.keywordCount,
+    "keywords"
+  );
+
+  return NextResponse.json({
+    nodes: result.nodes,
+    edges: result.edges,
+    searchMeta: {
+      query,
+      synonymThreshold,
+      filteredKeywordCount: result.keywordCount,
+      premiseKeywords: uniquePremiseKeywords,
+    },
+  });
 }

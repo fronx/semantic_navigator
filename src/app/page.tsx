@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { VaultBrowser } from "@/components/VaultBrowser";
 import { ImportProgress, ImportProgressState } from "@/components/ImportProgress";
 import { MapView } from "@/components/MapView";
@@ -13,9 +14,26 @@ const initialProgressState: ImportProgressState = {
 };
 
 export default function Home() {
+  const router = useRouter();
+
   const [searchQuery, setSearchQuery] = useState("");
+  const [synonymThreshold, setSynonymThreshold] = useState(0.75);
   const [showImport, setShowImport] = useState(false);
   const [importProgress, setImportProgress] = useState<ImportProgressState>(initialProgressState);
+
+  function handleFilter() {
+    if (searchQuery.trim()) {
+      const params = new URLSearchParams();
+      params.set("threshold", synonymThreshold.toString());
+      router.push(`/filtered/${encodeURIComponent(searchQuery.trim())}?${params}`);
+    }
+  }
+
+  function handleKeywordClick(keyword: string) {
+    const params = new URLSearchParams();
+    params.set("threshold", synonymThreshold.toString());
+    router.push(`/filtered/${encodeURIComponent(keyword)}?${params}`);
+  }
 
   async function handleImport(paths: string[]) {
     setShowImport(false);
@@ -105,15 +123,39 @@ export default function Home() {
         <div className="px-3 py-1.5 flex items-center gap-3">
           <h1 className="text-sm font-medium text-zinc-600 dark:text-zinc-400 whitespace-nowrap">Semantic Navigator</h1>
 
-          <div className="flex-1 max-w-md mx-auto">
+          <div className="flex-1 max-w-md mx-auto flex gap-2">
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleFilter()}
               placeholder="Search..."
               autoFocus
-              className="w-full px-3 py-1 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:border-zinc-700"
+              className="flex-1 px-3 py-1 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:border-zinc-700"
             />
+            <button
+              onClick={handleFilter}
+              disabled={!searchQuery.trim()}
+              className="px-3 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Filter
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs text-zinc-500">
+            <label className="flex items-center gap-1">
+              <span>Threshold:</span>
+              <input
+                type="range"
+                min="0.7"
+                max="0.95"
+                step="0.05"
+                value={synonymThreshold}
+                onChange={(e) => setSynonymThreshold(parseFloat(e.target.value))}
+                className="w-16 h-3"
+              />
+              <span className="w-8">{synonymThreshold.toFixed(2)}</span>
+            </label>
           </div>
 
           <button
@@ -160,7 +202,12 @@ export default function Home() {
         )}
 
         {/* Map View */}
-        <MapView searchQuery={searchQuery} />
+        <MapView
+          searchQuery={searchQuery}
+          filterQuery={null}
+          synonymThreshold={synonymThreshold}
+          onKeywordClick={handleKeywordClick}
+        />
       </main>
     </div>
   );
