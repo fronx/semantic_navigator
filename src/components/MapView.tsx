@@ -2,9 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
-import type { MapData, MapNode, MapEdge } from "@/app/api/map/route";
+import type { MapData, MapNode } from "@/app/api/map/route";
 import { colors } from "@/lib/colors";
 import { createHoverTooltip } from "@/lib/d3-utils";
+import { useMapSearch } from "@/hooks/useMapSearch";
+import { useMapFilterOpacity } from "@/hooks/useMapFilterOpacity";
 
 interface SimNode extends d3.SimulationNodeDatum, MapNode {}
 
@@ -14,11 +16,20 @@ interface SimLink extends d3.SimulationLinkDatum<SimNode> {
   similarity?: number;
 }
 
-export function MapView() {
+interface Props {
+  searchQuery: string;
+}
+
+export function MapView({ searchQuery }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
+  const nodeSelectionRef = useRef<d3.Selection<SVGGElement, SimNode, SVGGElement, unknown> | null>(null);
+  const linkSelectionRef = useRef<d3.Selection<SVGLineElement, SimLink, SVGGElement, unknown> | null>(null);
   const [data, setData] = useState<MapData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const { articleSimilarities, keywordSimilarities } = useMapSearch(searchQuery);
+  useMapFilterOpacity(nodeSelectionRef, linkSelectionRef, articleSimilarities, keywordSimilarities);
 
   useEffect(() => {
     fetch("/api/map")
@@ -96,10 +107,12 @@ export function MapView() {
       .append("g")
       .attr("stroke", colors.edge.default)
       .attr("stroke-opacity", 0.4)
-      .selectAll("line")
+      .selectAll<SVGLineElement, SimLink>("line")
       .data(links)
       .join("line")
       .attr("stroke-width", 3);
+
+    linkSelectionRef.current = link;
 
     // Draw nodes
     const node = g
@@ -125,6 +138,8 @@ export function MapView() {
             d.fy = null;
           })
       );
+
+    nodeSelectionRef.current = node;
 
     // Circles for nodes
     node
@@ -173,7 +188,7 @@ export function MapView() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-7rem)] bg-white dark:bg-zinc-900 rounded-lg border dark:border-zinc-800">
+      <div className="flex items-center justify-center h-full bg-white dark:bg-zinc-900">
         <span className="text-zinc-500">Loading map...</span>
       </div>
     );
@@ -181,7 +196,7 @@ export function MapView() {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-7rem)] bg-white dark:bg-zinc-900 rounded-lg border dark:border-zinc-800">
+      <div className="flex items-center justify-center h-full bg-white dark:bg-zinc-900">
         <span className="text-red-500">Error: {error}</span>
       </div>
     );
@@ -189,14 +204,14 @@ export function MapView() {
 
   if (!data || data.nodes.length === 0) {
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-7rem)] bg-white dark:bg-zinc-900 rounded-lg border dark:border-zinc-800">
+      <div className="flex items-center justify-center h-full bg-white dark:bg-zinc-900">
         <span className="text-zinc-500">No data to display. Import some articles first.</span>
       </div>
     );
   }
 
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-lg border dark:border-zinc-800 overflow-hidden flex flex-col h-[calc(100vh-7rem)]">
+    <div className="bg-white dark:bg-zinc-900 overflow-hidden flex flex-col h-full">
       <div className="p-2 border-b dark:border-zinc-800 flex gap-4 text-xs text-zinc-500 shrink-0">
         <span className="flex items-center gap-1">
           <span className="w-3 h-3 rounded-full bg-blue-500 inline-block" />

@@ -2,12 +2,8 @@
 
 import { useState } from "react";
 import { VaultBrowser } from "@/components/VaultBrowser";
-import { SearchBar } from "@/components/SearchBar";
-import { NodeViewer } from "@/components/NodeViewer";
 import { ImportProgress, ImportProgressState } from "@/components/ImportProgress";
 import { MapView } from "@/components/MapView";
-
-type Tab = "search" | "import" | "map";
 
 const initialProgressState: ImportProgressState = {
   phase: "idle",
@@ -17,11 +13,12 @@ const initialProgressState: ImportProgressState = {
 };
 
 export default function Home() {
-  const [tab, setTab] = useState<Tab>("search");
-  const [selectedNode, setSelectedNode] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showImport, setShowImport] = useState(false);
   const [importProgress, setImportProgress] = useState<ImportProgressState>(initialProgressState);
 
   async function handleImport(paths: string[]) {
+    setShowImport(false);
     setImportProgress({
       ...initialProgressState,
       phase: "importing",
@@ -103,50 +100,35 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
-      <header className="border-b bg-white dark:bg-zinc-900 dark:border-zinc-800">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-          <h1 className="text-xl font-semibold">Semantic Navigator</h1>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setTab("search")}
-              className={`px-4 py-1.5 rounded-lg text-sm ${
-                tab === "search"
-                  ? "bg-blue-600 text-white"
-                  : "bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700"
-              }`}
-            >
-              Search
-            </button>
-            <button
-              onClick={() => setTab("import")}
-              className={`px-4 py-1.5 rounded-lg text-sm ${
-                tab === "import"
-                  ? "bg-blue-600 text-white"
-                  : "bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700"
-              }`}
-            >
-              Import
-            </button>
-            <button
-              onClick={() => setTab("map")}
-              className={`px-4 py-1.5 rounded-lg text-sm ${
-                tab === "map"
-                  ? "bg-blue-600 text-white"
-                  : "bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700"
-              }`}
-            >
-              Map
-            </button>
+    <div className="h-screen flex flex-col bg-zinc-50 dark:bg-zinc-950">
+      <header className="flex-shrink-0 border-b bg-white dark:bg-zinc-900 dark:border-zinc-800">
+        <div className="px-3 py-1.5 flex items-center gap-3">
+          <h1 className="text-sm font-medium text-zinc-600 dark:text-zinc-400 whitespace-nowrap">Semantic Navigator</h1>
+
+          <div className="flex-1 max-w-md mx-auto">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search..."
+              autoFocus
+              className="w-full px-3 py-1 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:border-zinc-700"
+            />
           </div>
+
+          <button
+            onClick={() => setShowImport(true)}
+            className="px-3 py-1 rounded text-xs bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+          >
+            Import
+          </button>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 py-4">
-
+      <main className="flex-1 relative overflow-hidden">
         {/* Import Progress */}
         {importProgress.phase !== "idle" && (
-          <div className="mb-4">
+          <div className="absolute top-4 left-4 right-4 z-10">
             <ImportProgress
               progress={importProgress}
               onDismiss={() => setImportProgress(initialProgressState)}
@@ -154,26 +136,31 @@ export default function Home() {
           </div>
         )}
 
-        {/* Content */}
-        {tab === "map" ? (
-          <MapView />
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div>
-              {tab === "search" ? (
-                <SearchBar onSelectNode={setSelectedNode} />
-              ) : (
+        {/* Import Modal */}
+        {showImport && (
+          <div className="absolute inset-0 z-20 bg-black/50 flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] overflow-auto">
+              <div className="p-4 border-b dark:border-zinc-800 flex items-center justify-between">
+                <h2 className="text-lg font-semibold">Import Files</h2>
+                <button
+                  onClick={() => setShowImport(false)}
+                  className="text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+                >
+                  Close
+                </button>
+              </div>
+              <div className="p-4">
                 <VaultBrowser
                   onImport={handleImport}
                   disabled={importProgress.phase === "importing"}
                 />
-              )}
-            </div>
-            <div>
-              <NodeViewer nodeId={selectedNode} onNavigate={setSelectedNode} />
+              </div>
             </div>
           </div>
         )}
+
+        {/* Map View */}
+        <MapView searchQuery={searchQuery} />
       </main>
     </div>
   );
