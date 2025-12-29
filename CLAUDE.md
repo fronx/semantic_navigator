@@ -18,6 +18,8 @@ Run scripts with: `npm run script scripts/<script>.ts` (auto-loads .env.local)
 
 **Note**: Let the user run `npm run dev` in their own terminal rather than running it from Claude. This keeps the dev server visible and controllable by the user.
 
+**Scripts**: When writing scripts, reuse existing lib functions (e.g., `createServerClient` from `src/lib/supabase`, `generateEmbedding` from `src/lib/embeddings`) rather than reimplementing them. Check existing scripts in `scripts/` for patterns.
+
 ## Architecture
 
 Semantic Navigator is a knowledge base tool that imports markdown files, atomizes them into a hierarchy (article > section > paragraph), and enables semantic search via embeddings.
