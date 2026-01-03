@@ -4,7 +4,7 @@ import { generateEmbedding, truncateEmbedding } from "@/lib/embeddings";
 
 export interface MapNode {
   id: string;
-  type: "keyword" | "article";
+  type: "keyword" | "article" | "section" | "paragraph";
   label: string;
   size?: number; // Content size (summary length) for scaling node radius
 }

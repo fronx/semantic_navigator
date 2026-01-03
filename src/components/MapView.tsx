@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
-import type { MapData, MapNode } from "@/app/api/map/route";
+import type { MapData, MapNode, MapEdge } from "@/app/api/map/route";
 import { colors } from "@/lib/colors";
 import { createHoverTooltip } from "@/lib/d3-utils";
 import { useMapSearch } from "@/hooks/useMapSearch";
@@ -14,6 +14,14 @@ interface SimLink extends d3.SimulationLinkDatum<SimNode> {
   source: SimNode | string;
   target: SimNode | string;
   similarity?: number;
+}
+
+interface ChildNode {
+  id: string;
+  node_type: string;
+  summary: string | null;
+  content: string | null;
+  source_path: string;
 }
 
 interface Props {
@@ -32,6 +40,73 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showNeighbors, setShowNeighbors] = useState(false);
+  const [expandingId, setExpandingId] = useState<string | null>(null);
+
+  // Handle node click to expand and show children (works for articles and sections)
+  const handleNodeExpand = async (graphNodeId: string, dbNodeId: string) => {
+    if (!data || expandingId) return;
+
+    setExpandingId(graphNodeId);
+    try {
+      const res = await fetch(`/api/nodes/${dbNodeId}`);
+      const { children } = await res.json() as { children: ChildNode[] | null };
+
+      if (!children || children.length === 0) {
+        setExpandingId(null);
+        return;
+      }
+
+      // Replace node with its children
+      setData(prev => {
+        if (!prev) return prev;
+
+        // Remove the expanded node
+        const remainingNodes = prev.nodes.filter(n => n.id !== graphNodeId);
+
+        // Find edges connected to the expanded node
+        const nodeEdges = prev.edges.filter(e => e.source === graphNodeId || e.target === graphNodeId);
+        const remainingEdges = prev.edges.filter(e => e.source !== graphNodeId && e.target !== graphNodeId);
+
+        // Get keywords connected to this node
+        const connectedKeywords = nodeEdges
+          .map(e => e.source === graphNodeId ? e.target : e.source)
+          .filter(id => id.startsWith("kw:"));
+
+        // Add child nodes
+        const childNodes: MapNode[] = children.map(child => ({
+          id: `${child.node_type}:${child.id}`,
+          type: child.node_type as "section" | "paragraph",
+          label: child.node_type === "section"
+            ? (child.summary?.slice(0, 50) || "Section")
+            : (child.content?.slice(0, 50) || child.summary?.slice(0, 50) || "..."),
+          size: (child.summary?.length || child.content?.length || 100),
+        }));
+
+        // Connect children to parent's keywords (distribute evenly)
+        const newEdges: MapEdge[] = [];
+        childNodes.forEach((child, idx) => {
+          // Each child gets some of the parent's keyword connections
+          const keywordsPerChild = Math.ceil(connectedKeywords.length / childNodes.length);
+          const startIdx = idx * keywordsPerChild;
+          const childKeywords = connectedKeywords.slice(startIdx, startIdx + keywordsPerChild);
+
+          childKeywords.forEach(kwId => {
+            newEdges.push({ source: child.id, target: kwId });
+          });
+        });
+
+        return {
+          ...prev,
+          nodes: [...remainingNodes, ...childNodes],
+          edges: [...remainingEdges, ...newEdges],
+        };
+      });
+    } catch (err) {
+      console.error("Failed to expand node:", err);
+    } finally {
+      setExpandingId(null);
+    }
+  };
 
   const { articleSimilarities, keywordSimilarities } = useMapSearch(searchQuery);
   useMapFilterOpacity(nodeSelectionRef, linkSelectionRef, articleSimilarities, keywordSimilarities);
@@ -94,7 +169,18 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
 
     const getNodeRadius = (d: SimNode) => {
       if (d.type === "keyword") return 18;
+      if (d.type === "section") return sizeScale((d.size || 200) * 0.6);
+      if (d.type === "paragraph") return sizeScale((d.size || 100) * 0.4);
       return sizeScale(d.size || 400);
+    };
+
+    const getNodeColor = (d: SimNode) => {
+      switch (d.type) {
+        case "article": return colors.node.article;
+        case "section": return colors.node.section;
+        case "paragraph": return colors.node.paragraph;
+        default: return colors.node.keyword;
+      }
     };
 
     // Force simulation
@@ -157,9 +243,20 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
     node
       .append("circle")
       .attr("r", getNodeRadius)
-      .attr("fill", (d) => (d.type === "article" ? colors.node.article : colors.node.keyword))
+      .attr("fill", getNodeColor)
       .attr("stroke", "#fff")
       .attr("stroke-width", 1.5);
+
+    // Click handler for expandable nodes (articles and sections)
+    const expandableNodes = node.filter((d) => d.type === "article" || d.type === "section");
+    expandableNodes
+      .style("cursor", "pointer")
+      .on("click", (event, d) => {
+        event.stopPropagation();
+        // Extract the UUID from the node id (format: "art:uuid" or "section:uuid")
+        const dbNodeId = d.id.replace(/^(art|section):/, "");
+        handleNodeExpand(d.id, dbNodeId);
+      });
 
     // Labels for keyword nodes only (articles show on hover)
     const keywordNodes = node.filter((d) => d.type === "keyword");
@@ -184,10 +281,10 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
         });
     }
 
-    // Hover tooltip for article nodes (rendered last = on top)
+    // Hover tooltip for article/section/paragraph nodes (rendered last = on top)
     const tooltip = createHoverTooltip(g);
     node
-      .filter((d) => d.type === "article")
+      .filter((d) => d.type === "article" || d.type === "section" || d.type === "paragraph")
       .on("mouseenter", (_, d) => {
         const offset = getNodeRadius(d) * 0.7;
         tooltip.show(d.label, d.x! + offset + 8, d.y! + offset + 16);
@@ -235,11 +332,23 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
 
   return (
     <div className="bg-white dark:bg-zinc-900 overflow-hidden flex flex-col h-full">
-      <div className="p-2 border-b dark:border-zinc-800 flex gap-4 text-xs text-zinc-500 shrink-0">
+      <div className="p-2 border-b dark:border-zinc-800 flex gap-4 text-xs text-zinc-500 shrink-0 flex-wrap">
         <span className="flex items-center gap-1">
           <span className="w-3 h-3 rounded-full bg-blue-500 inline-block" />
           Articles ({data.nodes.filter((n) => n.type === "article").length})
         </span>
+        {data.nodes.some((n) => n.type === "section") && (
+          <span className="flex items-center gap-1">
+            <span className="w-3 h-3 rounded-full bg-violet-500 inline-block" />
+            Sections ({data.nodes.filter((n) => n.type === "section").length})
+          </span>
+        )}
+        {data.nodes.some((n) => n.type === "paragraph") && (
+          <span className="flex items-center gap-1">
+            <span className="w-3 h-3 rounded-full bg-amber-500 inline-block" />
+            Paragraphs ({data.nodes.filter((n) => n.type === "paragraph").length})
+          </span>
+        )}
         <span className="flex items-center gap-1">
           <span className="w-3 h-3 rounded-full bg-emerald-500 inline-block" />
           Keywords ({data.nodes.filter((n) => n.type === "keyword").length})

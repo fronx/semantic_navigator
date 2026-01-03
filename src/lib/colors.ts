@@ -7,6 +7,8 @@ export const colors = {
   // Node types in visualizations
   node: {
     article: "#3b82f6", // blue-500
+    section: "#8b5cf6", // violet-500
+    paragraph: "#f59e0b", // amber-500
     keyword: "#10b981", // emerald-500
   },
 
