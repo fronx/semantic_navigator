@@ -57,16 +57,30 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
   const maxEdges = parseInt(searchParams.get("density") || "6", 10);
   const [pendingMaxEdges, setPendingMaxEdges] = useState(maxEdges);
 
+  // Community resolution level: 0=coarsest (fewest clusters), 7=finest (most clusters)
+  const level = parseInt(searchParams.get("level") || "3", 10);
+  const [pendingLevel, setPendingLevel] = useState(level);
+
   const setMaxEdges = (value: number) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("density", String(value));
     router.replace(`?${params}`, { scroll: false });
   };
 
-  // Sync pending value when URL param changes
+  const setLevel = (value: number) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("level", String(value));
+    router.replace(`?${params}`, { scroll: false });
+  };
+
+  // Sync pending values when URL params change
   useEffect(() => {
     setPendingMaxEdges(maxEdges);
   }, [maxEdges]);
+
+  useEffect(() => {
+    setPendingLevel(level);
+  }, [level]);
 
   // Handle node click to expand and show children (articles expand to chunks)
   const handleNodeExpand = async (graphNodeId: string, dbNodeId: string) => {
@@ -184,6 +198,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
     params.set("neighbors", String(showNeighbors));
     params.set("maxEdges", String(maxEdges));
     params.set("clustered", String(clustered));
+    params.set("level", String(level));
     if (filterQuery) {
       params.set("query", filterQuery);
       params.set("synonymThreshold", String(synonymThreshold));
@@ -204,7 +219,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
         setError(err.message);
         setLoading(false);
       });
-  }, [showNeighbors, maxEdges, clustered, filterQuery, synonymThreshold]);
+  }, [showNeighbors, maxEdges, clustered, level, filterQuery, synonymThreshold]);
 
   useEffect(() => {
     if (!data || !svgRef.current) return;
@@ -575,6 +590,19 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
           </span>
         )}
         <label className="flex items-center gap-2 ml-auto">
+          <span>Resolution:</span>
+          <input
+            type="range"
+            min="0"
+            max="7"
+            value={pendingLevel}
+            onChange={(e) => setPendingLevel(parseInt(e.target.value, 10))}
+            onPointerUp={() => setLevel(pendingLevel)}
+            className="w-20 h-1"
+          />
+          <span className="w-4 text-center">{pendingLevel}</span>
+        </label>
+        <label className="flex items-center gap-2">
           <span>Density:</span>
           <input
             type="range"

@@ -1,14 +1,16 @@
 /**
- * Compute keyword communities using Louvain algorithm.
- * Reads similarity edges from keyword_similarities table,
- * runs Louvain community detection, and updates keywords table
- * with community_id and is_community_hub.
+ * Compute multi-level keyword communities using Louvain algorithm.
+ * Runs Louvain at 8 resolution levels for semantic zooming.
+ * Level 0 = coarsest (fewest, largest communities)
+ * Level 7 = finest (most, smallest communities)
  */
 import Graph from "graphology";
 import louvain from "graphology-communities-louvain";
 import { createServerClient } from "../src/lib/supabase";
 
-const RESOLUTION = 1.0; // Louvain resolution parameter (higher = smaller communities)
+// Resolution values for each level (1.5x exponential growth in avg cluster size)
+// Level 0 (coarsest) -> Level 7 (finest)
+const RESOLUTIONS = [0.1, 0.5, 1.5, 6, 10, 15, 25, 30];
 
 interface KeywordInfo {
   id: string;
@@ -16,14 +18,9 @@ interface KeywordInfo {
   degree: number;
 }
 
-/**
- * Select hub for a community: highest degree, tie-break by shortest label.
- */
 function selectHub(members: KeywordInfo[]): string {
   const sorted = [...members].sort((a, b) => {
-    // Primary: higher degree first
     if (b.degree !== a.degree) return b.degree - a.degree;
-    // Tie-breaker: shorter label first
     return a.keyword.length - b.keyword.length;
   });
   return sorted[0].id;
@@ -32,9 +29,8 @@ function selectHub(members: KeywordInfo[]): string {
 async function main() {
   const supabase = createServerClient();
 
-  // Fetch all similarity edges (with pagination to avoid 1000 row limit)
+  // Fetch all similarity edges
   console.log("Fetching similarity edges...");
-  const FETCH_BATCH = 1000;
   const allEdges: Array<{
     keyword_a_id: string;
     keyword_b_id: string;
@@ -46,32 +42,25 @@ async function main() {
     const { data: batch, error } = await supabase
       .from("keyword_similarities")
       .select("keyword_a_id, keyword_b_id, similarity")
-      .range(offset, offset + FETCH_BATCH - 1);
+      .range(offset, offset + 999);
 
     if (error) {
       console.error("Error fetching edges:", error);
       process.exit(1);
     }
-
     if (!batch || batch.length === 0) break;
-
     allEdges.push(...batch);
-    console.log(`  Fetched ${allEdges.length} edges...`);
-
-    if (batch.length < FETCH_BATCH) break;
-    offset += FETCH_BATCH;
+    if (batch.length < 1000) break;
+    offset += 1000;
   }
 
   if (allEdges.length === 0) {
     console.log("No similarity edges found. Run backfill script first.");
     return;
   }
+  console.log(`Found ${allEdges.length} similarity edges`);
 
-  const edges = allEdges;
-  console.log(`Found ${edges.length} similarity edges`);
-
-  // Fetch all article-level keywords (for label lookup)
-  console.log("Fetching keywords...");
+  // Fetch keywords for label lookup
   const { data: keywords, error: kwError } = await supabase
     .from("keywords")
     .select("id, keyword")
@@ -85,135 +74,101 @@ async function main() {
   const keywordMap = new Map(keywords?.map((k) => [k.id, k.keyword]) || []);
   console.log(`Found ${keywordMap.size} article-level keywords`);
 
-  // Build undirected weighted graph
-  console.log("Building graph...");
+  // Build graph
   const graph = new Graph({ type: "undirected" });
-
-  for (const edge of edges) {
-    // Add nodes if not present
-    if (!graph.hasNode(edge.keyword_a_id)) {
-      graph.addNode(edge.keyword_a_id);
-    }
-    if (!graph.hasNode(edge.keyword_b_id)) {
-      graph.addNode(edge.keyword_b_id);
-    }
-    // Add weighted edge
+  for (const edge of allEdges) {
+    if (!graph.hasNode(edge.keyword_a_id)) graph.addNode(edge.keyword_a_id);
+    if (!graph.hasNode(edge.keyword_b_id)) graph.addNode(edge.keyword_b_id);
     graph.addEdge(edge.keyword_a_id, edge.keyword_b_id, {
       weight: edge.similarity,
     });
   }
+  console.log(`Graph: ${graph.order} nodes, ${graph.size} edges\n`);
 
-  console.log(`Graph has ${graph.order} nodes, ${graph.size} edges`);
+  // Clear existing community data
+  console.log("Clearing existing community data...");
+  const { error: deleteError } = await supabase
+    .from("keyword_communities")
+    .delete()
+    .neq("keyword_id", "00000000-0000-0000-0000-000000000000"); // Delete all rows
 
-  // Run Louvain community detection
-  console.log(`Running Louvain (resolution=${RESOLUTION})...`);
-  const result = louvain.detailed(graph, {
-    resolution: RESOLUTION,
-    getEdgeWeight: "weight",
-  });
-
-  console.log(`Found ${result.count} communities (modularity=${result.modularity.toFixed(4)})`);
-
-  // Group keywords by community
-  const communities = new Map<number, KeywordInfo[]>();
-  for (const [nodeId, communityId] of Object.entries(result.communities)) {
-    if (!communities.has(communityId)) {
-      communities.set(communityId, []);
-    }
-    communities.get(communityId)!.push({
-      id: nodeId,
-      keyword: keywordMap.get(nodeId) || nodeId,
-      degree: graph.degree(nodeId),
-    });
+  if (deleteError) {
+    console.error("Error clearing communities:", deleteError);
+    process.exit(1);
   }
 
-  // Sort communities by size (largest first) for display
-  const sortedCommunities = [...communities.entries()].sort(
-    (a, b) => b[1].length - a[1].length
-  );
-
-  // Show top communities
-  console.log("\nTop 10 communities:");
-  for (const [communityId, members] of sortedCommunities.slice(0, 10)) {
-    const hubId = selectHub(members);
-    const hubKeyword = keywordMap.get(hubId) || hubId;
-    const memberLabels = members
-      .filter((m) => m.id !== hubId)
-      .map((m) => m.keyword)
-      .slice(0, 5);
-    console.log(
-      `  [${communityId}] "${hubKeyword}" (${members.length} members): ${memberLabels.join(", ")}${members.length > 6 ? "..." : ""}`
-    );
-  }
-
-  // Prepare updates
-  const updates: Array<{
-    id: string;
+  // Compute communities at each level
+  const allInserts: Array<{
+    keyword_id: string;
+    level: number;
     community_id: number;
-    is_community_hub: boolean;
+    is_hub: boolean;
   }> = [];
 
-  for (const [communityId, members] of communities) {
-    const hubId = selectHub(members);
-    for (const member of members) {
-      updates.push({
-        id: member.id,
-        community_id: communityId,
-        is_community_hub: member.id === hubId,
+  console.log("Level | Resolution | Communities | Avg Size");
+  console.log("------|------------|-------------|----------");
+
+  for (let level = 0; level < RESOLUTIONS.length; level++) {
+    const resolution = RESOLUTIONS[level];
+    const result = louvain.detailed(graph, {
+      resolution,
+      getEdgeWeight: "weight",
+    });
+
+    const avgSize = (graph.order / result.count).toFixed(1);
+    console.log(
+      `${level.toString().padStart(5)} | ${resolution.toString().padStart(10)} | ${result.count.toString().padStart(11)} | ${avgSize.padStart(8)}`
+    );
+
+    // Group by community to find hubs
+    const communities = new Map<number, KeywordInfo[]>();
+    for (const [nodeId, communityId] of Object.entries(result.communities)) {
+      if (!communities.has(communityId)) {
+        communities.set(communityId, []);
+      }
+      communities.get(communityId)!.push({
+        id: nodeId,
+        keyword: keywordMap.get(nodeId) || nodeId,
+        degree: graph.degree(nodeId),
       });
     }
-  }
 
-  // Keywords not in any community (isolated nodes) - clear their community
-  const nodesInGraph = new Set(graph.nodes());
-  const isolatedKeywords = [...keywordMap.keys()].filter(
-    (id) => !nodesInGraph.has(id)
-  );
-  console.log(`\n${isolatedKeywords.length} keywords have no similar neighbors (isolated)`);
-
-  // Update database in batches
-  console.log(`\nUpdating ${updates.length} keywords...`);
-  const BATCH_SIZE = 100;
-
-  for (let i = 0; i < updates.length; i += BATCH_SIZE) {
-    const batch = updates.slice(i, i + BATCH_SIZE);
-
-    for (const update of batch) {
-      const { error: updateError } = await supabase
-        .from("keywords")
-        .update({
-          community_id: update.community_id,
-          is_community_hub: update.is_community_hub,
-        })
-        .eq("id", update.id);
-
-      if (updateError) {
-        console.error(`Error updating keyword ${update.id}:`, updateError);
+    // Create inserts for this level
+    for (const [communityId, members] of communities) {
+      const hubId = selectHub(members);
+      for (const member of members) {
+        allInserts.push({
+          keyword_id: member.id,
+          level,
+          community_id: communityId,
+          is_hub: member.id === hubId,
+        });
       }
     }
-
-    console.log(`  Updated ${Math.min(i + BATCH_SIZE, updates.length)}/${updates.length}`);
   }
 
-  // Clear community for isolated keywords
-  if (isolatedKeywords.length > 0) {
-    console.log(`Clearing community for ${isolatedKeywords.length} isolated keywords...`);
-    for (let i = 0; i < isolatedKeywords.length; i += BATCH_SIZE) {
-      const batch = isolatedKeywords.slice(i, i + BATCH_SIZE);
-      const { error } = await supabase
-        .from("keywords")
-        .update({ community_id: null, is_community_hub: false })
-        .in("id", batch);
+  // Insert all community assignments
+  console.log(`\nInserting ${allInserts.length} community assignments...`);
+  const BATCH_SIZE = 500;
 
-      if (error) {
-        console.error("Error clearing isolated keywords:", error);
-      }
+  for (let i = 0; i < allInserts.length; i += BATCH_SIZE) {
+    const batch = allInserts.slice(i, i + BATCH_SIZE);
+    const { error: insertError } = await supabase
+      .from("keyword_communities")
+      .insert(batch);
+
+    if (insertError) {
+      console.error("Error inserting batch:", insertError);
+      process.exit(1);
     }
+    console.log(`  ${Math.min(i + BATCH_SIZE, allInserts.length)}/${allInserts.length}`);
   }
 
   // Summary
-  const hubCount = updates.filter((u) => u.is_community_hub).length;
-  console.log(`\nDone! ${hubCount} hubs across ${result.count} communities.`);
+  const hubsPerLevel = RESOLUTIONS.map((_, level) =>
+    allInserts.filter((i) => i.level === level && i.is_hub).length
+  );
+  console.log(`\nDone! Hubs per level: ${hubsPerLevel.join(", ")}`);
 }
 
 main();

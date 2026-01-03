@@ -120,6 +120,35 @@ export type Database = {
           },
         ]
       }
+      keyword_communities: {
+        Row: {
+          community_id: number
+          is_hub: boolean
+          keyword_id: string
+          level: number
+        }
+        Insert: {
+          community_id: number
+          is_hub?: boolean
+          keyword_id: string
+          level: number
+        }
+        Update: {
+          community_id?: number
+          is_hub?: boolean
+          keyword_id?: string
+          level?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "keyword_communities_keyword_id_fkey"
+            columns: ["keyword_id"]
+            isOneToOne: false
+            referencedRelation: "keywords"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       keyword_similarities: {
         Row: {
           keyword_a_id: string
@@ -155,34 +184,28 @@ export type Database = {
       }
       keywords: {
         Row: {
-          community_id: number | null
           created_at: string | null
           embedding: string | null
           embedding_256: string | null
           id: string
-          is_community_hub: boolean | null
           keyword: string
           node_id: string
           node_type: string | null
         }
         Insert: {
-          community_id?: number | null
           created_at?: string | null
           embedding?: string | null
           embedding_256?: string | null
           id?: string
-          is_community_hub?: boolean | null
           keyword: string
           node_id: string
           node_type?: string | null
         }
         Update: {
-          community_id?: number | null
           created_at?: string | null
           embedding?: string | null
           embedding_256?: string | null
           id?: string
-          is_community_hub?: boolean | null
           keyword?: string
           node_id?: string
           node_type?: string | null

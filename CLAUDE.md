@@ -63,6 +63,13 @@ Semantic Navigator is a knowledge base tool that imports markdown files, atomize
 - Linked to paragraph nodes via `node_id` foreign key
 - Used in both search (similarity matching) and the Map view (article clustering)
 
+**Keyword Communities** (stored in `keyword_communities` table):
+- Louvain community detection groups semantically similar keywords
+- 8 resolution levels (0=coarsest ~22 clusters, 7=finest ~374 clusters) for semantic zooming
+- Each level has its own hub keyword per community
+- Computed by `scripts/compute-keyword-communities.ts`
+- Similarity edges stored in `keyword_similarities` table (threshold > 0.7)
+
 ### Core Files
 
 - `src/lib/parser.ts` - Markdown parsing with AST, strips frontmatter, extracts backlinks

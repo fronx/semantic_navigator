@@ -66,12 +66,14 @@ export async function GET(request: Request) {
   const synonymThreshold = parseFloat(searchParams.get("synonymThreshold") || "0.85");
   // maxEdgesPerArticle: controls graph density (top-K similar connections per article)
   const maxEdgesPerArticle = parseInt(searchParams.get("maxEdges") || "5", 10);
+  // level: community resolution level (0=coarsest/fewest communities, 7=finest/most communities)
+  const level = parseInt(searchParams.get("level") || "3", 10);
 
   const supabase = createServerClient();
 
   // If query provided, return filtered map (excludes synonyms of the query)
   if (query && query.trim()) {
-    return getFilteredMap(supabase, query.trim(), synonymThreshold, includeNeighbors);
+    return getFilteredMap(supabase, query.trim(), synonymThreshold, includeNeighbors, level);
   }
 
   // Get top-K semantically similar keyword pairs per article
@@ -135,7 +137,7 @@ export async function GET(request: Request) {
     }
   }
 
-  return buildSemanticMap(supabase, typedPairs, keywordTextToEmbedding, includeNeighbors, clustered);
+  return buildSemanticMap(supabase, typedPairs, keywordTextToEmbedding, includeNeighbors, clustered, level);
 }
 
 /**
@@ -263,15 +265,16 @@ async function buildSemanticMap(
   pairs: SimilarityPair[],
   keywordEmbeddings: Map<string, number[]>,
   includeNeighbors: boolean,
-  clustered: boolean
+  clustered: boolean,
+  level: number
 ) {
   let result = buildSemanticMapData(pairs, keywordEmbeddings, includeNeighbors);
 
   if (clustered) {
-    result = await collapseCommunitiesToHubs(supabase, result);
+    result = await collapseCommunitiesToHubs(supabase, result, level);
   } else {
     // Fetch community IDs for coloring (not collapsing)
-    result = await addCommunityColors(supabase, result);
+    result = await addCommunityColors(supabase, result, level);
   }
 
   console.log(
@@ -293,7 +296,8 @@ async function buildSemanticMap(
  */
 async function addCommunityColors(
   supabase: ReturnType<typeof createServerClient>,
-  mapData: { nodes: MapNode[]; edges: MapEdge[]; articleCount: number; keywordCount: number }
+  mapData: { nodes: MapNode[]; edges: MapEdge[]; articleCount: number; keywordCount: number },
+  level: number
 ) {
   const keywordLabels = mapData.nodes
     .filter(n => n.type === "keyword")
@@ -301,20 +305,36 @@ async function addCommunityColors(
 
   if (keywordLabels.length === 0) return mapData;
 
-  // Fetch community IDs in batches
+  // Fetch keyword IDs for the labels
   const BATCH_SIZE = 100;
-  const communityByKeyword = new Map<string, number | null>();
+  const communityByKeyword = new Map<string, number>();
 
   for (let i = 0; i < keywordLabels.length; i += BATCH_SIZE) {
     const batch = keywordLabels.slice(i, i + BATCH_SIZE);
+    // Join keywords with keyword_communities to get community at specified level
     const { data } = await supabase
       .from("keywords")
-      .select("keyword, community_id")
+      .select("id, keyword")
       .eq("node_type", "article")
       .in("keyword", batch);
 
-    for (const kw of data || []) {
-      communityByKeyword.set(kw.keyword, kw.community_id);
+    if (!data || data.length === 0) continue;
+
+    const keywordIds = data.map(k => k.id);
+    const keywordById = new Map(data.map(k => [k.id, k.keyword]));
+
+    // Fetch communities for these keyword IDs at the specified level
+    const { data: communities } = await supabase
+      .from("keyword_communities")
+      .select("keyword_id, community_id")
+      .eq("level", level)
+      .in("keyword_id", keywordIds);
+
+    for (const c of communities || []) {
+      const keyword = keywordById.get(c.keyword_id);
+      if (keyword) {
+        communityByKeyword.set(keyword, c.community_id);
+      }
     }
   }
 
@@ -322,7 +342,7 @@ async function addCommunityColors(
   const nodes = mapData.nodes.map(node => {
     if (node.type !== "keyword") return node;
     const communityId = communityByKeyword.get(node.label);
-    return communityId !== undefined && communityId !== null
+    return communityId !== undefined
       ? { ...node, communityId }
       : node;
   });
@@ -336,7 +356,8 @@ async function addCommunityColors(
  */
 async function collapseCommunitiesToHubs(
   supabase: ReturnType<typeof createServerClient>,
-  mapData: { nodes: MapNode[]; edges: MapEdge[]; articleCount: number; keywordCount: number }
+  mapData: { nodes: MapNode[]; edges: MapEdge[]; articleCount: number; keywordCount: number },
+  level: number
 ) {
   // Get all keyword labels in the graph
   const keywordLabels = mapData.nodes
@@ -347,36 +368,48 @@ async function collapseCommunitiesToHubs(
     return mapData;
   }
 
-  // Fetch community info for these keywords (batch to avoid .in() limit)
+  // Fetch keyword IDs and community info at specified level
   const BATCH_SIZE = 100;
-  const keywords: Array<{ keyword: string; community_id: number | null; is_community_hub: boolean | null }> = [];
+  const keywordInfo = new Map<string, { communityId: number | null; isHub: boolean }>();
 
   for (let i = 0; i < keywordLabels.length; i += BATCH_SIZE) {
     const batch = keywordLabels.slice(i, i + BATCH_SIZE);
-    const { data, error } = await supabase
+
+    // Get keyword IDs
+    const { data: kwData, error } = await supabase
       .from("keywords")
-      .select("keyword, community_id, is_community_hub")
+      .select("id, keyword")
       .eq("node_type", "article")
       .in("keyword", batch);
 
-    if (error) {
-      console.error("[map] Error fetching community info batch:", error);
+    if (error || !kwData) {
+      console.error("[map] Error fetching keywords batch:", error);
       continue;
     }
-    if (data) keywords.push(...data);
+
+    const keywordIds = kwData.map(k => k.id);
+    const keywordById = new Map(kwData.map(k => [k.id, k.keyword]));
+
+    // Get community assignments at specified level
+    const { data: communities } = await supabase
+      .from("keyword_communities")
+      .select("keyword_id, community_id, is_hub")
+      .eq("level", level)
+      .in("keyword_id", keywordIds);
+
+    for (const c of communities || []) {
+      const keyword = keywordById.get(c.keyword_id);
+      if (keyword) {
+        keywordInfo.set(keyword, {
+          communityId: c.community_id,
+          isHub: c.is_hub,
+        });
+      }
+    }
   }
 
-  if (keywords.length === 0) {
+  if (keywordInfo.size === 0) {
     return mapData;
-  }
-
-  // Build lookup: keyword label -> { communityId, isHub }
-  const keywordInfo = new Map<string, { communityId: number | null; isHub: boolean }>();
-  for (const kw of keywords) {
-    keywordInfo.set(kw.keyword, {
-      communityId: kw.community_id,
-      isHub: kw.is_community_hub || false,
-    });
   }
 
   // Group keywords by community
@@ -396,19 +429,38 @@ async function collapseCommunitiesToHubs(
     communities.get(info.communityId)!.push(label);
   }
 
-  // Fetch actual hubs for all communities we found (hub might not be in visible graph)
-  const communityIds = [...communities.keys()];
-  const { data: hubData } = await supabase
-    .from("keywords")
-    .select("keyword, community_id")
-    .eq("node_type", "article")
-    .eq("is_community_hub", true)
-    .in("community_id", communityIds);
-
+  // Find hub for each community from the keywords we already have
   const hubByCommunity = new Map<number, string>();
-  for (const h of hubData || []) {
-    if (h.community_id !== null) {
-      hubByCommunity.set(h.community_id, h.keyword);
+  for (const [label, info] of keywordInfo) {
+    if (info.isHub && info.communityId !== null) {
+      hubByCommunity.set(info.communityId, label);
+    }
+  }
+
+  // For communities where hub wasn't in visible graph, fetch it
+  const missingHubCommunities = [...communities.keys()].filter(c => !hubByCommunity.has(c));
+  if (missingHubCommunities.length > 0) {
+    const { data: hubData } = await supabase
+      .from("keyword_communities")
+      .select("keyword_id, community_id")
+      .eq("level", level)
+      .eq("is_hub", true)
+      .in("community_id", missingHubCommunities);
+
+    if (hubData && hubData.length > 0) {
+      const hubKeywordIds = hubData.map(h => h.keyword_id);
+      const { data: hubKeywords } = await supabase
+        .from("keywords")
+        .select("id, keyword")
+        .in("id", hubKeywordIds);
+
+      const hubKeywordById = new Map(hubKeywords?.map(k => [k.id, k.keyword]) || []);
+      for (const h of hubData) {
+        const keyword = hubKeywordById.get(h.keyword_id);
+        if (keyword) {
+          hubByCommunity.set(h.community_id, keyword);
+        }
+      }
     }
   }
 
@@ -618,33 +670,57 @@ async function getFallbackFilteredMap(
  */
 async function expandHubKeyword(
   supabase: ReturnType<typeof createServerClient>,
-  query: string
+  query: string,
+  level: number
 ): Promise<string[] | null> {
-  // Check if query is an exact match for a hub keyword
-  const { data: hubMatch } = await supabase
+  // Find keyword ID for the query
+  const { data: kwData } = await supabase
     .from("keywords")
-    .select("keyword, community_id, is_community_hub")
+    .select("id")
     .eq("node_type", "article")
     .eq("keyword", query)
-    .eq("is_community_hub", true)
     .single();
 
-  if (!hubMatch || hubMatch.community_id === null) {
+  if (!kwData) {
     return null;
   }
 
-  // Get all community members
-  const { data: members } = await supabase
-    .from("keywords")
-    .select("keyword")
-    .eq("node_type", "article")
+  // Check if this keyword is a hub at the specified level
+  const { data: hubMatch } = await supabase
+    .from("keyword_communities")
+    .select("community_id, is_hub")
+    .eq("keyword_id", kwData.id)
+    .eq("level", level)
+    .eq("is_hub", true)
+    .single();
+
+  if (!hubMatch) {
+    return null;
+  }
+
+  // Get all community members at this level
+  const { data: memberCommunities } = await supabase
+    .from("keyword_communities")
+    .select("keyword_id")
+    .eq("level", level)
     .eq("community_id", hubMatch.community_id);
 
-  if (!members || members.length === 0) {
+  if (!memberCommunities || memberCommunities.length === 0) {
     return [query];
   }
 
-  return members.map((m) => m.keyword);
+  // Fetch keyword labels for member IDs
+  const memberIds = memberCommunities.map(m => m.keyword_id);
+  const { data: memberKeywords } = await supabase
+    .from("keywords")
+    .select("keyword")
+    .in("id", memberIds);
+
+  if (!memberKeywords || memberKeywords.length === 0) {
+    return [query];
+  }
+
+  return memberKeywords.map((m) => m.keyword);
 }
 
 /**
@@ -780,10 +856,11 @@ async function getFilteredMap(
   supabase: ReturnType<typeof createServerClient>,
   query: string,
   synonymThreshold: number,
-  includeNeighbors: boolean
+  includeNeighbors: boolean,
+  level: number
 ) {
   // Check if query is a hub keyword - if so, expand to include all community members
-  const expandedKeywords = await expandHubKeyword(supabase, query);
+  const expandedKeywords = await expandHubKeyword(supabase, query, level);
 
   // For hub keywords, use exact keyword matching instead of semantic similarity
   if (expandedKeywords && expandedKeywords.length > 0) {
