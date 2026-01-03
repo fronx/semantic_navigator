@@ -8,8 +8,7 @@ import { Node, NodeType } from "./types";
  */
 export const nodeIdentityKeys: Record<NodeType, readonly (keyof Node)[]> = {
   article: ["source_path"],
-  section: ["source_path", "content_hash"],
-  paragraph: ["source_path", "content_hash"],  // Context-specific: same content in different articles = different nodes
+  chunk: ["source_path", "content_hash"],  // Content-based identity within article
 } as const;
 
 type IdentityValues = Partial<Record<keyof Node, string>>;

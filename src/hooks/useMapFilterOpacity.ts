@@ -4,7 +4,7 @@ import type { ArticleSimilarityMap, KeywordSimilarityMap } from "./useMapSearch"
 
 interface SimNode extends d3.SimulationNodeDatum {
   id: string;
-  type: "keyword" | "article" | "section" | "paragraph";
+  type: "keyword" | "article" | "chunk";
   label: string;
 }
 
@@ -42,7 +42,7 @@ export function useMapFilterOpacity(
         const similarity = articleSimilarities.get(d.label);
         if (similarity === undefined) return MIN_OPACITY;
         return similarity;
-      } else if (d.type === "section" || d.type === "paragraph") {
+      } else if (d.type === "chunk") {
         // Expanded children - show at full opacity
         return 1;
       } else {
@@ -75,7 +75,7 @@ function getNodeOpacity(
 ): number {
   if (node.type === "article") {
     return articleSimilarities?.get(node.label) ?? MIN_OPACITY;
-  } else if (node.type === "section" || node.type === "paragraph") {
+  } else if (node.type === "chunk") {
     return 1; // Expanded children always visible
   } else {
     return keywordSimilarities?.get(node.label) ?? MIN_OPACITY;

@@ -1,8 +1,8 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import pLimit from "p-limit";
-import { ingestArticle } from "./ingestion";
+import { ingestArticleWithChunks, ChunkIngestionOptions } from "./ingestion-chunks";
 
-const DEFAULT_CONCURRENCY = 10;
+const DEFAULT_CONCURRENCY = 5;  // Conservative due to Haiku API calls per article
 
 export interface ParallelIngestionCallbacks {
   onProgress?: (completed: number, total: number, activeFiles: string[]) => void;
@@ -15,10 +15,14 @@ interface FileData {
   content: string;
 }
 
+/**
+ * Parallel ingestion using semantic chunking.
+ */
 export async function ingestArticlesParallel(
   supabase: SupabaseClient,
   files: FileData[],
   callbacks?: ParallelIngestionCallbacks,
+  options?: ChunkIngestionOptions,
   concurrency: number = DEFAULT_CONCURRENCY
 ): Promise<{ successful: number; failed: number }> {
   const limit = pLimit(concurrency);
@@ -38,7 +42,7 @@ export async function ingestArticlesParallel(
       report();
 
       try {
-        await ingestArticle(supabase, file.path, file.content);
+        await ingestArticleWithChunks(supabase, file.path, file.content, undefined, options);
         successful++;
       } catch (error) {
         failed++;
@@ -58,3 +62,6 @@ export async function ingestArticlesParallel(
 
   return { successful, failed };
 }
+
+// Alias for backwards compatibility
+export const ingestArticlesParallelChunked = ingestArticlesParallel;

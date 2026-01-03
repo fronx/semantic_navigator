@@ -33,49 +33,17 @@ async function testPerformance() {
   // Get keyword -> article mapping
   const nodeIds = [...new Set(keywords.map((k) => k.node_id))];
 
-  // Build node -> article map by walking containment edges
+  // Build node -> article map by walking containment edges (chunk → article is one hop)
   const { data: edges } = await supabase
     .from("containment_edges")
     .select("child_id, parent:nodes!containment_edges_parent_id_fkey(id, node_type)")
     .in("child_id", nodeIds);
 
   const nodeToParent = new Map<string, { id: string; node_type: string }>();
-  const needsGrandparent = new Set<string>();
 
   for (const edge of edges || []) {
     const parent = edge.parent as unknown as { id: string; node_type: string };
-    if (parent.node_type === "article") {
-      nodeToParent.set(edge.child_id, parent);
-    } else {
-      nodeToParent.set(edge.child_id, parent);
-      needsGrandparent.add(parent.id);
-    }
-  }
-
-  // Get grandparents for sections
-  if (needsGrandparent.size > 0) {
-    const { data: grandEdges } = await supabase
-      .from("containment_edges")
-      .select("child_id, parent:nodes!containment_edges_parent_id_fkey(id, node_type)")
-      .in("child_id", [...needsGrandparent]);
-
-    const sectionToArticle = new Map<string, string>();
-    for (const edge of grandEdges || []) {
-      const parent = edge.parent as unknown as { id: string; node_type: string };
-      if (parent.node_type === "article") {
-        sectionToArticle.set(edge.child_id, parent.id);
-      }
-    }
-
-    // Update nodeToParent with article ids
-    for (const [nodeId, parent] of nodeToParent) {
-      if (parent.node_type === "section") {
-        const articleId = sectionToArticle.get(parent.id);
-        if (articleId) {
-          nodeToParent.set(nodeId, { id: articleId, node_type: "article" });
-        }
-      }
-    }
+    nodeToParent.set(edge.child_id, parent);
   }
 
   // Map keyword id to article id

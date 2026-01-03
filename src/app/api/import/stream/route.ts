@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { createServerClient } from "@/lib/supabase";
 import { collectMarkdownFiles, readVaultFile } from "@/lib/vault";
-import { ingestArticlesParallel } from "@/lib/ingestion-parallel";
+import { ingestArticlesParallelChunked } from "@/lib/ingestion-parallel";
 
 interface SSEWriter {
   write(event: string, data: unknown): void;
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
       sse.write("start", { totalFiles: files.length });
 
       try {
-        const result = await ingestArticlesParallel(supabase, files, {
+        const result = await ingestArticlesParallelChunked(supabase, files, {
           onProgress: (completed, total, activeFiles) => {
             console.log(`[Import] Progress: ${completed}/${total} | Active: ${activeFiles.join(", ")}`);
             sse.write("progress", {

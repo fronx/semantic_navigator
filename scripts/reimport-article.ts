@@ -1,7 +1,8 @@
 import { readFileSync, existsSync } from "fs";
 import { createServerClient } from "../src/lib/supabase";
-import { ingestArticle } from "../src/lib/ingestion";
-import { parseMarkdown, flattenSections } from "../src/lib/parser";
+import { ingestArticleWithChunks } from "../src/lib/ingestion-chunks";
+import { parseMarkdown } from "../src/lib/parser";
+import { chunkTextToArray } from "../src/lib/chunker";
 
 async function main() {
   const sourcePath = process.argv[2];
@@ -35,28 +36,22 @@ async function main() {
   const content = readFileSync(fullPath, "utf-8");
   const filename = sourcePath.split("/").pop() || sourcePath;
   const parsed = parseMarkdown(content, filename);
-  const flat = flattenSections(parsed.sections);
 
   console.log(`\n=== Document Structure ===`);
   console.log(`Title: ${parsed.title}`);
   console.log(`Backlinks: ${parsed.backlinks.length}`);
-  console.log(`Top-level sections: ${parsed.sections.length}`);
-  console.log(`Total flattened sections: ${flat.length}`);
-
-  let totalParagraphs = 0;
-  for (const section of flat) {
-    totalParagraphs += section.paragraphs.length;
-  }
-  console.log(`Total paragraphs: ${totalParagraphs}`);
-  console.log(`Estimated API calls: ~${1 + flat.length + totalParagraphs * 3} (article + sections + paragraphs*3)`);
-
-  console.log(`\n=== Hierarchy ===`);
-  for (const section of flat) {
-    const indent = "  ".repeat(section.level - 1);
-    console.log(`${indent}[h${section.level}] ${section.title} (${section.paragraphs.length} paragraphs)`);
-  }
+  console.log(`Content length: ${parsed.content.length} chars`);
 
   if (dryRun) {
+    // Show chunk preview
+    console.log(`\n=== Chunk Preview (dry run) ===`);
+    const chunks = await chunkTextToArray(parsed.content);
+    console.log(`Total chunks: ${chunks.length}`);
+    for (const chunk of chunks) {
+      const preview = chunk.content.slice(0, 100).replace(/\n/g, " ");
+      console.log(`  [${chunk.position}] ${chunk.chunkType || "unlabeled"}: "${preview}..."`);
+      console.log(`      Keywords: ${chunk.keywords.join(", ")}`);
+    }
     console.log(`\n--dry-run specified, stopping here.`);
     return;
   }
@@ -64,12 +59,12 @@ async function main() {
   console.log(`\n=== Starting Import ===`);
   const startTime = Date.now();
 
-  const articleId = await ingestArticle(
+  const articleId = await ingestArticleWithChunks(
     supabase,
     sourcePath,
     content,
     {
-      onProgress: (item, completed, total) => {
+      onProgress: (item: string, completed: number, total: number) => {
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         console.log(`[${elapsed}s] [${completed}/${total}] ${item}`);
       },

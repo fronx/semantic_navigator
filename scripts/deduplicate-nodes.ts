@@ -61,7 +61,7 @@ async function deduplicateNodeType(nodeType: NodeType) {
 async function showStats() {
   console.log('\n--- Final Stats ---');
 
-  for (const nodeType of ['article', 'section', 'paragraph'] as NodeType[]) {
+  for (const nodeType of ['article', 'chunk'] as NodeType[]) {
     const { count } = await supabase
       .from('nodes')
       .select('*', { count: 'exact', head: true })
@@ -74,9 +74,8 @@ async function showStats() {
 async function main() {
   console.log('Starting deduplication...');
 
-  // Process in order: paragraphs first (leaves), then sections, then articles
-  await deduplicateNodeType('paragraph');
-  await deduplicateNodeType('section');
+  // Process in order: chunks first (leaves), then articles
+  await deduplicateNodeType('chunk');
   await deduplicateNodeType('article');
   await showStats();
 

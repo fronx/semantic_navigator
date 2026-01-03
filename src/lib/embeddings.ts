@@ -3,25 +3,20 @@ import OpenAI from "openai";
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export interface EmbeddingContext {
-  type: "article-summary" | "section-summary" | "paragraph" | "paragraph-summary" | "keyword";
+  type: "article-summary" | "keyword" | "chunk";
   article: string;
-  section?: string;
   keyword?: string;
+  position?: number;
 }
 
 function formatContext(ctx: EmbeddingContext): string {
-  const location = ctx.section ? `"${ctx.article}" > ${ctx.section}` : `"${ctx.article}"`;
   switch (ctx.type) {
     case "keyword":
-      return `keyword "${ctx.keyword}" in ${location}`;
+      return `keyword "${ctx.keyword}" in "${ctx.article}"`;
     case "article-summary":
-      return `article summary: ${location}`;
-    case "section-summary":
-      return `section summary: ${location}`;
-    case "paragraph-summary":
-      return `paragraph summary: ${location}`;
-    case "paragraph":
-      return `paragraph: ${location}`;
+      return `article summary: "${ctx.article}"`;
+    case "chunk":
+      return `chunk ${ctx.position ?? "?"}: "${ctx.article}"`;
   }
 }
 
@@ -46,6 +41,39 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
   });
 
   return response.data.map((d) => d.embedding);
+}
+
+const OPENAI_BATCH_SIZE = 2048;  // Max inputs per request
+const RATE_LIMIT_DELAY_MS = 100;  // Delay between batches to avoid rate limits
+
+/**
+ * Generate embeddings for many texts, batching to stay within API limits.
+ * More efficient than calling generateEmbedding() in a loop.
+ */
+export async function generateEmbeddingsBatched(
+  texts: string[],
+  onProgress?: (completed: number, total: number) => void
+): Promise<number[][]> {
+  if (texts.length === 0) return [];
+
+  const results: number[][] = [];
+
+  for (let i = 0; i < texts.length; i += OPENAI_BATCH_SIZE) {
+    const batch = texts.slice(i, i + OPENAI_BATCH_SIZE);
+
+    // Rate limit delay between batches (skip for first batch)
+    if (i > 0) {
+      await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY_MS));
+    }
+
+    const batchEmbeddings = await generateEmbeddings(batch);
+    results.push(...batchEmbeddings);
+
+    const completed = Math.min(i + OPENAI_BATCH_SIZE, texts.length);
+    onProgress?.(completed, texts.length);
+  }
+
+  return results;
 }
 
 // Rough token estimate (4 chars per token for English)

@@ -8,12 +8,17 @@ import { createHoverTooltip } from "@/lib/d3-utils";
 import { useMapSearch } from "@/hooks/useMapSearch";
 import { useMapFilterOpacity } from "@/hooks/useMapFilterOpacity";
 
-interface SimNode extends d3.SimulationNodeDatum, MapNode {}
+interface SimNode extends d3.SimulationNodeDatum, MapNode { }
 
 interface SimLink extends d3.SimulationLinkDatum<SimNode> {
   source: SimNode | string;
   target: SimNode | string;
   similarity?: number;
+}
+
+interface SimilarKeyword {
+  keyword: string;
+  similarity: number;
 }
 
 interface ChildNode {
@@ -22,6 +27,8 @@ interface ChildNode {
   summary: string | null;
   content: string | null;
   source_path: string;
+  keywords: string[];
+  similarKeywords: SimilarKeyword[];
 }
 
 interface Props {
@@ -41,8 +48,9 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
   const [error, setError] = useState<string | null>(null);
   const [showNeighbors, setShowNeighbors] = useState(false);
   const [expandingId, setExpandingId] = useState<string | null>(null);
+  const [maxEdges, setMaxEdges] = useState(1);
 
-  // Handle node click to expand and show children (works for articles and sections)
+  // Handle node click to expand and show children (articles expand to chunks)
   const handleNodeExpand = async (graphNodeId: string, dbNodeId: string) => {
     if (!data || expandingId) return;
 
@@ -62,42 +70,83 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
 
         // Remove the expanded node
         const remainingNodes = prev.nodes.filter(n => n.id !== graphNodeId);
-
-        // Find edges connected to the expanded node
-        const nodeEdges = prev.edges.filter(e => e.source === graphNodeId || e.target === graphNodeId);
         const remainingEdges = prev.edges.filter(e => e.source !== graphNodeId && e.target !== graphNodeId);
 
-        // Get keywords connected to this node
-        const connectedKeywords = nodeEdges
-          .map(e => e.source === graphNodeId ? e.target : e.source)
-          .filter(id => id.startsWith("kw:"));
+        // Keywords already in the graph (these are valid connections)
+        const existingKeywords = new Set(
+          prev.nodes.filter(n => n.type === "keyword").map(n => n.label)
+        );
+
+        // Collect all keywords per chunk: owned keywords + similar keywords
+        // Similar keywords are article-level (from RPC) so they're valid connections
+        const allKeywordsPerChunk = children.map(child => {
+          const keywords = new Set(child.keywords);
+          for (const sk of child.similarKeywords) {
+            keywords.add(sk.keyword);
+          }
+          return keywords;
+        });
+
+        // Similar keywords are guaranteed to be article-level keywords (valid connections)
+        const articleLevelKeywords = new Set<string>();
+        for (const child of children) {
+          for (const sk of child.similarKeywords) {
+            articleLevelKeywords.add(sk.keyword);
+          }
+        }
+
+        // Count how many chunks each keyword appears in
+        const keywordChunkCount = new Map<string, number>();
+        for (const keywords of allKeywordsPerChunk) {
+          for (const kw of keywords) {
+            keywordChunkCount.set(kw, (keywordChunkCount.get(kw) || 0) + 1);
+          }
+        }
+
+        // A keyword is valid if it either:
+        // 1. Already exists in the graph (connects to other articles/chunks), OR
+        // 2. Appears in 2+ chunks (connects chunks within this expansion), OR
+        // 3. Is an article-level keyword (from similarKeywords - exists at article level, can connect to other articles)
+        const validKeywords = new Set<string>();
+        for (const [kw, count] of keywordChunkCount) {
+          if (existingKeywords.has(kw) || count >= 2 || articleLevelKeywords.has(kw)) {
+            validKeywords.add(kw);
+          }
+        }
 
         // Add child nodes
         const childNodes: MapNode[] = children.map(child => ({
-          id: `${child.node_type}:${child.id}`,
-          type: child.node_type as "section" | "paragraph",
-          label: child.node_type === "section"
-            ? (child.summary?.slice(0, 50) || "Section")
-            : (child.content?.slice(0, 50) || child.summary?.slice(0, 50) || "..."),
-          size: (child.summary?.length || child.content?.length || 100),
+          id: `chunk:${child.id}`,
+          type: "chunk" as const,
+          label: child.content?.slice(0, 50) || child.summary?.slice(0, 50) || "...",
+          size: (child.content?.length || child.summary?.length || 100),
         }));
 
-        // Connect children to parent's keywords (distribute evenly)
+        // Connect each chunk to valid keywords (owned + similar)
         const newEdges: MapEdge[] = [];
-        childNodes.forEach((child, idx) => {
-          // Each child gets some of the parent's keyword connections
-          const keywordsPerChild = Math.ceil(connectedKeywords.length / childNodes.length);
-          const startIdx = idx * keywordsPerChild;
-          const childKeywords = connectedKeywords.slice(startIdx, startIdx + keywordsPerChild);
+        const newKeywordNodes: MapNode[] = [];
+        const addedKeywords = new Set<string>();
 
-          childKeywords.forEach(kwId => {
-            newEdges.push({ source: child.id, target: kwId });
-          });
+        children.forEach((_, idx) => {
+          const chunkId = childNodes[idx].id;
+          const chunkKeywords = allKeywordsPerChunk[idx];
+
+          for (const kw of chunkKeywords) {
+            if (!validKeywords.has(kw)) continue; // Skip dangling keywords
+
+            const kwNodeId = `kw:${kw}`;
+            // Add keyword node if not already in graph
+            if (!existingKeywords.has(kw) && !addedKeywords.has(kw)) {
+              addedKeywords.add(kw);
+              newKeywordNodes.push({ id: kwNodeId, type: "keyword", label: kw });
+            }
+            newEdges.push({ source: chunkId, target: kwNodeId });
+          }
         });
 
         return {
           ...prev,
-          nodes: [...remainingNodes, ...childNodes],
+          nodes: [...remainingNodes, ...childNodes, ...newKeywordNodes],
           edges: [...remainingEdges, ...newEdges],
         };
       });
@@ -115,6 +164,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
     setLoading(true);
     const params = new URLSearchParams();
     params.set("neighbors", String(showNeighbors));
+    params.set("maxEdges", String(maxEdges));
     if (filterQuery) {
       params.set("query", filterQuery);
       params.set("synonymThreshold", String(synonymThreshold));
@@ -122,14 +172,20 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
     fetch(`/api/map?${params}`)
       .then((res) => res.json())
       .then((data) => {
-        setData(data);
+        if (data.error) {
+          setError(data.error);
+          setData(null);
+        } else {
+          setData(data);
+          setError(null);
+        }
         setLoading(false);
       })
       .catch((err) => {
         setError(err.message);
         setLoading(false);
       });
-  }, [showNeighbors, filterQuery, synonymThreshold]);
+  }, [showNeighbors, maxEdges, filterQuery, synonymThreshold]);
 
   useEffect(() => {
     if (!data || !svgRef.current) return;
@@ -169,16 +225,14 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
 
     const getNodeRadius = (d: SimNode) => {
       if (d.type === "keyword") return 18;
-      if (d.type === "section") return sizeScale((d.size || 200) * 0.6);
-      if (d.type === "paragraph") return sizeScale((d.size || 100) * 0.4);
-      return sizeScale(d.size || 400);
+      if (d.type === "chunk") return sizeScale((d.size || 150) * 0.5);
+      return sizeScale(d.size || 400); // article
     };
 
     const getNodeColor = (d: SimNode) => {
       switch (d.type) {
         case "article": return colors.node.article;
-        case "section": return colors.node.section;
-        case "paragraph": return colors.node.paragraph;
+        case "chunk": return colors.node.chunk;
         default: return colors.node.keyword;
       }
     };
@@ -247,14 +301,14 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
       .attr("stroke", "#fff")
       .attr("stroke-width", 1.5);
 
-    // Click handler for expandable nodes (articles and sections)
-    const expandableNodes = node.filter((d) => d.type === "article" || d.type === "section");
+    // Click handler for expandable nodes (articles only - chunks are leaf nodes)
+    const expandableNodes = node.filter((d) => d.type === "article");
     expandableNodes
       .style("cursor", "pointer")
       .on("click", (event, d) => {
         event.stopPropagation();
-        // Extract the UUID from the node id (format: "art:uuid" or "section:uuid")
-        const dbNodeId = d.id.replace(/^(art|section):/, "");
+        // Extract the UUID from the node id (format: "art:uuid")
+        const dbNodeId = d.id.replace(/^art:/, "");
         handleNodeExpand(d.id, dbNodeId);
       });
 
@@ -281,10 +335,10 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
         });
     }
 
-    // Hover tooltip for article/section/paragraph nodes (rendered last = on top)
+    // Hover tooltip for article/chunk nodes (rendered last = on top)
     const tooltip = createHoverTooltip(g);
     node
-      .filter((d) => d.type === "article" || d.type === "section" || d.type === "paragraph")
+      .filter((d) => d.type === "article" || d.type === "chunk")
       .on("mouseenter", (_, d) => {
         const offset = getNodeRadius(d) * 0.7;
         tooltip.show(d.label, d.x! + offset + 8, d.y! + offset + 16);
@@ -322,7 +376,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
     );
   }
 
-  if (!data || data.nodes.length === 0) {
+  if (!data || !data.nodes || data.nodes.length === 0) {
     return (
       <div className="flex items-center justify-center h-full bg-white dark:bg-zinc-900">
         <span className="text-zinc-500">No data to display. Import some articles first.</span>
@@ -337,16 +391,10 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
           <span className="w-3 h-3 rounded-full bg-blue-500 inline-block" />
           Articles ({data.nodes.filter((n) => n.type === "article").length})
         </span>
-        {data.nodes.some((n) => n.type === "section") && (
+        {data.nodes.some((n) => n.type === "chunk") && (
           <span className="flex items-center gap-1">
             <span className="w-3 h-3 rounded-full bg-violet-500 inline-block" />
-            Sections ({data.nodes.filter((n) => n.type === "section").length})
-          </span>
-        )}
-        {data.nodes.some((n) => n.type === "paragraph") && (
-          <span className="flex items-center gap-1">
-            <span className="w-3 h-3 rounded-full bg-amber-500 inline-block" />
-            Paragraphs ({data.nodes.filter((n) => n.type === "paragraph").length})
+            Chunks ({data.nodes.filter((n) => n.type === "chunk").length})
           </span>
         )}
         <span className="flex items-center gap-1">
@@ -374,7 +422,19 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
             )}
           </span>
         )}
-        <label className="flex items-center gap-1 ml-auto cursor-pointer">
+        <label className="flex items-center gap-2 ml-auto">
+          <span>Density:</span>
+          <input
+            type="range"
+            min="1"
+            max="10"
+            value={maxEdges}
+            onChange={(e) => setMaxEdges(parseInt(e.target.value, 10))}
+            className="w-20 h-1"
+          />
+          <span className="w-4 text-center">{maxEdges}</span>
+        </label>
+        <label className="flex items-center gap-1 cursor-pointer">
           <input
             type="checkbox"
             checked={showNeighbors}

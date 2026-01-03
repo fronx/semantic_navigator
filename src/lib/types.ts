@@ -1,14 +1,16 @@
-export type NodeType = "article" | "section" | "paragraph";
+export type NodeType = "article" | "chunk";
 
 export interface Node {
   id: string;
-  content: string | null;  // only populated for paragraph nodes
+  content: string | null;  // only populated for chunk nodes
   summary: string | null;
   content_hash: string;
   embedding: number[] | null;
   node_type: NodeType;
   source_path: string;
   header_level: number | null;
+  chunk_type: string | null;  // semantic classification for chunks (e.g., "problem statement")
+  heading_context: string[] | null;  // heading path for chunks (e.g., ["Introduction", "Background"])
   dirty: boolean;
   created_at: string;
   updated_at: string;

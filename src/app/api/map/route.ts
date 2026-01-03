@@ -4,7 +4,7 @@ import { generateEmbedding, truncateEmbedding } from "@/lib/embeddings";
 
 export interface MapNode {
   id: string;
-  type: "keyword" | "article" | "section" | "paragraph";
+  type: "keyword" | "article" | "chunk";
   label: string;
   size?: number; // Content size (summary length) for scaling node radius
 }
@@ -60,6 +60,8 @@ export async function GET(request: Request) {
   // synonymThreshold: keywords MORE similar than this to the query are filtered out
   // The query acts as a "premise" - we remove it and its synonyms to see remaining structure
   const synonymThreshold = parseFloat(searchParams.get("synonymThreshold") || "0.85");
+  // maxEdgesPerArticle: controls graph density (top-K similar connections per article)
+  const maxEdgesPerArticle = parseInt(searchParams.get("maxEdges") || "5", 10);
 
   const supabase = createServerClient();
 
@@ -68,9 +70,11 @@ export async function GET(request: Request) {
     return getFilteredMap(supabase, query.trim(), synonymThreshold, includeNeighbors);
   }
 
-  // Get semantically similar keyword pairs across articles
-  const { data: pairs, error } = await supabase.rpc("get_article_keyword_graph", {
-    similarity_threshold: 0.75,
+  // Get top-K semantically similar keyword pairs per article
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: pairs, error } = await (supabase.rpc as any)("get_article_keyword_graph", {
+    max_edges_per_article: maxEdgesPerArticle,
+    min_similarity: 0.3,
   });
 
   if (error) {
@@ -85,38 +89,45 @@ export async function GET(request: Request) {
 
   const typedPairs = pairs as SimilarityPair[];
 
-  // Collect unique keyword texts and one representative ID per text
-  const keywordTextToId = new Map<string, string>();
-  for (const pair of typedPairs) {
-    if (!keywordTextToId.has(pair.keyword_text)) {
-      keywordTextToId.set(pair.keyword_text, pair.keyword_id);
+  // Only fetch embeddings if we need them for neighbor computation
+  let keywordTextToEmbedding = new Map<string, number[]>();
+
+  if (includeNeighbors) {
+    // Collect unique keyword texts and one representative ID per text
+    const keywordTextToId = new Map<string, string>();
+    for (const pair of typedPairs) {
+      if (!keywordTextToId.has(pair.keyword_text)) {
+        keywordTextToId.set(pair.keyword_text, pair.keyword_id);
+      }
+      if (!keywordTextToId.has(pair.similar_keyword_text)) {
+        keywordTextToId.set(pair.similar_keyword_text, pair.similar_keyword_id);
+      }
     }
-    if (!keywordTextToId.has(pair.similar_keyword_text)) {
-      keywordTextToId.set(pair.similar_keyword_text, pair.similar_keyword_id);
-    }
-  }
 
-  // Fetch 256-dim embeddings for these keywords
-  const keywordIds = [...keywordTextToId.values()];
-  const { data: keywordEmbeddings, error: embError } = await supabase
-    .from("keywords")
-    .select("id, keyword, embedding_256")
-    .in("id", keywordIds);
+    // Fetch 256-dim embeddings in batches (Supabase has limits on .in() size)
+    const keywordIds = [...keywordTextToId.values()];
+    const BATCH_SIZE = 500;
 
-  if (embError) {
-    console.error("[map] Error fetching keyword embeddings:", embError);
-    return NextResponse.json({ error: embError.message }, { status: 500 });
-  }
+    for (let i = 0; i < keywordIds.length; i += BATCH_SIZE) {
+      const batch = keywordIds.slice(i, i + BATCH_SIZE);
+      const { data: keywordEmbeddings, error: embError } = await supabase
+        .from("keywords")
+        .select("id, keyword, embedding_256")
+        .in("id", batch);
 
-  // Build text → embedding map
-  const keywordTextToEmbedding = new Map<string, number[]>();
-  for (const kw of keywordEmbeddings || []) {
-    if (kw.embedding_256) {
-      // Supabase returns vectors as strings
-      const emb = typeof kw.embedding_256 === "string"
-        ? JSON.parse(kw.embedding_256)
-        : kw.embedding_256;
-      keywordTextToEmbedding.set(kw.keyword, emb);
+      if (embError) {
+        console.error("[map] Error fetching keyword embeddings:", embError);
+        return NextResponse.json({ error: embError.message }, { status: 500 });
+      }
+
+      for (const kw of keywordEmbeddings || []) {
+        if (kw.embedding_256) {
+          const emb = typeof kw.embedding_256 === "string"
+            ? JSON.parse(kw.embedding_256)
+            : kw.embedding_256;
+          keywordTextToEmbedding.set(kw.keyword, emb);
+        }
+      }
     }
   }
 

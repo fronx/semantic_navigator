@@ -68,20 +68,12 @@ function extractHeadingContext(text: string): string[] {
   return headings;
 }
 
-// Try to repair common JSON issues (unescaped quotes/newlines in strings)
+// Try to repair common JSON issues (invalid escapes like \.)
 function tryRepairJson(jsonText: string): string {
-  // Find string values and escape unescaped characters within them
-  // This is a heuristic approach - won't catch everything but helps common cases
-  let result = jsonText;
-
-  // Replace literal newlines in string values with \n
-  // Match "text": "...<newline>..." patterns
-  result = result.replace(/"text"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/g, (match) => {
-    // If the match contains literal newlines (not \n), escape them
-    return match.replace(/\n/g, "\\n").replace(/\r/g, "\\r");
-  });
-
-  return result;
+  // Fix invalid escape sequences like \. or \: (Haiku sometimes escapes markdown)
+  // Valid JSON escapes are: \" \\ \/ \b \f \n \r \t \uXXXX
+  // Replace \X (where X is not a valid escape char) with just X
+  return jsonText.replace(/\\([^"\\\/bfnrtu])/g, "$1");
 }
 
 // Parse JSON from Haiku's response, extracting from code blocks if needed
@@ -105,14 +97,9 @@ function parseJsonResponse(text: string): {
     }
   }
 
-  // Try parsing as-is first
-  try {
-    return JSON.parse(jsonText);
-  } catch {
-    // Try repairing common issues
-    const repaired = tryRepairJson(jsonText);
-    return JSON.parse(repaired);
-  }
+  // Always try repair first (handles invalid escapes, newlines, etc.)
+  const repaired = tryRepairJson(jsonText);
+  return JSON.parse(repaired);
 }
 
 // Call Haiku to extract semantic chunks
