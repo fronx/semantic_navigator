@@ -24,11 +24,57 @@ export interface IngestionCallbacks {
   onError?: (error: Error, context: string) => void;
 }
 
+export interface IngestionOptions {
+  forceReimport?: boolean;
+}
+
+// Delete an article and all its descendant nodes (sections, paragraphs) and related data
+async function deleteArticleWithChildren(
+  supabase: SupabaseClient,
+  articleId: string
+): Promise<void> {
+  // Get all descendant node IDs by traversing containment_edges
+  const allNodeIds: string[] = [articleId];
+  const queue: string[] = [articleId];
+
+  while (queue.length > 0) {
+    const parentId = queue.shift()!;
+    const { data: children } = await supabase
+      .from("containment_edges")
+      .select("child_id")
+      .eq("parent_id", parentId);
+
+    if (children) {
+      for (const child of children) {
+        allNodeIds.push(child.child_id);
+        queue.push(child.child_id);
+      }
+    }
+  }
+
+  // Delete keywords for all nodes
+  await supabase.from("keywords").delete().in("node_id", allNodeIds);
+
+  // Delete containment edges (both directions)
+  await supabase.from("containment_edges").delete().in("parent_id", allNodeIds);
+  await supabase.from("containment_edges").delete().in("child_id", allNodeIds);
+
+  // Delete backlink edges
+  await supabase.from("backlink_edges").delete().in("source_id", allNodeIds);
+  await supabase.from("backlink_edges").delete().in("target_id", allNodeIds);
+
+  // Delete all nodes
+  await supabase.from("nodes").delete().in("id", allNodeIds);
+
+  console.log(`[Reimport] Deleted ${allNodeIds.length} nodes`);
+}
+
 export async function ingestArticle(
   supabase: SupabaseClient,
   sourcePath: string,
   content: string,
-  callbacks?: IngestionCallbacks
+  callbacks?: IngestionCallbacks,
+  options?: IngestionOptions
 ): Promise<string> {
   const filename = sourcePath.split("/").pop() || sourcePath;
   const parsed = parseMarkdown(content, filename);
@@ -55,7 +101,13 @@ export async function ingestArticle(
 
   let articleNode: Node;
 
-  if (existingArticle) {
+  if (existingArticle && options?.forceReimport) {
+    // Force reimport - delete existing article and all its children
+    console.log(`[Reimport] Deleting existing article: "${parsed.title}"`);
+    await deleteArticleWithChildren(supabase, existingArticle.id);
+  }
+
+  if (existingArticle && !options?.forceReimport) {
     if (existingArticle.content_hash === articleContentHash) {
       // Article exists with same content - reuse it
       articleNode = existingArticle;
