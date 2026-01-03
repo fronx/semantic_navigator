@@ -38,8 +38,18 @@ What remains are the *other* keywords from matching articles:
 - **Lower threshold (e.g., 0.70)**: More aggressive filtering, removes more synonym-like keywords
 - **Higher threshold (e.g., 0.90)**: Less aggressive, keeps keywords that are somewhat related to query
 
+### Resolution Slider
+Controls the community detection granularity (0-7):
+- **Lower values (e.g., 0-2)**: Coarser clustering, fewer communities with more keywords each
+- **Higher values (e.g., 5-7)**: Finer clustering, more communities with fewer keywords each
+
+The resolution level is preserved when navigating between filtered views and when clearing the filter.
+
 ### Context Display
 The "Context:" label shows which keywords were filtered out as synonyms of your query. This helps users understand what concepts are being "factored out" of the view.
+
+### Cluster Visualization
+Keywords are colored by their community assignment at the current resolution level. Convex hulls are drawn around communities with 3+ visible members, with the hub keyword label shown at the centroid.
 
 ## Technical Implementation
 
@@ -57,6 +67,8 @@ From those articles, get keywords < threshold similarity
 Build graph of articles → remaining keywords
     ↓
 Add keyword↔keyword similarity edges for clustering
+    ↓
+Add community colors at specified resolution level
 ```
 
 ### Key Files

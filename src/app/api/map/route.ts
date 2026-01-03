@@ -557,7 +557,8 @@ async function getFallbackFilteredMap(
   embedding256: number[],
   synonymThreshold: number,
   premiseKeywords: string[],
-  query: string
+  query: string,
+  level: number
 ) {
   // Query for matching articles and their non-synonym keywords
   const { data: articleKeywords, error } = await supabase
@@ -642,6 +643,10 @@ async function getFallbackFilteredMap(
   const articleCount = nodes.filter(n => n.type === "article").length;
   const keywordCount = addedKeywords.size;
 
+  // Add community colors for clustering visualization
+  const mapData = { nodes, edges, articleCount, keywordCount };
+  const coloredResult = await addCommunityColors(supabase, mapData, level);
+
   console.log(
     "[map] Fallback filtered map for query:",
     query,
@@ -653,8 +658,8 @@ async function getFallbackFilteredMap(
   );
 
   return NextResponse.json({
-    nodes,
-    edges,
+    nodes: coloredResult.nodes,
+    edges: coloredResult.edges,
     searchMeta: {
       query,
       synonymThreshold,
@@ -731,7 +736,8 @@ async function getHubFilteredMap(
   supabase: ReturnType<typeof createServerClient>,
   hubLabel: string,
   communityKeywords: string[],
-  _includeNeighbors: boolean // TODO: add neighbor computation if needed
+  _includeNeighbors: boolean, // TODO: add neighbor computation if needed
+  level: number
 ) {
   // Find articles that have any of the community keywords
   // We need to batch this query to avoid .in() limits
@@ -826,6 +832,10 @@ async function getHubFilteredMap(
   const articleCount = articleInfo.size;
   const keywordCount = addedKeywords.size;
 
+  // Add community colors for clustering visualization
+  const mapData = { nodes, edges, articleCount, keywordCount };
+  const coloredResult = await addCommunityColors(supabase, mapData, level);
+
   console.log(
     `[map] Hub filtered map for "${hubLabel}":`,
     articleCount,
@@ -837,8 +847,8 @@ async function getHubFilteredMap(
   );
 
   return NextResponse.json({
-    nodes,
-    edges,
+    nodes: coloredResult.nodes,
+    edges: coloredResult.edges,
     searchMeta: {
       query: hubLabel,
       synonymThreshold: 0,
@@ -865,7 +875,7 @@ async function getFilteredMap(
   // For hub keywords, use exact keyword matching instead of semantic similarity
   if (expandedKeywords && expandedKeywords.length > 0) {
     console.log(`[map] Hub keyword "${query}" expanded to ${expandedKeywords.length} community members`);
-    return getHubFilteredMap(supabase, query, expandedKeywords, includeNeighbors);
+    return getHubFilteredMap(supabase, query, expandedKeywords, includeNeighbors, level);
   }
 
   // Generate embedding for query and truncate to 256 dims
@@ -915,7 +925,7 @@ async function getFilteredMap(
   // (just without keyword↔keyword similarity edges)
   if (typedPairs.length === 0) {
     console.log("[map] No keyword pairs found, falling back to article-keyword graph");
-    return getFallbackFilteredMap(supabase, embedding256, synonymThreshold, uniquePremiseKeywords, query);
+    return getFallbackFilteredMap(supabase, embedding256, synonymThreshold, uniquePremiseKeywords, query, level);
   }
 
   // Collect unique keyword texts and one representative ID per text
@@ -959,7 +969,10 @@ async function getFilteredMap(
   }
 
   // Reuse the same graph building logic
-  const result = buildSemanticMapData(typedPairs, keywordTextToEmbedding, includeNeighbors);
+  let result = buildSemanticMapData(typedPairs, keywordTextToEmbedding, includeNeighbors);
+
+  // Add community colors for clustering visualization
+  result = await addCommunityColors(supabase, result, level);
 
   console.log(
     "[map] Filtered map for query:",

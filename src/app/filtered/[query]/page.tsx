@@ -15,34 +15,41 @@ export default function FilteredPage({ params }: Props) {
   const searchParams = useSearchParams();
 
   const initialThreshold = parseFloat(searchParams.get("threshold") || "0.75");
+  const level = parseInt(searchParams.get("level") || "3", 10);
   const [searchQuery, setSearchQuery] = useState("");
   const [synonymThreshold, setSynonymThreshold] = useState(initialThreshold);
 
   const filterQuery = decodeURIComponent(query);
 
+  function buildParams() {
+    const params = new URLSearchParams();
+    params.set("threshold", synonymThreshold.toString());
+    params.set("level", level.toString());
+    return params;
+  }
+
   function handleFilter() {
     if (searchQuery.trim()) {
-      const params = new URLSearchParams();
-      params.set("threshold", synonymThreshold.toString());
-      router.push(`/filtered/${encodeURIComponent(searchQuery.trim())}?${params}`);
+      router.push(`/filtered/${encodeURIComponent(searchQuery.trim())}?${buildParams()}`);
       setSearchQuery("");
     }
   }
 
   function handleKeywordClick(keyword: string) {
-    const params = new URLSearchParams();
-    params.set("threshold", synonymThreshold.toString());
-    router.push(`/filtered/${encodeURIComponent(keyword)}?${params}`);
+    router.push(`/filtered/${encodeURIComponent(keyword)}?${buildParams()}`);
   }
 
   function handleClearFilter() {
-    router.push("/");
+    const params = new URLSearchParams();
+    params.set("level", level.toString());
+    router.push(`/?${params}`);
   }
 
   function handleThresholdChange(newThreshold: number) {
     setSynonymThreshold(newThreshold);
     const params = new URLSearchParams();
     params.set("threshold", newThreshold.toString());
+    params.set("level", level.toString());
     router.replace(`/filtered/${encodeURIComponent(filterQuery)}?${params}`, { scroll: false });
   }
 
