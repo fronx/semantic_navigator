@@ -314,11 +314,11 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
       .attr("stroke", "#fff")
       .attr("stroke-width", 1.5);
 
-    // Click handler for expandable nodes (articles only - chunks are leaf nodes)
+    // Double-click handler for expandable nodes (articles only - chunks are leaf nodes)
     const expandableNodes = node.filter((d) => d.type === "article");
     expandableNodes
       .style("cursor", "pointer")
-      .on("click", (event, d) => {
+      .on("dblclick", (event, d) => {
         event.stopPropagation();
         // Extract the UUID from the node id (format: "art:uuid")
         const dbNodeId = d.id.replace(/^art:/, "");
