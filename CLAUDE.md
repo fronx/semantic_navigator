@@ -18,6 +18,21 @@ Run scripts with: `npm run script scripts/<script>.ts` (auto-loads .env.local)
 
 **Note**: Let the user run `npm run dev` in their own terminal rather than running it from Claude. This keeps the dev server visible and controllable by the user.
 
+## Testing
+
+**Run tests regularly** to verify changes don't break existing functionality:
+
+```bash
+npm test -- --run    # Run all tests once
+npx tsc --noEmit     # Type check
+```
+
+**When to run tests:**
+- After modifying `src/lib/parser.ts` - parser tests verify frontmatter stripping and hierarchy generation
+- After modifying `src/lib/ingestion.ts` - verify node creation logic
+- Before committing significant changes
+- After fixing bugs (add a regression test first, verify it fails, then fix)
+
 **Scripts**: When writing scripts, reuse existing lib functions (e.g., `createServerClient` from `src/lib/supabase`, `generateEmbedding` from `src/lib/embeddings`) rather than reimplementing them. Check existing scripts in `scripts/` for patterns.
 
 ## Architecture
