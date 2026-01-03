@@ -252,7 +252,16 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
       )
       .force("charge", d3.forceManyBody().strength(-300))
       .force("center", d3.forceCenter(width / 2, height / 2))
-      .force("collision", d3.forceCollide<SimNode>().radius((d) => getNodeRadius(d) + 10));
+      .force("collision", d3.forceCollide<SimNode>().radius((d) => getNodeRadius(d) + 10))
+      // Keep simulation energized until positions settle
+      .alphaTarget(0.2)
+      .alphaDecay(0.02);
+
+    // Track simulation settling state
+    let coolingDown = false;
+    let tickCount = 0;
+    const maxTicks = 2000; // Safety limit
+    const velocityThreshold = 0.5; // pixels per tick
 
     // Draw edges
     const link = g
@@ -276,7 +285,11 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
         d3
           .drag<SVGGElement, SimNode>()
           .on("start", (event, d) => {
-            if (!event.active) simulation.alphaTarget(0.3).restart();
+            if (!event.active) {
+              coolingDown = false; // Reset so simulation can settle again
+              tickCount = 0;
+              simulation.alphaTarget(0.3).restart();
+            }
             d.fx = d.x;
             d.fy = d.y;
           })
@@ -346,6 +359,34 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
       .on("mouseleave", () => tooltip.hide());
 
     simulation.on("tick", () => {
+      tickCount++;
+
+      // Check if top movers have settled (after initial warm-up)
+      if (tickCount > 50) {
+        const velocities = nodes
+          .map(d => Math.sqrt((d.vx ?? 0) ** 2 + (d.vy ?? 0) ** 2))
+          .sort((a, b) => b - a); // Descending order
+
+        // Check the 95th percentile (top 5% of movers)
+        const p95Index = Math.floor(nodes.length * 0.05);
+        const topVelocity = velocities[p95Index] ?? velocities[0] ?? 0;
+
+        if (topVelocity < velocityThreshold && !coolingDown) {
+          // Positions settled - let simulation cool down
+          coolingDown = true;
+          simulation.alphaTarget(0);
+        }
+
+        // Stop once cooled down and velocities are low
+        if (coolingDown && simulation.alpha() < 0.05 && topVelocity < velocityThreshold) {
+          simulation.stop();
+        }
+
+        if (tickCount >= maxTicks) {
+          simulation.stop();
+        }
+      }
+
       link
         .attr("x1", (d) => (d.source as SimNode).x!)
         .attr("y1", (d) => (d.source as SimNode).y!)
