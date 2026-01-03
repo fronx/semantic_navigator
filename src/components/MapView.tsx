@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import * as d3 from "d3";
 import type { MapData, MapNode, MapEdge } from "@/app/api/map/route";
 import { colors } from "@/lib/colors";
@@ -40,6 +41,8 @@ interface Props {
 }
 
 export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordClick, onClearFilter }: Props) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const svgRef = useRef<SVGSVGElement>(null);
   const nodeSelectionRef = useRef<d3.Selection<SVGGElement, SimNode, SVGGElement, unknown> | null>(null);
   const linkSelectionRef = useRef<d3.Selection<SVGLineElement, SimLink, SVGGElement, unknown> | null>(null);
@@ -47,8 +50,23 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showNeighbors, setShowNeighbors] = useState(false);
+  const [showEdges, setShowEdges] = useState(false); // Hidden by default
+  const [clustered, setClustered] = useState(false); // Default to clustered view
   const [expandingId, setExpandingId] = useState<string | null>(null);
-  const [maxEdges, setMaxEdges] = useState(1);
+
+  const maxEdges = parseInt(searchParams.get("density") || "6", 10);
+  const [pendingMaxEdges, setPendingMaxEdges] = useState(maxEdges);
+
+  const setMaxEdges = (value: number) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("density", String(value));
+    router.replace(`?${params}`, { scroll: false });
+  };
+
+  // Sync pending value when URL param changes
+  useEffect(() => {
+    setPendingMaxEdges(maxEdges);
+  }, [maxEdges]);
 
   // Handle node click to expand and show children (articles expand to chunks)
   const handleNodeExpand = async (graphNodeId: string, dbNodeId: string) => {
@@ -165,6 +183,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
     const params = new URLSearchParams();
     params.set("neighbors", String(showNeighbors));
     params.set("maxEdges", String(maxEdges));
+    params.set("clustered", String(clustered));
     if (filterQuery) {
       params.set("query", filterQuery);
       params.set("synonymThreshold", String(synonymThreshold));
@@ -185,7 +204,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
         setError(err.message);
         setLoading(false);
       });
-  }, [showNeighbors, maxEdges, filterQuery, synonymThreshold]);
+  }, [showNeighbors, maxEdges, clustered, filterQuery, synonymThreshold]);
 
   useEffect(() => {
     if (!data || !svgRef.current) return;
@@ -229,12 +248,26 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
       return sizeScale(d.size || 400); // article
     };
 
+    // Color scale for keyword communities (37 communities, use extended palette)
+    const communityColorScale = d3.scaleOrdinal(d3.schemeTableau10);
+
     const getNodeColor = (d: SimNode) => {
       switch (d.type) {
         case "article": return colors.node.article;
         case "chunk": return colors.node.chunk;
-        default: return colors.node.keyword;
+        default:
+          // Color keywords by community, grey if no community
+          if (d.communityId !== undefined) {
+            return communityColorScale(String(d.communityId));
+          }
+          return "#9ca3af"; // grey-400 for unclustered
       }
+    };
+
+    // Helper to check if a node is a hub (has collapsed community members)
+    const isHubNode = (node: SimNode | string) => {
+      if (typeof node === "string") return false;
+      return node.communityMembers && node.communityMembers.length > 0;
     };
 
     // Force simulation
@@ -245,10 +278,18 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
         d3
           .forceLink<SimNode, SimLink>(links)
           .id((d) => d.id)
-          // Shorter distance for high-similarity keyword pairs
-          .distance((d) => d.similarity ? 40 + (1 - d.similarity) * 100 : 120)
-          // Stronger pull for high-similarity pairs
-          .strength((d) => d.similarity ? 0.5 + d.similarity * 0.5 : 0.3)
+          // Shorter distance for high-similarity keyword pairs, longer for hub connections
+          .distance((d) => {
+            const hubConnected = isHubNode(d.source) || isHubNode(d.target);
+            const baseDistance = d.similarity ? 40 + (1 - d.similarity) * 100 : 120;
+            return hubConnected ? baseDistance * 2 : baseDistance;
+          })
+          // Weaker pull for hub connections to prevent hairballing
+          .strength((d) => {
+            const hubConnected = isHubNode(d.source) || isHubNode(d.target);
+            const baseStrength = d.similarity ? 0.5 + d.similarity * 0.5 : 0.3;
+            return hubConnected ? baseStrength * 0.3 : baseStrength;
+          })
       )
       .force("charge", d3.forceManyBody().strength(-300))
       .force("center", d3.forceCenter(width / 2, height / 2))
@@ -263,11 +304,27 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
     const maxTicks = 2000; // Safety limit
     const velocityThreshold = 0.5; // pixels per tick
 
-    // Draw edges
-    const link = g
-      .append("g")
+    // Draw cluster hulls (before edges and nodes so they're in background)
+    const hullGroup = g.append("g").attr("class", "hulls");
+    const hullLabelGroup = g.append("g").attr("class", "hull-labels");
+
+    // Group keyword nodes by community
+    const communitiesMap = new Map<number, SimNode[]>();
+    for (const n of nodes) {
+      if (n.type === "keyword" && n.communityId !== undefined) {
+        if (!communitiesMap.has(n.communityId)) {
+          communitiesMap.set(n.communityId, []);
+        }
+        communitiesMap.get(n.communityId)!.push(n);
+      }
+    }
+
+    // Draw edges (hidden by default)
+    const linkGroup = g.append("g")
       .attr("stroke", colors.edge.default)
-      .attr("stroke-opacity", 0.4)
+      .attr("stroke-opacity", showEdges ? 0.4 : 0);
+
+    const link = linkGroup
       .selectAll<SVGLineElement, SimLink>("line")
       .data(links)
       .join("line")
@@ -325,18 +382,8 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
         handleNodeExpand(d.id, dbNodeId);
       });
 
-    // Labels for keyword nodes only (articles show on hover)
+    // Keyword nodes - no permanent labels, show on hover
     const keywordNodes = node.filter((d) => d.type === "keyword");
-
-    keywordNodes
-      .append("text")
-      .text((d) => d.label)
-      .attr("x", (d) => getNodeRadius(d) + 8)
-      .attr("y", 4)
-      .attr("font-size", "24px")
-      .attr("fill", "currentColor")
-      .attr("class", "dark:fill-zinc-300 fill-zinc-700")
-      .style("pointer-events", "none");
 
     // Click handler for keyword nodes
     if (onKeywordClick) {
@@ -348,13 +395,27 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
         });
     }
 
-    // Hover tooltip for article/chunk nodes (rendered last = on top)
+    // Hover tooltip for all non-article nodes
     const tooltip = createHoverTooltip(g);
+
+    // Article/chunk nodes show label on hover
     node
       .filter((d) => d.type === "article" || d.type === "chunk")
       .on("mouseenter", (_, d) => {
         const offset = getNodeRadius(d) * 0.7;
         tooltip.show(d.label, d.x! + offset + 8, d.y! + offset + 16);
+      })
+      .on("mouseleave", () => tooltip.hide());
+
+    // Keyword nodes show label on hover (with community members if hub)
+    keywordNodes
+      .on("mouseenter", (_, d) => {
+        const memberCount = d.communityMembers?.length || 0;
+        const label = memberCount > 0
+          ? `${d.label} (+${memberCount}: ${d.communityMembers!.slice(0, 3).join(", ")}${memberCount > 3 ? "..." : ""})`
+          : d.label;
+        const offset = getNodeRadius(d) * 0.7;
+        tooltip.show(label, d.x! + offset + 8, d.y! + offset + 16);
       })
       .on("mouseleave", () => tooltip.hide());
 
@@ -394,12 +455,62 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
         .attr("y2", (d) => (d.target as SimNode).y!);
 
       node.attr("transform", (d) => `translate(${d.x},${d.y})`);
+
+      // Update cluster hulls
+      hullGroup.selectAll("path").remove();
+      hullLabelGroup.selectAll("text").remove();
+
+      for (const [communityId, members] of communitiesMap) {
+        if (members.length < 3) continue; // Need at least 3 points for hull
+
+        const points: [number, number][] = members.map(n => [n.x!, n.y!]);
+        const hull = d3.polygonHull(points);
+
+        if (hull) {
+          // Expand hull slightly for padding
+          const centroid = d3.polygonCentroid(hull);
+          const expandedHull = hull.map(([x, y]) => {
+            const dx = x - centroid[0];
+            const dy = y - centroid[1];
+            const scale = 1.3; // 30% padding
+            return [centroid[0] + dx * scale, centroid[1] + dy * scale] as [number, number];
+          });
+
+          // Draw hull
+          hullGroup
+            .append("path")
+            .attr("d", `M${expandedHull.join("L")}Z`)
+            .attr("fill", communityColorScale(String(communityId)))
+            .attr("fill-opacity", 0.08)
+            .attr("stroke", communityColorScale(String(communityId)))
+            .attr("stroke-opacity", 0.3)
+            .attr("stroke-width", 2);
+
+          // Find hub label for this community
+          const hub = members.find(m => m.communityMembers && m.communityMembers.length > 0);
+          const label = hub?.label || members[0].label;
+
+          // Draw label at centroid
+          hullLabelGroup
+            .append("text")
+            .attr("x", centroid[0])
+            .attr("y", centroid[1])
+            .attr("text-anchor", "middle")
+            .attr("dominant-baseline", "middle")
+            .attr("font-size", "16px")
+            .attr("font-weight", "600")
+            .attr("fill", communityColorScale(String(communityId)))
+            .attr("fill-opacity", 0.7)
+            .style("pointer-events", "none")
+            .text(label);
+        }
+      }
     });
 
     return () => {
       simulation.stop();
     };
-  }, [data]);
+  }, [data, showEdges]);
 
   if (loading) {
     return (
@@ -469,11 +580,30 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
             type="range"
             min="1"
             max="10"
-            value={maxEdges}
-            onChange={(e) => setMaxEdges(parseInt(e.target.value, 10))}
+            value={pendingMaxEdges}
+            onChange={(e) => setPendingMaxEdges(parseInt(e.target.value, 10))}
+            onPointerUp={() => setMaxEdges(pendingMaxEdges)}
             className="w-20 h-1"
           />
-          <span className="w-4 text-center">{maxEdges}</span>
+          <span className="w-4 text-center">{pendingMaxEdges}</span>
+        </label>
+        <label className="flex items-center gap-1 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={clustered}
+            onChange={(e) => setClustered(e.target.checked)}
+            className="w-3 h-3"
+          />
+          Cluster synonyms
+        </label>
+        <label className="flex items-center gap-1 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={showEdges}
+            onChange={(e) => setShowEdges(e.target.checked)}
+            className="w-3 h-3"
+          />
+          Show edges
         </label>
         <label className="flex items-center gap-1 cursor-pointer">
           <input

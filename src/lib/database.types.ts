@@ -120,30 +120,72 @@ export type Database = {
           },
         ]
       }
+      keyword_similarities: {
+        Row: {
+          keyword_a_id: string
+          keyword_b_id: string
+          similarity: number
+        }
+        Insert: {
+          keyword_a_id: string
+          keyword_b_id: string
+          similarity: number
+        }
+        Update: {
+          keyword_a_id?: string
+          keyword_b_id?: string
+          similarity?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "keyword_similarities_keyword_a_id_fkey"
+            columns: ["keyword_a_id"]
+            isOneToOne: false
+            referencedRelation: "keywords"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "keyword_similarities_keyword_b_id_fkey"
+            columns: ["keyword_b_id"]
+            isOneToOne: false
+            referencedRelation: "keywords"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       keywords: {
         Row: {
+          community_id: number | null
           created_at: string | null
           embedding: string | null
           embedding_256: string | null
           id: string
+          is_community_hub: boolean | null
           keyword: string
           node_id: string
+          node_type: string | null
         }
         Insert: {
+          community_id?: number | null
           created_at?: string | null
           embedding?: string | null
           embedding_256?: string | null
           id?: string
+          is_community_hub?: boolean | null
           keyword: string
           node_id: string
+          node_type?: string | null
         }
         Update: {
+          community_id?: number | null
           created_at?: string | null
           embedding?: string | null
           embedding_256?: string | null
           id?: string
+          is_community_hub?: boolean | null
           keyword?: string
           node_id?: string
+          node_type?: string | null
         }
         Relationships: [
           {
@@ -157,12 +199,14 @@ export type Database = {
       }
       nodes: {
         Row: {
+          chunk_type: string | null
           content: string | null
           content_hash: string
           created_at: string | null
           dirty: boolean | null
           embedding: string | null
           header_level: number | null
+          heading_context: string[] | null
           id: string
           node_type: string
           source_path: string
@@ -170,12 +214,14 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          chunk_type?: string | null
           content?: string | null
           content_hash: string
           created_at?: string | null
           dirty?: boolean | null
           embedding?: string | null
           header_level?: number | null
+          heading_context?: string[] | null
           id?: string
           node_type: string
           source_path: string
@@ -183,12 +229,14 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          chunk_type?: string | null
           content?: string | null
           content_hash?: string
           created_at?: string | null
           dirty?: boolean | null
           embedding?: string | null
           header_level?: number | null
+          heading_context?: string[] | null
           id?: string
           node_type?: string
           source_path?: string
@@ -240,8 +288,56 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      get_article_keyword_graph: {
-        Args: { similarity_threshold?: number }
+      find_similar_keywords_for_node: {
+        Args: {
+          match_count?: number
+          min_similarity?: number
+          node_embedding: string
+        }
+        Returns: {
+          keyword: string
+          similarity: number
+        }[]
+      }
+      get_article_keyword_graph:
+        | {
+            Args: { max_edges_per_article?: number; min_similarity?: number }
+            Returns: {
+              article_id: string
+              article_path: string
+              article_size: number
+              keyword_id: string
+              keyword_text: string
+              similar_article_id: string
+              similar_article_path: string
+              similar_article_size: number
+              similar_keyword_id: string
+              similar_keyword_text: string
+              similarity: number
+            }[]
+          }
+        | {
+            Args: { similarity_threshold?: number }
+            Returns: {
+              article_id: string
+              article_path: string
+              article_size: number
+              keyword_id: string
+              keyword_text: string
+              similar_article_id: string
+              similar_article_path: string
+              similar_article_size: number
+              similar_keyword_id: string
+              similar_keyword_text: string
+              similarity: number
+            }[]
+          }
+      get_filtered_map: {
+        Args: {
+          keyword_similarity_threshold?: number
+          match_threshold?: number
+          query_embedding_256: string
+        }
         Returns: {
           article_id: string
           article_path: string

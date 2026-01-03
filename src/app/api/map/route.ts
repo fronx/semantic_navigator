@@ -7,6 +7,9 @@ export interface MapNode {
   type: "keyword" | "article" | "chunk";
   label: string;
   size?: number; // Content size (summary length) for scaling node radius
+  // Community info for hub keywords (when clustered=true)
+  communityId?: number;
+  communityMembers?: string[]; // Labels of other keywords in the community
 }
 
 export interface MapEdge {
@@ -56,6 +59,7 @@ interface SimilarityPair {
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const includeNeighbors = searchParams.get("neighbors") !== "false";
+  const clustered = searchParams.get("clustered") === "true";
   const query = searchParams.get("query");
   // synonymThreshold: keywords MORE similar than this to the query are filtered out
   // The query acts as a "premise" - we remove it and its synonyms to see remaining structure
@@ -106,7 +110,7 @@ export async function GET(request: Request) {
 
     // Fetch 256-dim embeddings in batches (Supabase has limits on .in() size)
     const keywordIds = [...keywordTextToId.values()];
-    const BATCH_SIZE = 500;
+    const BATCH_SIZE = 100; // Keep small to avoid headers overflow with UUIDs
 
     for (let i = 0; i < keywordIds.length; i += BATCH_SIZE) {
       const batch = keywordIds.slice(i, i + BATCH_SIZE);
@@ -131,7 +135,7 @@ export async function GET(request: Request) {
     }
   }
 
-  return buildSemanticMap(typedPairs, keywordTextToEmbedding, includeNeighbors);
+  return buildSemanticMap(supabase, typedPairs, keywordTextToEmbedding, includeNeighbors, clustered);
 }
 
 /**
@@ -254,12 +258,21 @@ function buildSemanticMapData(
   };
 }
 
-function buildSemanticMap(
+async function buildSemanticMap(
+  supabase: ReturnType<typeof createServerClient>,
   pairs: SimilarityPair[],
   keywordEmbeddings: Map<string, number[]>,
-  includeNeighbors: boolean
+  includeNeighbors: boolean,
+  clustered: boolean
 ) {
-  const result = buildSemanticMapData(pairs, keywordEmbeddings, includeNeighbors);
+  let result = buildSemanticMapData(pairs, keywordEmbeddings, includeNeighbors);
+
+  if (clustered) {
+    result = await collapseCommunitiesToHubs(supabase, result);
+  } else {
+    // Fetch community IDs for coloring (not collapsing)
+    result = await addCommunityColors(supabase, result);
+  }
 
   console.log(
     "[map] Loaded",
@@ -268,10 +281,219 @@ function buildSemanticMap(
     result.keywordCount,
     "keywords,",
     result.edges.length,
-    "edges"
+    "edges",
+    clustered ? "(clustered)" : ""
   );
 
   return NextResponse.json({ nodes: result.nodes, edges: result.edges });
+}
+
+/**
+ * Add community IDs to keyword nodes for coloring (without collapsing).
+ */
+async function addCommunityColors(
+  supabase: ReturnType<typeof createServerClient>,
+  mapData: { nodes: MapNode[]; edges: MapEdge[]; articleCount: number; keywordCount: number }
+) {
+  const keywordLabels = mapData.nodes
+    .filter(n => n.type === "keyword")
+    .map(n => n.label);
+
+  if (keywordLabels.length === 0) return mapData;
+
+  // Fetch community IDs in batches
+  const BATCH_SIZE = 100;
+  const communityByKeyword = new Map<string, number | null>();
+
+  for (let i = 0; i < keywordLabels.length; i += BATCH_SIZE) {
+    const batch = keywordLabels.slice(i, i + BATCH_SIZE);
+    const { data } = await supabase
+      .from("keywords")
+      .select("keyword, community_id")
+      .eq("node_type", "article")
+      .in("keyword", batch);
+
+    for (const kw of data || []) {
+      communityByKeyword.set(kw.keyword, kw.community_id);
+    }
+  }
+
+  // Add communityId to keyword nodes
+  const nodes = mapData.nodes.map(node => {
+    if (node.type !== "keyword") return node;
+    const communityId = communityByKeyword.get(node.label);
+    return communityId !== undefined && communityId !== null
+      ? { ...node, communityId }
+      : node;
+  });
+
+  return { ...mapData, nodes };
+}
+
+/**
+ * Collapse keyword communities to their hub representatives.
+ * Member keywords are merged into their hub, and edges are remapped.
+ */
+async function collapseCommunitiesToHubs(
+  supabase: ReturnType<typeof createServerClient>,
+  mapData: { nodes: MapNode[]; edges: MapEdge[]; articleCount: number; keywordCount: number }
+) {
+  // Get all keyword labels in the graph
+  const keywordLabels = mapData.nodes
+    .filter(n => n.type === "keyword")
+    .map(n => n.label);
+
+  if (keywordLabels.length === 0) {
+    return mapData;
+  }
+
+  // Fetch community info for these keywords (batch to avoid .in() limit)
+  const BATCH_SIZE = 100;
+  const keywords: Array<{ keyword: string; community_id: number | null; is_community_hub: boolean | null }> = [];
+
+  for (let i = 0; i < keywordLabels.length; i += BATCH_SIZE) {
+    const batch = keywordLabels.slice(i, i + BATCH_SIZE);
+    const { data, error } = await supabase
+      .from("keywords")
+      .select("keyword, community_id, is_community_hub")
+      .eq("node_type", "article")
+      .in("keyword", batch);
+
+    if (error) {
+      console.error("[map] Error fetching community info batch:", error);
+      continue;
+    }
+    if (data) keywords.push(...data);
+  }
+
+  if (keywords.length === 0) {
+    return mapData;
+  }
+
+  // Build lookup: keyword label -> { communityId, isHub }
+  const keywordInfo = new Map<string, { communityId: number | null; isHub: boolean }>();
+  for (const kw of keywords) {
+    keywordInfo.set(kw.keyword, {
+      communityId: kw.community_id,
+      isHub: kw.is_community_hub || false,
+    });
+  }
+
+  // Group keywords by community
+  const communities = new Map<number, string[]>();
+  const hubByKeyword = new Map<string, string>(); // member keyword -> hub keyword
+
+  for (const [label, info] of keywordInfo) {
+    if (info.communityId === null) {
+      // Isolated keyword - maps to itself
+      hubByKeyword.set(label, label);
+      continue;
+    }
+
+    if (!communities.has(info.communityId)) {
+      communities.set(info.communityId, []);
+    }
+    communities.get(info.communityId)!.push(label);
+  }
+
+  // Fetch actual hubs for all communities we found (hub might not be in visible graph)
+  const communityIds = [...communities.keys()];
+  const { data: hubData } = await supabase
+    .from("keywords")
+    .select("keyword, community_id")
+    .eq("node_type", "article")
+    .eq("is_community_hub", true)
+    .in("community_id", communityIds);
+
+  const hubByCommunity = new Map<number, string>();
+  for (const h of hubData || []) {
+    if (h.community_id !== null) {
+      hubByCommunity.set(h.community_id, h.keyword);
+    }
+  }
+
+  // For each community, map members to the actual hub
+  const communityMembers = new Map<string, string[]>(); // hub label -> member labels
+
+  for (const [communityId, members] of communities) {
+    const hub = hubByCommunity.get(communityId);
+    if (!hub) {
+      // No hub found - each keyword maps to itself
+      for (const m of members) hubByKeyword.set(m, m);
+      continue;
+    }
+
+    // Collect all visible members (excluding hub if it's visible)
+    const visibleMembers = members.filter(m => m !== hub);
+    communityMembers.set(hub, visibleMembers);
+    for (const m of members) {
+      hubByKeyword.set(m, hub);
+    }
+  }
+
+  // Build new node list: keep articles, replace keywords with hubs
+  const newNodes: MapNode[] = [];
+  const addedHubs = new Set<string>();
+
+  for (const node of mapData.nodes) {
+    if (node.type !== "keyword") {
+      newNodes.push(node);
+      continue;
+    }
+
+    const hubLabel = hubByKeyword.get(node.label) || node.label;
+    const hubNodeId = `kw:${hubLabel}`;
+
+    if (!addedHubs.has(hubLabel)) {
+      addedHubs.add(hubLabel);
+      const members = communityMembers.get(hubLabel) || [];
+      newNodes.push({
+        id: hubNodeId,
+        type: "keyword",
+        label: hubLabel,
+        communityId: keywordInfo.get(hubLabel)?.communityId ?? undefined,
+        communityMembers: members.length > 0 ? members : undefined,
+      });
+    }
+  }
+
+  // Remap edges to use hub keywords
+  const newEdges: MapEdge[] = [];
+  const edgeSet = new Set<string>();
+
+  for (const edge of mapData.edges) {
+    let source = edge.source;
+    let target = edge.target;
+
+    // Remap keyword nodes to their hubs
+    if (source.startsWith("kw:")) {
+      const label = source.slice(3);
+      const hubLabel = hubByKeyword.get(label) || label;
+      source = `kw:${hubLabel}`;
+    }
+    if (target.startsWith("kw:")) {
+      const label = target.slice(3);
+      const hubLabel = hubByKeyword.get(label) || label;
+      target = `kw:${hubLabel}`;
+    }
+
+    // Skip self-loops (can happen when members of same community were connected)
+    if (source === target) continue;
+
+    // Deduplicate
+    const edgeKey = [source, target].sort().join("-");
+    if (!edgeSet.has(edgeKey)) {
+      edgeSet.add(edgeKey);
+      newEdges.push({ source, target, similarity: edge.similarity });
+    }
+  }
+
+  return {
+    nodes: newNodes,
+    edges: newEdges,
+    articleCount: mapData.articleCount,
+    keywordCount: addedHubs.size,
+  };
 }
 
 /**
@@ -391,6 +613,166 @@ async function getFallbackFilteredMap(
 }
 
 /**
+ * Check if query matches a hub keyword and expand to include all community members.
+ * Returns the list of all keywords to search for (hub + members), or null if not a hub.
+ */
+async function expandHubKeyword(
+  supabase: ReturnType<typeof createServerClient>,
+  query: string
+): Promise<string[] | null> {
+  // Check if query is an exact match for a hub keyword
+  const { data: hubMatch } = await supabase
+    .from("keywords")
+    .select("keyword, community_id, is_community_hub")
+    .eq("node_type", "article")
+    .eq("keyword", query)
+    .eq("is_community_hub", true)
+    .single();
+
+  if (!hubMatch || hubMatch.community_id === null) {
+    return null;
+  }
+
+  // Get all community members
+  const { data: members } = await supabase
+    .from("keywords")
+    .select("keyword")
+    .eq("node_type", "article")
+    .eq("community_id", hubMatch.community_id);
+
+  if (!members || members.length === 0) {
+    return [query];
+  }
+
+  return members.map((m) => m.keyword);
+}
+
+/**
+ * Build a filtered map for a hub keyword by finding articles with any community member keyword.
+ * Shows all articles containing any of the community keywords, with those keywords excluded.
+ */
+async function getHubFilteredMap(
+  supabase: ReturnType<typeof createServerClient>,
+  hubLabel: string,
+  communityKeywords: string[],
+  _includeNeighbors: boolean // TODO: add neighbor computation if needed
+) {
+  // Find articles that have any of the community keywords
+  // We need to batch this query to avoid .in() limits
+  const BATCH_SIZE = 50;
+  const articleIds = new Set<string>();
+  const articleInfo = new Map<string, { path: string; size: number }>();
+
+  for (let i = 0; i < communityKeywords.length; i += BATCH_SIZE) {
+    const batch = communityKeywords.slice(i, i + BATCH_SIZE);
+    const { data: keywordsWithArticles } = await supabase
+      .from("keywords")
+      .select(`
+        keyword,
+        node_id,
+        nodes!inner (
+          id,
+          source_path,
+          summary,
+          node_type
+        )
+      `)
+      .eq("nodes.node_type", "article")
+      .in("keyword", batch);
+
+    for (const kw of keywordsWithArticles || []) {
+      if (!kw.nodes) continue;
+      const node = kw.nodes as { id: string; source_path: string; summary: string | null };
+      articleIds.add(node.id);
+      if (!articleInfo.has(node.id)) {
+        articleInfo.set(node.id, {
+          path: node.source_path,
+          size: node.summary?.length || 0,
+        });
+      }
+    }
+  }
+
+  if (articleIds.size === 0) {
+    console.log(`[map] No articles found for hub "${hubLabel}"`);
+    return NextResponse.json({
+      nodes: [],
+      edges: [],
+      searchMeta: { query: hubLabel, synonymThreshold: 0, filteredKeywordCount: 0, premiseKeywords: communityKeywords },
+    });
+  }
+
+  // Fetch all keywords for these articles (include community keywords - don't hide them)
+  const communitySet = new Set(communityKeywords);
+  const nodes: MapNode[] = [];
+  const edges: MapEdge[] = [];
+  const addedKeywords = new Set<string>();
+
+  // Add article nodes
+  for (const [articleId, info] of articleInfo) {
+    const artNodeId = `art:${articleId}`;
+    const label = info.path.split("/").pop()?.replace(".md", "") || info.path;
+    nodes.push({ id: artNodeId, type: "article", label, size: info.size });
+  }
+
+  // Fetch all keywords for these articles (batch the article IDs)
+  const articleIdArray = [...articleIds];
+  for (let i = 0; i < articleIdArray.length; i += BATCH_SIZE) {
+    const batch = articleIdArray.slice(i, i + BATCH_SIZE);
+    const { data: articleKeywords } = await supabase
+      .from("keywords")
+      .select("keyword, node_id")
+      .eq("node_type", "article")
+      .in("node_id", batch);
+
+    for (const kw of articleKeywords || []) {
+      const kwNodeId = `kw:${kw.keyword}`;
+      const artNodeId = `art:${kw.node_id}`;
+
+      // Add keyword node if not already added
+      // Mark community keywords so they can be styled differently if desired
+      if (!addedKeywords.has(kw.keyword)) {
+        addedKeywords.add(kw.keyword);
+        nodes.push({
+          id: kwNodeId,
+          type: "keyword",
+          label: kw.keyword,
+          // Mark as part of the filter community for potential styling
+          communityId: communitySet.has(kw.keyword) ? -1 : undefined,
+        });
+      }
+
+      // Add edge from article to keyword
+      edges.push({ source: artNodeId, target: kwNodeId });
+    }
+  }
+
+  const articleCount = articleInfo.size;
+  const keywordCount = addedKeywords.size;
+
+  console.log(
+    `[map] Hub filtered map for "${hubLabel}":`,
+    articleCount,
+    "articles,",
+    keywordCount,
+    "keywords (community has",
+    communityKeywords.length,
+    "members)"
+  );
+
+  return NextResponse.json({
+    nodes,
+    edges,
+    searchMeta: {
+      query: hubLabel,
+      synonymThreshold: 0,
+      filteredKeywordCount: keywordCount,
+      premiseKeywords: [], // Community keywords are shown, not hidden
+    },
+  });
+}
+
+/**
  * Build a filtered map by excluding keywords that are synonyms of the query.
  * The query acts as a "premise" - we factor it out to see the remaining structure.
  */
@@ -400,6 +782,15 @@ async function getFilteredMap(
   synonymThreshold: number,
   includeNeighbors: boolean
 ) {
+  // Check if query is a hub keyword - if so, expand to include all community members
+  const expandedKeywords = await expandHubKeyword(supabase, query);
+
+  // For hub keywords, use exact keyword matching instead of semantic similarity
+  if (expandedKeywords && expandedKeywords.length > 0) {
+    console.log(`[map] Hub keyword "${query}" expanded to ${expandedKeywords.length} community members`);
+    return getHubFilteredMap(supabase, query, expandedKeywords, includeNeighbors);
+  }
+
   // Generate embedding for query and truncate to 256 dims
   const fullEmbedding = await generateEmbedding(query);
   const embedding256 = truncateEmbedding(fullEmbedding, 256);
@@ -461,16 +852,24 @@ async function getFilteredMap(
     }
   }
 
-  // Fetch 256-dim embeddings for neighbor computation
+  // Fetch 256-dim embeddings for neighbor computation (batch to avoid headers overflow)
   let keywordTextToEmbedding = new Map<string, number[]>();
   if (includeNeighbors) {
     const keywordIds = [...keywordTextToId.values()];
-    const { data: keywordEmbeddings, error: embError } = await supabase
-      .from("keywords")
-      .select("id, keyword, embedding_256")
-      .in("id", keywordIds);
+    const BATCH_SIZE = 100;
 
-    if (!embError && keywordEmbeddings) {
+    for (let i = 0; i < keywordIds.length; i += BATCH_SIZE) {
+      const batch = keywordIds.slice(i, i + BATCH_SIZE);
+      const { data: keywordEmbeddings, error: embError } = await supabase
+        .from("keywords")
+        .select("id, keyword, embedding_256")
+        .in("id", batch);
+
+      if (embError) {
+        console.error("[map] Error fetching keyword embeddings batch:", embError);
+        continue;
+      }
+
       for (const kw of keywordEmbeddings || []) {
         if (kw.embedding_256) {
           const emb = typeof kw.embedding_256 === "string"
