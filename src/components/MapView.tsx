@@ -4,18 +4,20 @@ import { useEffect, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import * as d3 from "d3";
 import type { MapData, MapNode, MapEdge } from "@/app/api/map/route";
-import { colors } from "@/lib/colors";
-import { createHoverTooltip } from "@/lib/d3-utils";
+import {
+  type LayoutMode,
+  computeUmapLayout,
+  createForceSimulation,
+} from "@/lib/map-layout";
+import {
+  createRenderer,
+  addDragBehavior,
+  type SimNode,
+  type SimLink,
+  type MapRenderer,
+} from "@/lib/map-renderer";
 import { useMapSearch } from "@/hooks/useMapSearch";
 import { useMapFilterOpacity } from "@/hooks/useMapFilterOpacity";
-
-interface SimNode extends d3.SimulationNodeDatum, MapNode { }
-
-interface SimLink extends d3.SimulationLinkDatum<SimNode> {
-  source: SimNode | string;
-  target: SimNode | string;
-  similarity?: number;
-}
 
 interface SimilarKeyword {
   keyword: string;
@@ -53,13 +55,25 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
   const [showEdges, setShowEdges] = useState(false); // Hidden by default
   const [clustered, setClustered] = useState(false); // Default to clustered view
   const [expandingId, setExpandingId] = useState<string | null>(null);
+  const [umapProgress, setUmapProgress] = useState<number | null>(null);
 
+  // URL-persisted settings
   const maxEdges = parseInt(searchParams.get("density") || "6", 10);
   const [pendingMaxEdges, setPendingMaxEdges] = useState(maxEdges);
 
-  // Community resolution level: 0=coarsest (fewest clusters), 7=finest (most clusters)
   const level = parseInt(searchParams.get("level") || "3", 10);
   const [pendingLevel, setPendingLevel] = useState(level);
+
+  const layoutMode = (searchParams.get("layout") || "force") as LayoutMode;
+
+  // Dot size uses log scale: slider value -1 to 1 maps to 0.1x to 10x
+  // Default: 0 (center) = 1.0x
+  const dotSlider = parseFloat(searchParams.get("dotSize") || "0");
+  const dotSize = Math.pow(10, dotSlider); // Convert log slider to linear scale
+
+  // Fit mode: if true, layout fits within canvas with smaller elements
+  // If false (overflow), layout extends beyond canvas, need to zoom out
+  const fitMode = searchParams.get("fit") !== "false"; // Default to true (fit mode)
 
   const setMaxEdges = (value: number) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -73,6 +87,24 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
     router.replace(`?${params}`, { scroll: false });
   };
 
+  const setLayoutMode = (value: LayoutMode) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("layout", value);
+    router.replace(`?${params}`, { scroll: false });
+  };
+
+  const setDotSize = (value: number) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("dotSize", String(value));
+    router.replace(`?${params}`, { scroll: false });
+  };
+
+  const setFitMode = (value: boolean) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("fit", String(value));
+    router.replace(`?${params}`, { scroll: false });
+  };
+
   // Sync pending values when URL params change
   useEffect(() => {
     setPendingMaxEdges(maxEdges);
@@ -81,6 +113,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
   useEffect(() => {
     setPendingLevel(level);
   }, [level]);
+
 
   // Handle node click to expand and show children (articles expand to chunks)
   const handleNodeExpand = async (graphNodeId: string, dbNodeId: string) => {
@@ -224,236 +257,119 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
   useEffect(() => {
     if (!data || !svgRef.current) return;
 
-    const svg = d3.select(svgRef.current);
     const width = svgRef.current.clientWidth;
     const height = svgRef.current.clientHeight;
 
-    svg.selectAll("*").remove();
+    let cancelled = false;
 
-    const nodes: SimNode[] = data.nodes.map((n) => ({ ...n }));
-    const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-    const links: SimLink[] = data.edges
-      .map((e) => ({
-        source: nodeMap.get(e.source)!,
-        target: nodeMap.get(e.target)!,
-        similarity: e.similarity,
-      }))
-      .filter((l) => l.source && l.target);
+    if (layoutMode === "umap") {
+      // UMAP mode: build local nodes/links, update via UMAP progress
+      const nodes: SimNode[] = data.nodes.map((n) => ({ ...n }));
+      const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+      const links: SimLink[] = data.edges
+        .map((e) => ({
+          source: nodeMap.get(e.source)!,
+          target: nodeMap.get(e.target)!,
+          similarity: e.similarity,
+        }))
+        .filter((l) => l.source && l.target);
 
-    const g = svg.append("g");
-
-    // Zoom behavior
-    const zoom = d3.zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.1, 4])
-      .on("zoom", (event) => {
-        g.attr("transform", event.transform);
+      const renderer = createRenderer({
+        svg: svgRef.current,
+        nodes,
+        links,
+        showEdges,
+        dotScale: dotSize,
+        fit: fitMode,
+        callbacks: {
+          onNodeExpand: handleNodeExpand,
+          onKeywordClick,
+        },
       });
 
-    svg.call(zoom);
+      nodeSelectionRef.current = renderer.nodeSelection;
+      linkSelectionRef.current = renderer.linkSelection;
 
-    // Scale article radius by content size (sqrt for good visual spread)
-    const sizeScale = d3.scaleSqrt()
-      .domain([400, 2000]) // summary length range
-      .range([25, 80])
-      .clamp(true);
-
-    const getNodeRadius = (d: SimNode) => {
-      if (d.type === "keyword") return 18;
-      if (d.type === "chunk") return sizeScale((d.size || 150) * 0.5);
-      return sizeScale(d.size || 400); // article
-    };
-
-    // Color scale for keyword communities (37 communities, use extended palette)
-    const communityColorScale = d3.scaleOrdinal(d3.schemeTableau10);
-
-    const getNodeColor = (d: SimNode) => {
-      switch (d.type) {
-        case "article": return colors.node.article;
-        case "chunk": return colors.node.chunk;
-        default:
-          // Color keywords by community, grey if no community
-          if (d.communityId !== undefined) {
-            return communityColorScale(String(d.communityId));
+      computeUmapLayout(data.nodes, data.edges, width, height, {
+        fit: fitMode,
+        onProgress: ({ progress, positions }) => {
+          if (cancelled) return false;
+          setUmapProgress(progress);
+          for (const p of positions) {
+            const node = nodeMap.get(p.id);
+            if (node) {
+              node.x = p.x;
+              node.y = p.y;
+            }
           }
-          return "#9ca3af"; // grey-400 for unclustered
-      }
-    };
+          renderer.tick();
+        },
+      }).then(() => {
+        if (!cancelled) setUmapProgress(null);
+      });
 
-    // Helper to check if a node is a hub (has collapsed community members)
-    const isHubNode = (node: SimNode | string) => {
-      if (typeof node === "string") return false;
-      return node.communityMembers && node.communityMembers.length > 0;
-    };
+      return () => {
+        cancelled = true;
+        renderer.destroy();
+      };
+    }
 
-    // Force simulation
-    const simulation = d3
-      .forceSimulation<SimNode>(nodes)
-      .force(
-        "link",
-        d3
-          .forceLink<SimNode, SimLink>(links)
-          .id((d) => d.id)
-          // Shorter distance for high-similarity keyword pairs, longer for hub connections
-          .distance((d) => {
-            const hubConnected = isHubNode(d.source) || isHubNode(d.target);
-            const baseDistance = d.similarity ? 40 + (1 - d.similarity) * 100 : 120;
-            return hubConnected ? baseDistance * 2 : baseDistance;
-          })
-          // Weaker pull for hub connections to prevent hairballing
-          .strength((d) => {
-            const hubConnected = isHubNode(d.source) || isHubNode(d.target);
-            const baseStrength = d.similarity ? 0.5 + d.similarity * 0.5 : 0.3;
-            return hubConnected ? baseStrength * 0.3 : baseStrength;
-          })
-      )
-      .force("charge", d3.forceManyBody().strength(-300))
-      .force("center", d3.forceCenter(width / 2, height / 2))
-      .force("collision", d3.forceCollide<SimNode>().radius((d) => getNodeRadius(d) + 10))
-      // Keep simulation energized until positions settle
-      .alphaTarget(0.2)
-      .alphaDecay(0.02);
+    // Force simulation mode - use shared configuration
+    const { simulation, nodes, links } = createForceSimulation(
+      data.nodes,
+      data.edges,
+      width,
+      height,
+      { fit: fitMode }
+    );
 
-    // Track simulation settling state
+    const renderer = createRenderer({
+      svg: svgRef.current,
+      nodes: nodes as SimNode[],
+      links: links as SimLink[],
+      showEdges,
+      dotScale: dotSize,
+      fit: fitMode,
+      callbacks: {
+        onNodeExpand: handleNodeExpand,
+        onKeywordClick,
+      },
+    });
+
+    nodeSelectionRef.current = renderer.nodeSelection;
+    linkSelectionRef.current = renderer.linkSelection;
+
+    // Configure and start animated simulation (shared function returns stopped)
+    simulation.alphaTarget(0.2).alphaDecay(0.02).restart();
+
+    // Track simulation settling
     let coolingDown = false;
     let tickCount = 0;
-    const maxTicks = 2000; // Safety limit
-    const velocityThreshold = 0.5; // pixels per tick
+    const maxTicks = 2000;
+    const velocityThreshold = 0.5;
 
-    // Draw cluster hulls (before edges and nodes so they're in background)
-    const hullGroup = g.append("g").attr("class", "hulls");
-    const hullLabelGroup = g.append("g").attr("class", "hull-labels");
-
-    // Group keyword nodes by community
-    const communitiesMap = new Map<number, SimNode[]>();
-    for (const n of nodes) {
-      if (n.type === "keyword" && n.communityId !== undefined) {
-        if (!communitiesMap.has(n.communityId)) {
-          communitiesMap.set(n.communityId, []);
-        }
-        communitiesMap.get(n.communityId)!.push(n);
-      }
-    }
-
-    // Draw edges (hidden by default)
-    const linkGroup = g.append("g")
-      .attr("stroke", colors.edge.default)
-      .attr("stroke-opacity", showEdges ? 0.4 : 0);
-
-    const link = linkGroup
-      .selectAll<SVGLineElement, SimLink>("line")
-      .data(links)
-      .join("line")
-      .attr("stroke-width", 3);
-
-    linkSelectionRef.current = link;
-
-    // Draw nodes
-    const node = g
-      .append("g")
-      .selectAll<SVGGElement, SimNode>("g")
-      .data(nodes)
-      .join("g")
-      .call(
-        d3
-          .drag<SVGGElement, SimNode>()
-          .on("start", (event, d) => {
-            if (!event.active) {
-              coolingDown = false; // Reset so simulation can settle again
-              tickCount = 0;
-              simulation.alphaTarget(0.3).restart();
-            }
-            d.fx = d.x;
-            d.fy = d.y;
-          })
-          .on("drag", (event, d) => {
-            d.fx = event.x;
-            d.fy = event.y;
-          })
-          .on("end", (event, d) => {
-            if (!event.active) simulation.alphaTarget(0);
-            d.fx = null;
-            d.fy = null;
-          })
-      );
-
-    nodeSelectionRef.current = node;
-
-    // Circles for nodes
-    node
-      .append("circle")
-      .attr("r", getNodeRadius)
-      .attr("fill", getNodeColor)
-      .attr("stroke", "#fff")
-      .attr("stroke-width", 1.5);
-
-    // Double-click handler for expandable nodes (articles only - chunks are leaf nodes)
-    const expandableNodes = node.filter((d) => d.type === "article");
-    expandableNodes
-      .style("cursor", "pointer")
-      .on("dblclick", (event, d) => {
-        event.stopPropagation();
-        // Extract the UUID from the node id (format: "art:uuid")
-        const dbNodeId = d.id.replace(/^art:/, "");
-        handleNodeExpand(d.id, dbNodeId);
-      });
-
-    // Keyword nodes - no permanent labels, show on hover
-    const keywordNodes = node.filter((d) => d.type === "keyword");
-
-    // Click handler for keyword nodes
-    if (onKeywordClick) {
-      keywordNodes
-        .style("cursor", "pointer")
-        .on("click", (event, d) => {
-          event.stopPropagation();
-          onKeywordClick(d.label);
-        });
-    }
-
-    // Hover tooltip for all non-article nodes
-    const tooltip = createHoverTooltip(g);
-
-    // Article/chunk nodes show label on hover
-    node
-      .filter((d) => d.type === "article" || d.type === "chunk")
-      .on("mouseenter", (_, d) => {
-        const offset = getNodeRadius(d) * 0.7;
-        tooltip.show(d.label, d.x! + offset + 8, d.y! + offset + 16);
-      })
-      .on("mouseleave", () => tooltip.hide());
-
-    // Keyword nodes show label on hover (with community members if hub)
-    keywordNodes
-      .on("mouseenter", (_, d) => {
-        const memberCount = d.communityMembers?.length || 0;
-        const label = memberCount > 0
-          ? `${d.label} (+${memberCount}: ${d.communityMembers!.slice(0, 3).join(", ")}${memberCount > 3 ? "..." : ""})`
-          : d.label;
-        const offset = getNodeRadius(d) * 0.7;
-        tooltip.show(label, d.x! + offset + 8, d.y! + offset + 16);
-      })
-      .on("mouseleave", () => tooltip.hide());
+    // Add drag behavior for force mode
+    addDragBehavior(renderer.nodeSelection, simulation, () => {
+      coolingDown = false;
+      tickCount = 0;
+    });
 
     simulation.on("tick", () => {
       tickCount++;
 
-      // Check if top movers have settled (after initial warm-up)
       if (tickCount > 50) {
         const velocities = nodes
-          .map(d => Math.sqrt((d.vx ?? 0) ** 2 + (d.vy ?? 0) ** 2))
-          .sort((a, b) => b - a); // Descending order
+          .map((d) => Math.sqrt((d.vx ?? 0) ** 2 + (d.vy ?? 0) ** 2))
+          .sort((a, b) => b - a);
 
-        // Check the 95th percentile (top 5% of movers)
         const p95Index = Math.floor(nodes.length * 0.05);
         const topVelocity = velocities[p95Index] ?? velocities[0] ?? 0;
 
         if (topVelocity < velocityThreshold && !coolingDown) {
-          // Positions settled - let simulation cool down
           coolingDown = true;
           simulation.alphaTarget(0);
         }
 
-        // Stop once cooled down and velocities are low
         if (coolingDown && simulation.alpha() < 0.05 && topVelocity < velocityThreshold) {
           simulation.stop();
         }
@@ -463,69 +379,38 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
         }
       }
 
-      link
-        .attr("x1", (d) => (d.source as SimNode).x!)
-        .attr("y1", (d) => (d.source as SimNode).y!)
-        .attr("x2", (d) => (d.target as SimNode).x!)
-        .attr("y2", (d) => (d.target as SimNode).y!);
-
-      node.attr("transform", (d) => `translate(${d.x},${d.y})`);
-
-      // Update cluster hulls
-      hullGroup.selectAll("path").remove();
-      hullLabelGroup.selectAll("text").remove();
-
-      for (const [communityId, members] of communitiesMap) {
-        if (members.length < 3) continue; // Need at least 3 points for hull
-
-        const points: [number, number][] = members.map(n => [n.x!, n.y!]);
-        const hull = d3.polygonHull(points);
-
-        if (hull) {
-          // Expand hull slightly for padding
-          const centroid = d3.polygonCentroid(hull);
-          const expandedHull = hull.map(([x, y]) => {
-            const dx = x - centroid[0];
-            const dy = y - centroid[1];
-            const scale = 1.3; // 30% padding
-            return [centroid[0] + dx * scale, centroid[1] + dy * scale] as [number, number];
-          });
-
-          // Draw hull
-          hullGroup
-            .append("path")
-            .attr("d", `M${expandedHull.join("L")}Z`)
-            .attr("fill", communityColorScale(String(communityId)))
-            .attr("fill-opacity", 0.08)
-            .attr("stroke", communityColorScale(String(communityId)))
-            .attr("stroke-opacity", 0.3)
-            .attr("stroke-width", 2);
-
-          // Find hub label for this community
-          const hub = members.find(m => m.communityMembers && m.communityMembers.length > 0);
-          const label = hub?.label || members[0].label;
-
-          // Draw label at centroid
-          hullLabelGroup
-            .append("text")
-            .attr("x", centroid[0])
-            .attr("y", centroid[1])
-            .attr("text-anchor", "middle")
-            .attr("dominant-baseline", "middle")
-            .attr("font-size", "16px")
-            .attr("font-weight", "600")
-            .attr("fill", communityColorScale(String(communityId)))
-            .attr("fill-opacity", 0.7)
-            .style("pointer-events", "none")
-            .text(label);
+      // In fit mode, scale positions to fit within canvas
+      if (fitMode && nodes.length > 0) {
+        const padding = 100;
+        const xs = nodes.map((n) => n.x ?? 0);
+        const ys = nodes.map((n) => n.y ?? 0);
+        const minX = Math.min(...xs);
+        const maxX = Math.max(...xs);
+        const minY = Math.min(...ys);
+        const maxY = Math.max(...ys);
+        const rangeX = maxX - minX || 1;
+        const rangeY = maxY - minY || 1;
+        const scale = Math.min(
+          (width - 2 * padding) / rangeX,
+          (height - 2 * padding) / rangeY,
+          1 // Don't scale up if already fits
+        );
+        const cx = (minX + maxX) / 2;
+        const cy = (minY + maxY) / 2;
+        for (const node of nodes) {
+          node.x = width / 2 + ((node.x ?? 0) - cx) * scale;
+          node.y = height / 2 + ((node.y ?? 0) - cy) * scale;
         }
       }
+
+      renderer.tick();
     });
 
     return () => {
       simulation.stop();
+      renderer.destroy();
     };
-  }, [data, showEdges]);
+  }, [data, showEdges, layoutMode, dotSize, fitMode]);
 
   if (loading) {
     return (
@@ -590,6 +475,20 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
           </span>
         )}
         <label className="flex items-center gap-2 ml-auto">
+          <span>Layout:</span>
+          <select
+            value={layoutMode}
+            onChange={(e) => setLayoutMode(e.target.value as LayoutMode)}
+            className="bg-zinc-100 dark:bg-zinc-800 rounded px-1 py-0.5"
+          >
+            <option value="force">Force</option>
+            <option value="umap">UMAP</option>
+          </select>
+          {umapProgress !== null && (
+            <span className="text-blue-500">{Math.round(umapProgress)}%</span>
+          )}
+        </label>
+        <label className="flex items-center gap-2">
           <span>Resolution:</span>
           <input
             type="range"
@@ -614,6 +513,19 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
             className="w-20 h-1"
           />
           <span className="w-4 text-center">{pendingMaxEdges}</span>
+        </label>
+        <label className="flex items-center gap-2">
+          <span>Size:</span>
+          <input
+            type="range"
+            min="-1"
+            max="1"
+            step="0.1"
+            value={dotSlider}
+            onChange={(e) => setDotSize(parseFloat(e.target.value))}
+            className="w-20 h-1"
+          />
+          <span className="w-8 text-center">{dotSize.toFixed(1)}x</span>
         </label>
         <label className="flex items-center gap-1 cursor-pointer">
           <input
@@ -641,6 +553,15 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
             className="w-3 h-3"
           />
           Neighbor links
+        </label>
+        <label className="flex items-center gap-1 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={fitMode}
+            onChange={(e) => setFitMode(e.target.checked)}
+            className="w-3 h-3"
+          />
+          Fit canvas
         </label>
       </div>
       <svg

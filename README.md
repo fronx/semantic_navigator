@@ -30,6 +30,16 @@ A navigable semantic database for personal knowledge bases. Relationships are de
 npm install
 ```
 
+**Note:** The map view uses `umapper`, a local package. Clone it alongside this repo:
+
+```bash
+cd ..
+git clone <umapper-repo-url> umapper
+cd umapper && npm install && npm run build:lib
+```
+
+See [docs/guides/local-npm-packages.md](docs/guides/local-npm-packages.md) for details.
+
 ### 2. Set up Supabase
 
 Create a project at [supabase.com](https://supabase.com), then:

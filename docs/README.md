@@ -1,5 +1,9 @@
 # Documentation
 
+## Guides
+
+- [Local NPM Packages](guides/local-npm-packages.md) - Developing with locally checked-out packages (umapper)
+
 ## Architecture
 
 ### Features
