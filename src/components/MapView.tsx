@@ -62,7 +62,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showNeighbors, setShowNeighbors] = useState(true);
-  const [edgeOpacity, setEdgeOpacity] = useState(0.4);
+  const [edgeOpacity, setEdgeOpacity] = useState(0.6);
   const [hullOpacity, setHullOpacity] = useState(0.1);
   const [edgeCurve, setEdgeCurve] = useState(0.25); // 0-0.7, using circular arcs
   const [curveMethod, setCurveMethod] = useState<CurveMethod>("hybrid");
