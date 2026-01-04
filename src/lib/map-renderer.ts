@@ -187,8 +187,8 @@ function computeEdgeCurveDirections(
 }
 
 /**
- * Compute a curved SVG path for an edge using quadratic Bezier.
- * Control point is offset perpendicular to the edge midpoint.
+ * Compute a curved SVG path for an edge using a true circular arc.
+ * Uses the sagitta (arc height) to compute radius, then draws with SVG A command.
  *
  * @param direction - Curve direction: 1 or -1, determines which side the arc bows toward
  */
@@ -204,19 +204,31 @@ function computeCurvedPath(link: SimLink, curveIntensity: number, direction: num
 
   const dx = x2 - x1;
   const dy = y2 - y1;
-  const length = Math.sqrt(dx * dx + dy * dy);
-  if (length === 0) return `M ${x1},${y1} L ${x2},${y2}`;
+  const chordLength = Math.sqrt(dx * dx + dy * dy);
+  if (chordLength === 0) return `M ${x1},${y1} L ${x2},${y2}`;
 
-  // Midpoint
-  const mx = (x1 + x2) / 2;
-  const my = (y1 + y2) / 2;
+  // Sagitta (arc height) - perpendicular distance from chord midpoint to arc apex
+  const sagitta = chordLength * curveIntensity * direction;
+  const absSagitta = Math.abs(sagitta);
 
-  // Perpendicular offset using precomputed direction
-  const offset = length * curveIntensity * direction;
-  const cx = mx + (-dy / length) * offset;
-  const cy = my + (dx / length) * offset;
+  // For very small curves, use a straight line to avoid numerical issues
+  if (absSagitta < 0.1) {
+    return `M ${x1},${y1} L ${x2},${y2}`;
+  }
 
-  return `M ${x1},${y1} Q ${cx},${cy} ${x2},${y2}`;
+  // Radius from chord length L and sagitta h: r = (L²/4 + h²) / (2h)
+  const radius = (chordLength * chordLength / 4 + absSagitta * absSagitta) / (2 * absSagitta);
+
+  // Sweep flag: 1 = clockwise, 0 = counter-clockwise
+  // When sagitta > 0, arc bulges "left" of the P1→P2 direction (counter-clockwise)
+  // When sagitta < 0, arc bulges "right" (clockwise)
+  const sweepFlag = sagitta < 0 ? 1 : 0;
+
+  // Large arc flag: 0 = minor arc (< 180°), 1 = major arc (> 180°)
+  // We always want the minor arc
+  const largeArcFlag = 0;
+
+  return `M ${x1},${y1} A ${radius},${radius} 0 ${largeArcFlag},${sweepFlag} ${x2},${y2}`;
 }
 
 /**
