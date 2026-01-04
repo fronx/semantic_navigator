@@ -95,49 +95,76 @@ export async function GET(request: Request) {
 
   const typedPairs = pairs as SimilarityPair[];
 
-  // Only fetch embeddings if we need them for neighbor computation
-  let keywordTextToEmbedding = new Map<string, number[]>();
+  // Collect unique keyword texts and article IDs
+  const keywordTextToId = new Map<string, string>();
+  const articleIds = new Set<string>();
+  for (const pair of typedPairs) {
+    if (!keywordTextToId.has(pair.keyword_text)) {
+      keywordTextToId.set(pair.keyword_text, pair.keyword_id);
+    }
+    if (!keywordTextToId.has(pair.similar_keyword_text)) {
+      keywordTextToId.set(pair.similar_keyword_text, pair.similar_keyword_id);
+    }
+    articleIds.add(pair.article_id);
+    articleIds.add(pair.similar_article_id);
+  }
 
-  if (includeNeighbors) {
-    // Collect unique keyword texts and one representative ID per text
-    const keywordTextToId = new Map<string, string>();
-    for (const pair of typedPairs) {
-      if (!keywordTextToId.has(pair.keyword_text)) {
-        keywordTextToId.set(pair.keyword_text, pair.keyword_id);
-      }
-      if (!keywordTextToId.has(pair.similar_keyword_text)) {
-        keywordTextToId.set(pair.similar_keyword_text, pair.similar_keyword_id);
-      }
+  const BATCH_SIZE = 100;
+
+  // Fetch keyword embeddings (256-dim) - needed for article-keyword similarity
+  const keywordTextToEmbedding = new Map<string, number[]>();
+  const keywordIds = [...keywordTextToId.values()];
+  for (let i = 0; i < keywordIds.length; i += BATCH_SIZE) {
+    const batch = keywordIds.slice(i, i + BATCH_SIZE);
+    const { data: keywordEmbeddings, error: embError } = await supabase
+      .from("keywords")
+      .select("id, keyword, embedding_256")
+      .in("id", batch);
+
+    if (embError) {
+      console.error("[map] Error fetching keyword embeddings:", embError);
+      return NextResponse.json({ error: embError.message }, { status: 500 });
     }
 
-    // Fetch 256-dim embeddings in batches (Supabase has limits on .in() size)
-    const keywordIds = [...keywordTextToId.values()];
-    const BATCH_SIZE = 100; // Keep small to avoid headers overflow with UUIDs
-
-    for (let i = 0; i < keywordIds.length; i += BATCH_SIZE) {
-      const batch = keywordIds.slice(i, i + BATCH_SIZE);
-      const { data: keywordEmbeddings, error: embError } = await supabase
-        .from("keywords")
-        .select("id, keyword, embedding_256")
-        .in("id", batch);
-
-      if (embError) {
-        console.error("[map] Error fetching keyword embeddings:", embError);
-        return NextResponse.json({ error: embError.message }, { status: 500 });
+    for (const kw of keywordEmbeddings || []) {
+      if (kw.embedding_256) {
+        const emb = typeof kw.embedding_256 === "string"
+          ? JSON.parse(kw.embedding_256)
+          : kw.embedding_256;
+        keywordTextToEmbedding.set(kw.keyword, emb);
       }
+    }
+  }
 
-      for (const kw of keywordEmbeddings || []) {
-        if (kw.embedding_256) {
-          const emb = typeof kw.embedding_256 === "string"
-            ? JSON.parse(kw.embedding_256)
-            : kw.embedding_256;
-          keywordTextToEmbedding.set(kw.keyword, emb);
+  // Fetch article embeddings (1536-dim) and truncate to 256-dim
+  // Used for computing article-keyword similarity scores
+  const articleIdToEmbedding = new Map<string, number[]>();
+  const articleIdArray = [...articleIds];
+  for (let i = 0; i < articleIdArray.length; i += BATCH_SIZE) {
+    const batch = articleIdArray.slice(i, i + BATCH_SIZE);
+    const { data: articleData, error: artError } = await supabase
+      .from("nodes")
+      .select("id, embedding")
+      .in("id", batch);
+
+    if (artError) {
+      console.error("[map] Error fetching article embeddings:", artError);
+      // Non-fatal: continue without article-keyword similarity
+    } else {
+      for (const art of articleData || []) {
+        if (art.embedding) {
+          const fullEmb = typeof art.embedding === "string"
+            ? JSON.parse(art.embedding)
+            : art.embedding;
+          // Truncate to 256-dim to match keyword embeddings
+          const emb256 = truncateEmbedding(fullEmb, 256);
+          articleIdToEmbedding.set(art.id, emb256);
         }
       }
     }
   }
 
-  return buildSemanticMap(supabase, typedPairs, keywordTextToEmbedding, includeNeighbors, clustered, level);
+  return buildSemanticMap(supabase, typedPairs, keywordTextToEmbedding, articleIdToEmbedding, includeNeighbors, clustered, level);
 }
 
 /**
@@ -189,6 +216,7 @@ function computeKNearestNeighbors(
 function buildSemanticMapData(
   pairs: SimilarityPair[],
   keywordEmbeddings: Map<string, number[]>,
+  articleEmbeddings: Map<string, number[]>,
   includeNeighbors: boolean
 ) {
   const articleNodes = new Map<string, MapNode>();
@@ -222,6 +250,16 @@ function buildSemanticMapData(
     }
   }
 
+  // Compute article-keyword similarity using embeddings
+  function getArticleKeywordSimilarity(articleId: string, keywordText: string): number | undefined {
+    const artEmb = articleEmbeddings.get(articleId);
+    const kwEmb = keywordEmbeddings.get(keywordText);
+    if (artEmb && kwEmb) {
+      return cosineSimilarity(artEmb, kwEmb);
+    }
+    return undefined;
+  }
+
   for (const pair of pairs) {
     // Create nodes for both articles and keywords
     const art1Id = addArticleNode(pair.article_id, pair.article_path, pair.article_size);
@@ -229,9 +267,11 @@ function buildSemanticMapData(
     const kw1Id = addKeywordNode(pair.keyword_text);
     const kw2Id = addKeywordNode(pair.similar_keyword_text);
 
-    // Create edges: article → keyword (ownership)
-    addEdge(art1Id, kw1Id);
-    addEdge(art2Id, kw2Id);
+    // Create edges: article → keyword with similarity score
+    const sim1 = getArticleKeywordSimilarity(pair.article_id, pair.keyword_text);
+    const sim2 = getArticleKeywordSimilarity(pair.similar_article_id, pair.similar_keyword_text);
+    addEdge(art1Id, kw1Id, sim1);
+    addEdge(art2Id, kw2Id, sim2);
 
     // Create edge: keyword ↔ keyword (semantic similarity)
     // Skip if same keyword text (would be a self-loop after deduplication)
@@ -264,11 +304,12 @@ async function buildSemanticMap(
   supabase: ReturnType<typeof createServerClient>,
   pairs: SimilarityPair[],
   keywordEmbeddings: Map<string, number[]>,
+  articleEmbeddings: Map<string, number[]>,
   includeNeighbors: boolean,
   clustered: boolean,
   level: number
 ) {
-  let result = buildSemanticMapData(pairs, keywordEmbeddings, includeNeighbors);
+  let result = buildSemanticMapData(pairs, keywordEmbeddings, articleEmbeddings, includeNeighbors);
 
   if (clustered) {
     result = await collapseCommunitiesToHubs(supabase, result, level);
@@ -968,8 +1009,41 @@ async function getFilteredMap(
     }
   }
 
+  // Collect unique article IDs and fetch their embeddings
+  const articleIds = new Set<string>();
+  for (const pair of typedPairs) {
+    articleIds.add(pair.article_id);
+    articleIds.add(pair.similar_article_id);
+  }
+
+  // Fetch article embeddings (1536-dim) and truncate to 256-dim
+  const articleIdToEmbedding = new Map<string, number[]>();
+  const articleIdArray = [...articleIds];
+  const ARTICLE_BATCH_SIZE = 100;
+  for (let i = 0; i < articleIdArray.length; i += ARTICLE_BATCH_SIZE) {
+    const batch = articleIdArray.slice(i, i + ARTICLE_BATCH_SIZE);
+    const { data: articleData, error: artError } = await supabase
+      .from("nodes")
+      .select("id, embedding")
+      .in("id", batch);
+
+    if (artError) {
+      console.error("[map] Error fetching article embeddings:", artError);
+    } else {
+      for (const art of articleData || []) {
+        if (art.embedding) {
+          const fullEmb = typeof art.embedding === "string"
+            ? JSON.parse(art.embedding)
+            : art.embedding;
+          const emb256 = truncateEmbedding(fullEmb, 256);
+          articleIdToEmbedding.set(art.id, emb256);
+        }
+      }
+    }
+  }
+
   // Reuse the same graph building logic
-  let result = buildSemanticMapData(typedPairs, keywordTextToEmbedding, includeNeighbors);
+  let result = buildSemanticMapData(typedPairs, keywordTextToEmbedding, articleIdToEmbedding, includeNeighbors);
 
   // Add community colors for clustering visualization
   result = await addCommunityColors(supabase, result, level);

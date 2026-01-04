@@ -75,6 +75,17 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
   // If false (overflow), layout extends beyond canvas, need to zoom out
   const fitMode = searchParams.get("fit") !== "false"; // Default to true (fit mode)
 
+  // UMAP force balance tuning (for debugging layout convergence)
+  // Experiments show repulsion=100 gives balanced article/keyword distribution (ratio ~1.03)
+  // See lab/graph-layout/README.md for details
+  const attractionStrength = searchParams.get("attraction")
+    ? parseFloat(searchParams.get("attraction")!)
+    : undefined; // undefined = library default (1.0)
+  const repulsionStrength = parseFloat(searchParams.get("repulsion") || "100");
+  const minAttractiveScale = searchParams.get("minAttrScale")
+    ? parseFloat(searchParams.get("minAttrScale")!)
+    : undefined; // undefined = default (50). With minDist=20, creates 1003px exclusion zone!
+
   const setMaxEdges = (value: number) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("density", String(value));
@@ -292,6 +303,9 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
 
       computeUmapLayout(data.nodes, data.edges, width, height, {
         fit: fitMode,
+        attractionStrength,
+        repulsionStrength,
+        minAttractiveScale,
         onProgress: ({ progress, positions }) => {
           if (cancelled) return false;
           setUmapProgress(progress);

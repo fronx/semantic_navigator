@@ -126,6 +126,12 @@ export function centerPositions(
 export interface UmapLayoutOptions {
   /** If true, scale positions to fit canvas. If false, center without scaling (overflow). */
   fit?: boolean;
+  /** Attraction strength multiplier (default: 1.0). Higher values pull connected nodes together more strongly. */
+  attractionStrength?: number;
+  /** Repulsion strength multiplier (default: spread value, so 200). Lower values reduce drift. */
+  repulsionStrength?: number;
+  /** Scale for minimum attractive distance (default: 50). With minDist=20, this creates 1003px exclusion zone! Use ~1 for tighter attraction. */
+  minAttractiveScale?: number;
   onProgress?: (progress: LayoutProgress) => void | boolean;
 }
 
@@ -146,7 +152,7 @@ export async function computeUmapLayout(
   const opts: UmapLayoutOptions = typeof options === "function"
     ? { onProgress: options, fit: false }
     : options ?? {};
-  const { fit = false, onProgress } = opts;
+  const { fit = false, attractionStrength, repulsionStrength, minAttractiveScale, onProgress } = opts;
 
   const transform = fit
     ? (pos: LayoutPosition[]) => scalePositions(pos, width, height)
@@ -154,10 +160,15 @@ export async function computeUmapLayout(
 
   const knn = buildKnnFromEdges(nodes, edges);
 
+  console.log("[UMAP] Layout params:", { attractionStrength, repulsionStrength, minAttractiveScale });
+
   const finalPositions = await umapLayout(knn, {
     minDist: 20.0,
     spread: 200.0,
     epochs: 1000,
+    attractionStrength,
+    repulsionStrength,
+    minAttractiveScale,
     // Progress callback settings for live rendering
     progressInterval: 0,      // Report as often as possible
     skipInitialUpdates: 0,    // Don't skip any updates
@@ -184,6 +195,8 @@ export async function computeUmapLayoutRaw(
     minDist?: number;
     spread?: number;
     epochs?: number;
+    attractionStrength?: number;
+    repulsionStrength?: number;
     onProgress?: (progress: { epoch: number; progress: number }) => void | boolean;
   } = {}
 ): Promise<LayoutPosition[]> {
@@ -193,6 +206,8 @@ export async function computeUmapLayoutRaw(
     minDist: options.minDist ?? 20.0,
     spread: options.spread ?? 200.0,
     epochs: options.epochs ?? 500,
+    attractionStrength: options.attractionStrength,
+    repulsionStrength: options.repulsionStrength,
     progressInterval: 100,
     onProgress: options.onProgress
       ? ({ progress, epoch }) => options.onProgress!({ epoch, progress })
