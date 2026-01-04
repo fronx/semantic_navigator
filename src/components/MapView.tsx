@@ -61,26 +61,26 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
   const [data, setData] = useState<MapData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showNeighbors, setShowNeighbors] = useState(false);
-  const [edgeOpacity, setEdgeOpacity] = useState(0); // 0-1, hidden by default
-  const [hullOpacity, setHullOpacity] = useState(0); // 0-1, hidden by default
+  const [showNeighbors, setShowNeighbors] = useState(true);
+  const [edgeOpacity, setEdgeOpacity] = useState(0.4);
+  const [hullOpacity, setHullOpacity] = useState(0.1);
   const [clustered, setClustered] = useState(false); // Default to clustered view
   const [expandingId, setExpandingId] = useState<string | null>(null);
   const [umapProgress, setUmapProgress] = useState<number | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   // URL-persisted settings
-  const maxEdges = parseInt(searchParams.get("density") || "6", 10);
+  const maxEdges = parseInt(searchParams.get("density") || "10", 10);
   const [pendingMaxEdges, setPendingMaxEdges] = useState(maxEdges);
 
-  const level = parseInt(searchParams.get("level") || "3", 10);
+  const level = parseInt(searchParams.get("level") || "7", 10);
   const [pendingLevel, setPendingLevel] = useState(level);
 
   const layoutMode = (searchParams.get("layout") || "force") as LayoutMode;
 
   // Dot size uses log scale: slider value -1 to 1 maps to 0.1x to 10x
-  // Default: 0 (center) = 1.0x
-  const dotSlider = parseFloat(searchParams.get("dotSize") || "0");
+  // Default: -0.2 = 0.63x
+  const dotSlider = parseFloat(searchParams.get("dotSize") || "-0.2");
   const dotSize = Math.pow(10, dotSlider); // Convert log slider to linear scale
 
   // Immediate params: visual settings that update without relayout
@@ -92,7 +92,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
 
   // Fit mode: if true, layout fits within canvas with smaller elements
   // If false (overflow), layout extends beyond canvas, need to zoom out
-  const fitMode = searchParams.get("fit") !== "false"; // Default to true (fit mode)
+  const fitMode = searchParams.get("fit") === "true"; // Default to false (overflow mode)
 
   // UMAP force balance tuning (for debugging layout convergence)
   // Experiments show repulsion=100 gives balanced article/keyword distribution (ratio ~1.03)
