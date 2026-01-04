@@ -61,7 +61,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showNeighbors, setShowNeighbors] = useState(false);
-  const [showEdges, setShowEdges] = useState(false); // Hidden by default
+  const [edgeOpacity, setEdgeOpacity] = useState(0); // 0-1, hidden by default
   const [hullOpacity, setHullOpacity] = useState(0); // 0-1, hidden by default
   const [clustered, setClustered] = useState(false); // Default to clustered view
   const [expandingId, setExpandingId] = useState<string | null>(null);
@@ -84,7 +84,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
   // Immediate params: visual settings that update without relayout
   const immediateParams = useLatestRef<ImmediateParams>({
     dotScale: dotSize,
-    showEdges,
+    edgeOpacity,
     hullOpacity,
   });
 
@@ -448,7 +448,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
     if (!rendererRef.current) return;
     rendererRef.current.updateVisuals();
     rendererRef.current.tick(); // Re-render hull labels with new font size
-  }, [dotSize, showEdges, hullOpacity]);
+  }, [dotSize, edgeOpacity, hullOpacity]);
 
   if (loading) {
     return (
@@ -586,14 +586,17 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
           />
           Cluster synonyms
         </label>
-        <label className="flex items-center gap-1 cursor-pointer">
+        <label className="flex items-center gap-2">
+          <span>Edges:</span>
           <input
-            type="checkbox"
-            checked={showEdges}
-            onChange={(e) => setShowEdges(e.target.checked)}
-            className="w-3 h-3"
+            type="range"
+            min="0"
+            max="1"
+            step="0.1"
+            value={edgeOpacity}
+            onChange={(e) => setEdgeOpacity(parseFloat(e.target.value))}
+            className="w-16 h-1"
           />
-          Show edges
         </label>
         <label className="flex items-center gap-1 cursor-pointer">
           <input

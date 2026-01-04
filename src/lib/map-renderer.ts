@@ -41,7 +41,7 @@ export interface MapRenderer {
  */
 export interface ImmediateParams {
   dotScale: number;
-  showEdges: boolean;
+  edgeOpacity: number;
   hullOpacity: number;
 }
 
@@ -160,7 +160,7 @@ export function createRenderer(options: RendererOptions): MapRenderer {
 
   const linkGroup = g.append("g")
     .attr("stroke", colors.edge.default)
-    .attr("stroke-opacity", immediateParams.current.showEdges ? 0.4 : 0);
+    .attr("stroke-opacity", immediateParams.current.edgeOpacity * 0.4);
 
   const linkSelection = linkGroup
     .selectAll<SVGLineElement, SimLink>("line")
@@ -290,8 +290,8 @@ export function createRenderer(options: RendererOptions): MapRenderer {
       .select("circle")
       .attr("r", (d) => getNodeRadius(d, params.dotScale) * visualScale);
 
-    // Update edge visibility
-    linkGroup.attr("stroke-opacity", params.showEdges ? 0.4 : 0);
+    // Update edge opacity
+    linkGroup.attr("stroke-opacity", params.edgeOpacity * 0.4);
 
     // Update hull opacity
     hullRenderer.update(params.hullOpacity);
