@@ -25,8 +25,8 @@ export interface RendererCallbacks {
 export interface MapRenderer {
   /** Update node/link positions (call on each tick) */
   tick: () => void;
-  /** Update circle sizes without relayout (reads from dotScaleRef) */
-  updateCircleSizes: () => void;
+  /** Update all visual attributes without relayout (reads from immediateParams ref) */
+  updateVisuals: () => void;
   /** Get node selection for external styling (search highlighting) */
   nodeSelection: d3.Selection<SVGGElement, SimNode, SVGGElement, unknown>;
   /** Get link selection for external styling */
@@ -35,17 +35,24 @@ export interface MapRenderer {
   destroy: () => void;
 }
 
+/**
+ * Visual parameters that can be updated without relayout.
+ * Pass as a ref so updates are reflected immediately.
+ */
+export interface ImmediateParams {
+  dotScale: number;
+  showEdges: boolean;
+  hullOpacity: number;
+}
+
 interface RendererOptions {
   svg: SVGSVGElement;
   nodes: SimNode[];
   links: SimLink[];
-  showEdges: boolean;
-  dotScaleRef: { current: number };
+  immediateParams: { current: ImmediateParams };
   initialZoom?: number; // Initial zoom level (default 1.0)
   /** If true, layout fits canvas - use smaller visual elements. If false (overflow mode), use larger elements. */
   fit?: boolean;
-  /** Hull opacity 0-1 (default 0 = hidden) */
-  hullOpacity?: number;
   callbacks: RendererCallbacks;
 }
 
@@ -112,7 +119,7 @@ function getNodeColor(d: SimNode, blendedColors: Map<string, string>): string {
  * Sets up D3 selections and returns tick function for position updates.
  */
 export function createRenderer(options: RendererOptions): MapRenderer {
-  const { svg: svgElement, nodes, links, showEdges, dotScaleRef, initialZoom = 1, fit = false, hullOpacity = 0, callbacks } = options;
+  const { svg: svgElement, nodes, links, immediateParams, initialZoom = 1, fit = false, callbacks } = options;
 
   // In fit mode, scale down visual elements since we're not zoomed out
   // Overflow mode assumes ~0.4x zoom, so fit mode uses 0.4x visual scale
@@ -148,12 +155,12 @@ export function createRenderer(options: RendererOptions): MapRenderer {
   const communitiesMap = groupNodesByCommunity(nodes);
 
   // Draw layers (order matters: hulls -> labels -> edges -> nodes)
-  const hullRenderer = createHullRenderer({ parent: g, communitiesMap, visualScale, opacity: hullOpacity });
+  const hullRenderer = createHullRenderer({ parent: g, communitiesMap, visualScale, opacity: immediateParams.current.hullOpacity });
   const hullLabelGroup = g.append("g").attr("class", "hull-labels");
 
   const linkGroup = g.append("g")
     .attr("stroke", colors.edge.default)
-    .attr("stroke-opacity", showEdges ? 0.4 : 0);
+    .attr("stroke-opacity", immediateParams.current.showEdges ? 0.4 : 0);
 
   const linkSelection = linkGroup
     .selectAll<SVGLineElement, SimLink>("line")
@@ -170,7 +177,7 @@ export function createRenderer(options: RendererOptions): MapRenderer {
   // Draw node circles
   nodeSelection
     .append("circle")
-    .attr("r", (d) => getNodeRadius(d, dotScaleRef.current) * visualScale)
+    .attr("r", (d) => getNodeRadius(d, immediateParams.current.dotScale) * visualScale)
     .attr("fill", (d) => getNodeColor(d, blendedColors))
     .attr("stroke", "#fff")
     .attr("stroke-width", 1.5 * visualScale);
@@ -181,7 +188,7 @@ export function createRenderer(options: RendererOptions): MapRenderer {
   nodeSelection
     .filter((d) => d.type === "article" || d.type === "chunk")
     .on("mouseenter", (_, d) => {
-      const offset = getNodeRadius(d, dotScaleRef.current) * visualScale * 0.7;
+      const offset = getNodeRadius(d, immediateParams.current.dotScale) * visualScale * 0.7;
       tooltip.show(d.label, d.x! + offset + 8, d.y! + offset + 16);
     })
     .on("mouseleave", () => tooltip.hide());
@@ -193,7 +200,7 @@ export function createRenderer(options: RendererOptions): MapRenderer {
       const label = memberCount > 0
         ? `${d.label} (+${memberCount}: ${d.communityMembers!.slice(0, 3).join(", ")}${memberCount > 3 ? "..." : ""})`
         : d.label;
-      const offset = getNodeRadius(d, dotScaleRef.current) * visualScale * 0.7;
+      const offset = getNodeRadius(d, immediateParams.current.dotScale) * visualScale * 0.7;
       tooltip.show(label, d.x! + offset + 8, d.y! + offset + 16);
     })
     .on("mouseleave", () => tooltip.hide());
@@ -249,7 +256,7 @@ export function createRenderer(options: RendererOptions): MapRenderer {
         const hub = members.find((m) => m.communityMembers && m.communityMembers.length > 0);
         const label = hub?.label || members[0].label;
         const words = label.split(/\s+/);
-        const fontSize = 60 * dotScaleRef.current * visualScale;
+        const fontSize = 60 * immediateParams.current.dotScale * visualScale;
         const lineHeight = fontSize;
 
         const textEl = hullLabelGroup
@@ -274,15 +281,25 @@ export function createRenderer(options: RendererOptions): MapRenderer {
     }
   }
 
-  function updateCircleSizes() {
+  /** Update all visual attributes without relayout (reads from immediateParams ref) */
+  function updateVisuals() {
+    const params = immediateParams.current;
+
+    // Update circle sizes
     nodeSelection
       .select("circle")
-      .attr("r", (d) => getNodeRadius(d, dotScaleRef.current) * visualScale);
+      .attr("r", (d) => getNodeRadius(d, params.dotScale) * visualScale);
+
+    // Update edge visibility
+    linkGroup.attr("stroke-opacity", params.showEdges ? 0.4 : 0);
+
+    // Update hull opacity
+    hullRenderer.update(params.hullOpacity);
   }
 
   return {
     tick,
-    updateCircleSizes,
+    updateVisuals,
     nodeSelection,
     linkSelection,
     destroy: () => {

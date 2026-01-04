@@ -15,6 +15,7 @@ import {
   type SimNode,
   type SimLink,
   type MapRenderer,
+  type ImmediateParams,
 } from "@/lib/map-renderer";
 import { useMapSearch } from "@/hooks/useMapSearch";
 import { useMapFilterOpacity } from "@/hooks/useMapFilterOpacity";
@@ -79,7 +80,13 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
   // Default: 0 (center) = 1.0x
   const dotSlider = parseFloat(searchParams.get("dotSize") || "0");
   const dotSize = Math.pow(10, dotSlider); // Convert log slider to linear scale
-  const dotSizeRef = useLatestRef(dotSize);
+
+  // Immediate params: visual settings that update without relayout
+  const immediateParams = useLatestRef<ImmediateParams>({
+    dotScale: dotSize,
+    showEdges,
+    hullOpacity,
+  });
 
   // Fit mode: if true, layout fits within canvas with smaller elements
   // If false (overflow), layout extends beyond canvas, need to zoom out
@@ -299,10 +306,8 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
         svg: svgRef.current,
         nodes,
         links,
-        showEdges,
-        dotScaleRef: dotSizeRef,
+        immediateParams,
         fit: fitMode,
-        hullOpacity,
         callbacks: {
           onNodeExpand: handleNodeExpand,
           onKeywordClick,
@@ -353,10 +358,8 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
       svg: svgRef.current,
       nodes: nodes as SimNode[],
       links: links as SimLink[],
-      showEdges,
-      dotScaleRef: dotSizeRef,
+      immediateParams,
       fit: fitMode,
-      hullOpacity,
       callbacks: {
         onNodeExpand: handleNodeExpand,
         onKeywordClick,
@@ -438,14 +441,14 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
       simulation.stop();
       renderer.destroy();
     };
-  }, [data, showEdges, layoutMode, fitMode, hullOpacity]);
+  }, [data, layoutMode, fitMode]);
 
-  // Update circle sizes without relayout when dotSize changes
+  // Update visuals without relayout when immediate params change
   useEffect(() => {
     if (!rendererRef.current) return;
-    rendererRef.current.updateCircleSizes();
+    rendererRef.current.updateVisuals();
     rendererRef.current.tick(); // Re-render hull labels with new font size
-  }, [dotSize]);
+  }, [dotSize, showEdges, hullOpacity]);
 
   if (loading) {
     return (
