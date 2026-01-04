@@ -116,10 +116,83 @@ function getNodeColor(d: SimNode, blendedColors: Map<string, string>): string {
 }
 
 /**
+ * Compute curve directions for edges based on angular resolution.
+ * For each node, sorts incident edges by angle and assigns alternating
+ * directions so adjacent edges curve opposite ways, spreading them apart.
+ *
+ * Returns a Map from link to direction (-1 or 1).
+ */
+function computeEdgeCurveDirections(
+  nodes: SimNode[],
+  links: SimLink[]
+): Map<SimLink, number> {
+  // Build adjacency: node id -> edges with the other endpoint
+  const adjacency = new Map<string, Array<{ link: SimLink; other: SimNode }>>();
+
+  for (const node of nodes) {
+    adjacency.set(node.id, []);
+  }
+
+  for (const link of links) {
+    const source = link.source as SimNode;
+    const target = link.target as SimNode;
+    adjacency.get(source.id)?.push({ link, other: target });
+    adjacency.get(target.id)?.push({ link, other: source });
+  }
+
+  // Track direction votes per edge (each endpoint votes)
+  const edgeVotes = new Map<SimLink, { votes: number[]; degrees: number[] }>();
+  for (const link of links) {
+    edgeVotes.set(link, { votes: [], degrees: [] });
+  }
+
+  // For each node, sort edges by angle and assign alternating directions
+  for (const node of nodes) {
+    const edges = adjacency.get(node.id)!;
+    if (edges.length === 0) continue;
+
+    // Sort by angle to other endpoint
+    edges.sort((a, b) => {
+      const angleA = Math.atan2((a.other.y ?? 0) - (node.y ?? 0), (a.other.x ?? 0) - (node.x ?? 0));
+      const angleB = Math.atan2((b.other.y ?? 0) - (node.y ?? 0), (b.other.x ?? 0) - (node.x ?? 0));
+      return angleA - angleB;
+    });
+
+    // Alternate directions around the node
+    edges.forEach(({ link }, i) => {
+      const baseDir = (i % 2 === 0) ? 1 : -1;
+      const vote = edgeVotes.get(link)!;
+      vote.votes.push(baseDir);
+      vote.degrees.push(edges.length);
+    });
+  }
+
+  // Resolve votes: if both endpoints agree, use that direction
+  // If they conflict, prefer the higher-degree node's vote (hubs matter more)
+  const directions = new Map<SimLink, number>();
+  for (const [link, { votes, degrees }] of edgeVotes) {
+    if (votes.length === 0) {
+      directions.set(link, 1);
+    } else if (votes.length === 1) {
+      directions.set(link, votes[0]);
+    } else if (votes[0] === votes[1]) {
+      directions.set(link, votes[0]);
+    } else {
+      // Conflict: prefer higher-degree node's vote
+      directions.set(link, degrees[0] >= degrees[1] ? votes[0] : votes[1]);
+    }
+  }
+
+  return directions;
+}
+
+/**
  * Compute a curved SVG path for an edge using quadratic Bezier.
  * Control point is offset perpendicular to the edge midpoint.
+ *
+ * @param direction - Curve direction: 1 or -1, determines which side the arc bows toward
  */
-function computeCurvedPath(link: SimLink, curveIntensity: number): string {
+function computeCurvedPath(link: SimLink, curveIntensity: number, direction: number): string {
   const source = link.source as SimNode;
   const target = link.target as SimNode;
   const x1 = source.x!, y1 = source.y!;
@@ -138,9 +211,8 @@ function computeCurvedPath(link: SimLink, curveIntensity: number): string {
   const mx = (x1 + x2) / 2;
   const my = (y1 + y2) / 2;
 
-  // Perpendicular offset (alternate direction based on ID comparison)
-  const sign = source.id < target.id ? 1 : -1;
-  const offset = length * curveIntensity * sign;
+  // Perpendicular offset using precomputed direction
+  const offset = length * curveIntensity * direction;
   const cx = mx + (-dy / length) * offset;
   const cy = my + (dx / length) * offset;
 
@@ -183,6 +255,10 @@ export function createRenderer(options: RendererOptions): MapRenderer {
 
   // Precompute blended colors
   const blendedColors = computeBlendedColors(nodes, links);
+
+  // Precompute edge curve directions for angular resolution
+  // (will be recomputed on first tick when positions are more stable)
+  let edgeCurveDirections: Map<SimLink, number> | null = null;
 
   // Group keyword nodes by community for hulls
   const communitiesMap = groupNodesByCommunity(nodes);
@@ -263,8 +339,13 @@ export function createRenderer(options: RendererOptions): MapRenderer {
 
   // Tick function to update positions
   function tick() {
+    // Compute edge curve directions on first tick (positions are stable by then)
+    if (!edgeCurveDirections) {
+      edgeCurveDirections = computeEdgeCurveDirections(nodes, links);
+    }
+
     // Update link positions (curved paths)
-    linkSelection.attr("d", (d) => computeCurvedPath(d, immediateParams.current.edgeCurve));
+    linkSelection.attr("d", (d) => computeCurvedPath(d, immediateParams.current.edgeCurve, edgeCurveDirections!.get(d) ?? 1));
 
     // Update node positions
     nodeSelection.attr("transform", (d) => `translate(${d.x},${d.y})`);
@@ -324,7 +405,7 @@ export function createRenderer(options: RendererOptions): MapRenderer {
     linkGroup.attr("stroke-opacity", params.edgeOpacity * 0.4);
 
     // Update edge curves
-    linkSelection.attr("d", (d) => computeCurvedPath(d, params.edgeCurve));
+    linkSelection.attr("d", (d) => computeCurvedPath(d, params.edgeCurve, edgeCurveDirections?.get(d) ?? 1));
 
     // Update hull opacity
     hullRenderer.update(params.hullOpacity);
