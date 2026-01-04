@@ -53,6 +53,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
   const [error, setError] = useState<string | null>(null);
   const [showNeighbors, setShowNeighbors] = useState(false);
   const [showEdges, setShowEdges] = useState(false); // Hidden by default
+  const [hullOpacity, setHullOpacity] = useState(0); // 0-1, hidden by default
   const [clustered, setClustered] = useState(false); // Default to clustered view
   const [expandingId, setExpandingId] = useState<string | null>(null);
   const [umapProgress, setUmapProgress] = useState<number | null>(null);
@@ -292,6 +293,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
         showEdges,
         dotScale: dotSize,
         fit: fitMode,
+        hullOpacity,
         callbacks: {
           onNodeExpand: handleNodeExpand,
           onKeywordClick,
@@ -344,6 +346,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
       showEdges,
       dotScale: dotSize,
       fit: fitMode,
+      hullOpacity,
       callbacks: {
         onNodeExpand: handleNodeExpand,
         onKeywordClick,
@@ -424,7 +427,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
       simulation.stop();
       renderer.destroy();
     };
-  }, [data, showEdges, layoutMode, dotSize, fitMode]);
+  }, [data, showEdges, layoutMode, dotSize, fitMode, hullOpacity]);
 
   if (loading) {
     return (
@@ -540,6 +543,18 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
             className="w-20 h-1"
           />
           <span className="w-8 text-center">{dotSize.toFixed(1)}x</span>
+        </label>
+        <label className="flex items-center gap-2">
+          <span>Hulls:</span>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.1"
+            value={hullOpacity}
+            onChange={(e) => setHullOpacity(parseFloat(e.target.value))}
+            className="w-16 h-1"
+          />
         </label>
         <label className="flex items-center gap-1 cursor-pointer">
           <input

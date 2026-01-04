@@ -7,6 +7,7 @@ import * as d3 from "d3";
 import type { MapNode } from "@/app/api/map/route";
 import { colors } from "@/lib/colors";
 import { createHoverTooltip } from "@/lib/d3-utils";
+import { createHullRenderer, groupNodesByCommunity, computeHullGeometry, communityColorScale } from "@/lib/hull-renderer";
 
 export interface SimNode extends d3.SimulationNodeDatum, MapNode {}
 
@@ -41,6 +42,8 @@ interface RendererOptions {
   initialZoom?: number; // Initial zoom level (default 1.0)
   /** If true, layout fits canvas - use smaller visual elements. If false (overflow mode), use larger elements. */
   fit?: boolean;
+  /** Hull opacity 0-1 (default 0 = hidden) */
+  hullOpacity?: number;
   callbacks: RendererCallbacks;
 }
 
@@ -53,8 +56,6 @@ function getNodeRadius(d: SimNode, dotScale: number): number {
   return sizeScale(d.size || 400) * dotScale; // article
 }
 
-// Color scale for keyword communities
-const communityColorScale = d3.scaleOrdinal(d3.schemeTableau10);
 
 /**
  * Compute blended colors for articles/chunks based on connected keyword communities.
@@ -109,7 +110,7 @@ function getNodeColor(d: SimNode, blendedColors: Map<string, string>): string {
  * Sets up D3 selections and returns tick function for position updates.
  */
 export function createRenderer(options: RendererOptions): MapRenderer {
-  const { svg: svgElement, nodes, links, showEdges, dotScale, initialZoom = 1, fit = false, callbacks } = options;
+  const { svg: svgElement, nodes, links, showEdges, dotScale, initialZoom = 1, fit = false, hullOpacity = 0, callbacks } = options;
 
   // In fit mode, scale down visual elements since we're not zoomed out
   // Overflow mode assumes ~0.4x zoom, so fit mode uses 0.4x visual scale
@@ -142,18 +143,10 @@ export function createRenderer(options: RendererOptions): MapRenderer {
   const blendedColors = computeBlendedColors(nodes, links);
 
   // Group keyword nodes by community for hulls
-  const communitiesMap = new Map<number, SimNode[]>();
-  for (const n of nodes) {
-    if (n.type === "keyword" && n.communityId !== undefined) {
-      if (!communitiesMap.has(n.communityId)) {
-        communitiesMap.set(n.communityId, []);
-      }
-      communitiesMap.get(n.communityId)!.push(n);
-    }
-  }
+  const communitiesMap = groupNodesByCommunity(nodes);
 
   // Draw layers (order matters: hulls -> labels -> edges -> nodes)
-  const hullGroup = g.append("g").attr("class", "hulls");
+  const hullRenderer = createHullRenderer({ parent: g, communitiesMap, visualScale, opacity: hullOpacity });
   const hullLabelGroup = g.append("g").attr("class", "hull-labels");
 
   const linkGroup = g.append("g")
@@ -238,31 +231,17 @@ export function createRenderer(options: RendererOptions): MapRenderer {
     nodeSelection.attr("transform", (d) => `translate(${d.x},${d.y})`);
 
     // Update cluster hulls
-    hullGroup.selectAll("path").remove();
+    hullRenderer.update();
+
+    // Update hull labels
     hullLabelGroup.selectAll("text").remove();
 
     for (const [communityId, members] of communitiesMap) {
-      if (members.length < 3) continue;
-
       const points: [number, number][] = members.map((n) => [n.x!, n.y!]);
-      const hull = d3.polygonHull(points);
+      const geometry = computeHullGeometry(points);
 
-      if (hull) {
-        const centroid = d3.polygonCentroid(hull);
-        const expandedHull = hull.map(([x, y]) => {
-          const dx = x - centroid[0];
-          const dy = y - centroid[1];
-          return [centroid[0] + dx * 1.3, centroid[1] + dy * 1.3] as [number, number];
-        });
-
-        hullGroup
-          .append("path")
-          .attr("d", `M${expandedHull.join("L")}Z`)
-          .attr("fill", communityColorScale(String(communityId)))
-          .attr("fill-opacity", 0.08)
-          .attr("stroke", communityColorScale(String(communityId)))
-          .attr("stroke-opacity", 0.3)
-          .attr("stroke-width", 2 * visualScale);
+      if (geometry) {
+        const centroid = geometry.centroid;
 
         // Hull label (scaled with dot size and visual mode)
         const hub = members.find((m) => m.communityMembers && m.communityMembers.length > 0);
