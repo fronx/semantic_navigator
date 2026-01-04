@@ -64,7 +64,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
   const [showNeighbors, setShowNeighbors] = useState(true);
   const [edgeOpacity, setEdgeOpacity] = useState(0.4);
   const [hullOpacity, setHullOpacity] = useState(0.1);
-  const [edgeCurve, setEdgeCurve] = useState(0.15); // 0-0.3, slight curve by default
+  const [edgeCurve, setEdgeCurve] = useState(0.4); // 0-0.7, moderate curve by default
   const [clustered, setClustered] = useState(false); // Default to clustered view
   const [expandingId, setExpandingId] = useState<string | null>(null);
   const [umapProgress, setUmapProgress] = useState<number | null>(null);
