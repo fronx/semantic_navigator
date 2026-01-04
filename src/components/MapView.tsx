@@ -19,6 +19,7 @@ import {
 } from "@/lib/map-renderer";
 import { useMapSearch } from "@/hooks/useMapSearch";
 import { useMapFilterOpacity } from "@/hooks/useMapFilterOpacity";
+import { MapSidebar } from "./MapSidebar";
 
 /** Hook to get a stable ref that always holds the latest value */
 function useLatestRef<T>(value: T): { current: T } {
@@ -66,6 +67,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
   const [clustered, setClustered] = useState(false); // Default to clustered view
   const [expandingId, setExpandingId] = useState<string | null>(null);
   const [umapProgress, setUmapProgress] = useState<number | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   // URL-persisted settings
   const maxEdges = parseInt(searchParams.get("density") || "6", 10);
@@ -474,152 +476,48 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
     );
   }
 
+  const articleCount = data.nodes.filter((n) => n.type === "article").length;
+  const chunkCount = data.nodes.filter((n) => n.type === "chunk").length;
+  const keywordCount = data.nodes.filter((n) => n.type === "keyword").length;
+
   return (
-    <div className="bg-white dark:bg-zinc-900 overflow-hidden flex flex-col h-full">
-      <div className="p-2 border-b dark:border-zinc-800 flex gap-4 text-xs text-zinc-500 shrink-0 flex-wrap">
-        <span className="flex items-center gap-1">
-          <span className="w-3 h-3 rounded-full bg-blue-500 inline-block" />
-          Articles ({data.nodes.filter((n) => n.type === "article").length})
-        </span>
-        {data.nodes.some((n) => n.type === "chunk") && (
-          <span className="flex items-center gap-1">
-            <span className="w-3 h-3 rounded-full bg-violet-500 inline-block" />
-            Chunks ({data.nodes.filter((n) => n.type === "chunk").length})
-          </span>
-        )}
-        <span className="flex items-center gap-1">
-          <span className="w-3 h-3 rounded-full bg-emerald-500 inline-block" />
-          Keywords ({data.nodes.filter((n) => n.type === "keyword").length})
-        </span>
-        {data.searchMeta && (
-          <span className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
-            <span>Context:</span>
-            {data.searchMeta.premiseKeywords.slice(0, 5).map((kw, i) => (
-              <span key={i} className="px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900 rounded text-xs">
-                {kw}
-              </span>
-            ))}
-            {data.searchMeta.premiseKeywords.length > 5 && (
-              <span className="text-xs">+{data.searchMeta.premiseKeywords.length - 5} more</span>
-            )}
-            {onClearFilter && (
-              <button
-                onClick={onClearFilter}
-                className="px-1.5 py-0.5 bg-zinc-200 dark:bg-zinc-700 rounded hover:bg-zinc-300 dark:hover:bg-zinc-600"
-              >
-                Clear
-              </button>
-            )}
-          </span>
-        )}
-        <label className="flex items-center gap-2 ml-auto">
-          <span>Layout:</span>
-          <select
-            value={layoutMode}
-            onChange={(e) => setLayoutMode(e.target.value as LayoutMode)}
-            className="bg-zinc-100 dark:bg-zinc-800 rounded px-1 py-0.5"
-          >
-            <option value="force">Force</option>
-            <option value="umap">UMAP</option>
-          </select>
-          {umapProgress !== null && (
-            <span className="text-blue-500">{Math.round(umapProgress)}%</span>
-          )}
-        </label>
-        <label className="flex items-center gap-2">
-          <span>Resolution:</span>
-          <input
-            type="range"
-            min="0"
-            max="7"
-            value={pendingLevel}
-            onChange={(e) => setPendingLevel(parseInt(e.target.value, 10))}
-            onPointerUp={() => setLevel(pendingLevel)}
-            className="w-20 h-1"
-          />
-          <span className="w-4 text-center">{pendingLevel}</span>
-        </label>
-        <label className="flex items-center gap-2">
-          <span>Density:</span>
-          <input
-            type="range"
-            min="1"
-            max="10"
-            value={pendingMaxEdges}
-            onChange={(e) => setPendingMaxEdges(parseInt(e.target.value, 10))}
-            onPointerUp={() => setMaxEdges(pendingMaxEdges)}
-            className="w-20 h-1"
-          />
-          <span className="w-4 text-center">{pendingMaxEdges}</span>
-        </label>
-        <label className="flex items-center gap-2">
-          <span>Size:</span>
-          <input
-            type="range"
-            min="-1"
-            max="1"
-            step="0.1"
-            value={dotSlider}
-            onChange={(e) => setDotSize(parseFloat(e.target.value))}
-            className="w-20 h-1"
-          />
-          <span className="w-8 text-center">{dotSize.toFixed(1)}x</span>
-        </label>
-        <label className="flex items-center gap-2">
-          <span>Hulls:</span>
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.1"
-            value={hullOpacity}
-            onChange={(e) => setHullOpacity(parseFloat(e.target.value))}
-            className="w-16 h-1"
-          />
-        </label>
-        <label className="flex items-center gap-1 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={clustered}
-            onChange={(e) => setClustered(e.target.checked)}
-            className="w-3 h-3"
-          />
-          Cluster synonyms
-        </label>
-        <label className="flex items-center gap-2">
-          <span>Edges:</span>
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.1"
-            value={edgeOpacity}
-            onChange={(e) => setEdgeOpacity(parseFloat(e.target.value))}
-            className="w-16 h-1"
-          />
-        </label>
-        <label className="flex items-center gap-1 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={showNeighbors}
-            onChange={(e) => setShowNeighbors(e.target.checked)}
-            className="w-3 h-3"
-          />
-          Neighbor links
-        </label>
-        <label className="flex items-center gap-1 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={fitMode}
-            onChange={(e) => setFitMode(e.target.checked)}
-            className="w-3 h-3"
-          />
-          Fit canvas
-        </label>
-      </div>
+    <div className="bg-white dark:bg-zinc-900 overflow-hidden flex h-full relative">
+      <MapSidebar
+        open={sidebarOpen}
+        onToggle={() => setSidebarOpen(!sidebarOpen)}
+        articleCount={articleCount}
+        chunkCount={chunkCount}
+        keywordCount={keywordCount}
+        filterKeywords={data.searchMeta?.premiseKeywords}
+        onClearFilter={onClearFilter}
+        level={pendingLevel}
+        onLevelChange={setPendingLevel}
+        onLevelCommit={() => setLevel(pendingLevel)}
+        density={pendingMaxEdges}
+        onDensityChange={setPendingMaxEdges}
+        onDensityCommit={() => setMaxEdges(pendingMaxEdges)}
+        clustered={clustered}
+        onClusteredChange={setClustered}
+        showNeighbors={showNeighbors}
+        onShowNeighborsChange={setShowNeighbors}
+        layoutMode={layoutMode}
+        onLayoutModeChange={setLayoutMode}
+        umapProgress={umapProgress}
+        fitMode={fitMode}
+        onFitModeChange={setFitMode}
+        dotSize={dotSize}
+        dotSlider={dotSlider}
+        onDotSizeChange={setDotSize}
+        edgeOpacity={edgeOpacity}
+        onEdgeOpacityChange={setEdgeOpacity}
+        hullOpacity={hullOpacity}
+        onHullOpacityChange={setHullOpacity}
+      />
+
+      {/* Map */}
       <svg
         ref={svgRef}
-        className="w-full flex-1"
+        className="flex-1 h-full"
         style={{ cursor: "grab" }}
       />
     </div>
