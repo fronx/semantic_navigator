@@ -30,7 +30,7 @@ export interface MapRenderer {
   /** Get node selection for external styling (search highlighting) */
   nodeSelection: d3.Selection<SVGGElement, SimNode, SVGGElement, unknown>;
   /** Get link selection for external styling */
-  linkSelection: d3.Selection<SVGLineElement, SimLink, SVGGElement, unknown>;
+  linkSelection: d3.Selection<SVGPathElement, SimLink, SVGGElement, unknown>;
   /** Clean up */
   destroy: () => void;
 }
@@ -43,6 +43,7 @@ export interface ImmediateParams {
   dotScale: number;
   edgeOpacity: number;
   hullOpacity: number;
+  edgeCurve: number; // 0 = straight, 0.3 = max curve
 }
 
 interface RendererOptions {
@@ -115,6 +116,38 @@ function getNodeColor(d: SimNode, blendedColors: Map<string, string>): string {
 }
 
 /**
+ * Compute a curved SVG path for an edge using quadratic Bezier.
+ * Control point is offset perpendicular to the edge midpoint.
+ */
+function computeCurvedPath(link: SimLink, curveIntensity: number): string {
+  const source = link.source as SimNode;
+  const target = link.target as SimNode;
+  const x1 = source.x!, y1 = source.y!;
+  const x2 = target.x!, y2 = target.y!;
+
+  if (curveIntensity === 0) {
+    return `M ${x1},${y1} L ${x2},${y2}`;
+  }
+
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  if (length === 0) return `M ${x1},${y1} L ${x2},${y2}`;
+
+  // Midpoint
+  const mx = (x1 + x2) / 2;
+  const my = (y1 + y2) / 2;
+
+  // Perpendicular offset (alternate direction based on ID comparison)
+  const sign = source.id < target.id ? 1 : -1;
+  const offset = length * curveIntensity * sign;
+  const cx = mx + (-dy / length) * offset;
+  const cy = my + (dx / length) * offset;
+
+  return `M ${x1},${y1} Q ${cx},${cy} ${x2},${y2}`;
+}
+
+/**
  * Create the map renderer.
  * Sets up D3 selections and returns tick function for position updates.
  */
@@ -163,9 +196,10 @@ export function createRenderer(options: RendererOptions): MapRenderer {
     .attr("stroke-opacity", immediateParams.current.edgeOpacity * 0.4);
 
   const linkSelection = linkGroup
-    .selectAll<SVGLineElement, SimLink>("line")
+    .selectAll<SVGPathElement, SimLink>("path")
     .data(links)
-    .join("line")
+    .join("path")
+    .attr("fill", "none")
     .attr("stroke-width", 3 * visualScale);
 
   const nodeSelection = g
@@ -229,12 +263,8 @@ export function createRenderer(options: RendererOptions): MapRenderer {
 
   // Tick function to update positions
   function tick() {
-    // Update link positions
-    linkSelection
-      .attr("x1", (d) => (d.source as SimNode).x!)
-      .attr("y1", (d) => (d.source as SimNode).y!)
-      .attr("x2", (d) => (d.target as SimNode).x!)
-      .attr("y2", (d) => (d.target as SimNode).y!);
+    // Update link positions (curved paths)
+    linkSelection.attr("d", (d) => computeCurvedPath(d, immediateParams.current.edgeCurve));
 
     // Update node positions
     nodeSelection.attr("transform", (d) => `translate(${d.x},${d.y})`);
@@ -292,6 +322,9 @@ export function createRenderer(options: RendererOptions): MapRenderer {
 
     // Update edge opacity
     linkGroup.attr("stroke-opacity", params.edgeOpacity * 0.4);
+
+    // Update edge curves
+    linkSelection.attr("d", (d) => computeCurvedPath(d, params.edgeCurve));
 
     // Update hull opacity
     hullRenderer.update(params.hullOpacity);

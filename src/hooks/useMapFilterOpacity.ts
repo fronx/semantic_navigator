@@ -14,7 +14,7 @@ interface SimLink extends d3.SimulationLinkDatum<SimNode> {
 }
 
 type NodeSelection = d3.Selection<SVGGElement, SimNode, SVGGElement, unknown>;
-type LinkSelection = d3.Selection<SVGLineElement, SimLink, SVGGElement, unknown>;
+type LinkSelection = d3.Selection<SVGPathElement, SimLink, SVGGElement, unknown>;
 
 const MIN_OPACITY = 0.1;
 

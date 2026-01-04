@@ -40,6 +40,8 @@ interface Props {
   onDotSizeChange: (value: number) => void;
   edgeOpacity: number;
   onEdgeOpacityChange: (value: number) => void;
+  edgeCurve: number;
+  onEdgeCurveChange: (value: number) => void;
   hullOpacity: number;
   onHullOpacityChange: (value: number) => void;
 }
@@ -72,6 +74,8 @@ export function MapSidebar({
   onDotSizeChange,
   edgeOpacity,
   onEdgeOpacityChange,
+  edgeCurve,
+  onEdgeCurveChange,
   hullOpacity,
   onHullOpacityChange,
 }: Props) {
@@ -79,9 +83,8 @@ export function MapSidebar({
     <>
       {/* Sidebar */}
       <div
-        className={`shrink-0 border-r dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 transition-all duration-200 ${
-          open ? "w-56" : "w-0"
-        } overflow-hidden`}
+        className={`shrink-0 border-r dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 transition-all duration-200 ${open ? "w-56" : "w-0"
+          } overflow-hidden`}
       >
         <div className="w-56 p-3 flex flex-col gap-4 h-full overflow-y-auto text-xs">
           {/* Legend */}
@@ -252,6 +255,22 @@ export function MapSidebar({
                 step="0.1"
                 value={edgeOpacity}
                 onChange={(e) => onEdgeOpacityChange(parseFloat(e.target.value))}
+                className="w-full h-1.5 accent-blue-500"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex justify-between text-zinc-600 dark:text-zinc-400">
+                <span>Edge curve</span>
+                <span className="text-zinc-500">{Math.round(edgeCurve * 100)}%</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="0.7"
+                step="0.05"
+                value={edgeCurve}
+                onChange={(e) => onEdgeCurveChange(parseFloat(e.target.value))}
                 className="w-full h-1.5 accent-blue-500"
               />
             </div>

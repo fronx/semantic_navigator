@@ -56,7 +56,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
   const searchParams = useSearchParams();
   const svgRef = useRef<SVGSVGElement>(null);
   const nodeSelectionRef = useRef<d3.Selection<SVGGElement, SimNode, SVGGElement, unknown> | null>(null);
-  const linkSelectionRef = useRef<d3.Selection<SVGLineElement, SimLink, SVGGElement, unknown> | null>(null);
+  const linkSelectionRef = useRef<d3.Selection<SVGPathElement, SimLink, SVGGElement, unknown> | null>(null);
   const rendererRef = useRef<MapRenderer | null>(null);
   const [data, setData] = useState<MapData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -64,6 +64,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
   const [showNeighbors, setShowNeighbors] = useState(true);
   const [edgeOpacity, setEdgeOpacity] = useState(0.4);
   const [hullOpacity, setHullOpacity] = useState(0.1);
+  const [edgeCurve, setEdgeCurve] = useState(0.15); // 0-0.3, slight curve by default
   const [clustered, setClustered] = useState(false); // Default to clustered view
   const [expandingId, setExpandingId] = useState<string | null>(null);
   const [umapProgress, setUmapProgress] = useState<number | null>(null);
@@ -88,6 +89,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
     dotScale: dotSize,
     edgeOpacity,
     hullOpacity,
+    edgeCurve,
   });
 
   // Fit mode: if true, layout fits within canvas with smaller elements
@@ -450,7 +452,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
     if (!rendererRef.current) return;
     rendererRef.current.updateVisuals();
     rendererRef.current.tick(); // Re-render hull labels with new font size
-  }, [dotSize, edgeOpacity, hullOpacity]);
+  }, [dotSize, edgeOpacity, hullOpacity, edgeCurve]);
 
   if (loading) {
     return (
@@ -510,6 +512,8 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
         onDotSizeChange={setDotSize}
         edgeOpacity={edgeOpacity}
         onEdgeOpacityChange={setEdgeOpacity}
+        edgeCurve={edgeCurve}
+        onEdgeCurveChange={setEdgeCurve}
         hullOpacity={hullOpacity}
         onHullOpacityChange={setHullOpacity}
       />
