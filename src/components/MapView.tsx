@@ -19,6 +19,7 @@ import {
 } from "@/lib/map-renderer";
 import { useMapSearch } from "@/hooks/useMapSearch";
 import { useMapFilterOpacity } from "@/hooks/useMapFilterOpacity";
+import { useSemanticZoom } from "@/hooks/useSemanticZoom";
 import { MapSidebar, type CurveMethod } from "./MapSidebar";
 
 /** Hook to get a stable ref that always holds the latest value */
@@ -70,6 +71,16 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
   const [expandingId, setExpandingId] = useState<string | null>(null);
   const [umapProgress, setUmapProgress] = useState<number | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  // Semantic zoom state
+  const [semanticZoomEnabled, setSemanticZoomEnabled] = useState(true);
+  const [semanticZoomMaxThreshold, setSemanticZoomMaxThreshold] = useState(0.75);
+  const visibleIdsRef = useRef<Set<string> | null>(null);
+
+  // Track current nodes/links for semantic zoom
+  // Using state (not refs) so the hook re-runs when nodes are populated
+  const [simNodes, setSimNodes] = useState<SimNode[]>([]);
+  const [simLinks, setSimLinks] = useState<SimLink[]>([]);
 
   // URL-persisted settings
   const maxEdges = parseInt(searchParams.get("density") || "10", 10);
@@ -259,6 +270,20 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
   const { articleSimilarities, keywordSimilarities } = useMapSearch(searchQuery);
   useMapFilterOpacity(nodeSelectionRef, linkSelectionRef, articleSimilarities, keywordSimilarities);
 
+  // Semantic zoom hook
+  const semanticZoom = useSemanticZoom({
+    nodes: simNodes,
+    links: simLinks,
+    enabled: semanticZoomEnabled,
+    config: { maxThreshold: semanticZoomMaxThreshold },
+    onMetrics: (metrics) => {
+      console.log("[SemanticZoom]", metrics);
+    },
+  });
+
+  // Keep stable ref to semantic zoom callback (avoids recreating renderer when toggle changes)
+  const semanticZoomCallbackRef = useLatestRef(semanticZoom.onZoomEnd);
+
   useEffect(() => {
     setLoading(true);
     const params = new URLSearchParams();
@@ -308,15 +333,21 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
         }))
         .filter((l) => l.source && l.target);
 
+      // Store nodes/links for semantic zoom (triggers hook re-run)
+      setSimNodes(nodes);
+      setSimLinks(links);
+
       const renderer = createRenderer({
         svg: svgRef.current,
         nodes,
         links,
         immediateParams,
+        visibleIdsRef,
         fit: fitMode,
         callbacks: {
           onNodeExpand: handleNodeExpand,
           onKeywordClick,
+          onZoomEnd: (transform, viewport) => semanticZoomCallbackRef.current(transform, viewport),
         },
       });
 
@@ -360,15 +391,21 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
       { fit: fitMode }
     );
 
+    // Store nodes/links for semantic zoom (triggers hook re-run)
+    setSimNodes(nodes as SimNode[]);
+    setSimLinks(links as SimLink[]);
+
     const renderer = createRenderer({
       svg: svgRef.current,
       nodes: nodes as SimNode[],
       links: links as SimLink[],
       immediateParams,
+      visibleIdsRef,
       fit: fitMode,
       callbacks: {
         onNodeExpand: handleNodeExpand,
         onKeywordClick,
+        onZoomEnd: (transform, viewport) => semanticZoomCallbackRef.current(transform, viewport),
       },
     });
 
@@ -456,6 +493,53 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
     rendererRef.current.tick(); // Re-render hull labels with new font size
   }, [dotSize, edgeOpacity, hullOpacity, edgeCurve, curveMethod]);
 
+  // Apply semantic zoom visibility
+  useEffect(() => {
+    // Update ref for hull label filtering
+    visibleIdsRef.current = semanticZoomEnabled ? semanticZoom.visibleIds : null;
+
+    if (!nodeSelectionRef.current || !linkSelectionRef.current) return;
+    if (!semanticZoomEnabled) {
+      // When disabled, reset to full opacity (let search filter handle it)
+      nodeSelectionRef.current.attr("opacity", 1);
+      linkSelectionRef.current.attr("opacity", semanticZoom.edgeOpacity);
+      // Re-render hull labels without filtering
+      rendererRef.current?.tick();
+      return;
+    }
+
+    const MIN_OPACITY = 0.05;
+
+    // Count visible edges to compute dynamic opacity
+    let visibleEdgeCount = 0;
+    simLinks.forEach((l) => {
+      const sourceId = typeof l.source === "string" ? l.source : l.source.id;
+      const targetId = typeof l.target === "string" ? l.target : l.target.id;
+      if (semanticZoom.visibleIds.has(sourceId) && semanticZoom.visibleIds.has(targetId)) {
+        visibleEdgeCount++;
+      }
+    });
+
+    // Dynamic edge opacity: more edges = lighter (less clutter)
+    // ~100 edges → 0.8 opacity, 2000+ edges → 0.1 opacity
+    const dynamicEdgeOpacity = Math.max(0.1, Math.min(0.8, 0.9 - (visibleEdgeCount / 2500)));
+
+    // Apply visibility based on semantic zoom
+    nodeSelectionRef.current.attr("opacity", (d) => {
+      return semanticZoom.visibleIds.has(d.id) ? 1 : MIN_OPACITY;
+    });
+
+    linkSelectionRef.current.attr("opacity", (d) => {
+      const sourceId = typeof d.source === "string" ? d.source : d.source.id;
+      const targetId = typeof d.target === "string" ? d.target : d.target.id;
+      const bothVisible = semanticZoom.visibleIds.has(sourceId) && semanticZoom.visibleIds.has(targetId);
+      return bothVisible ? dynamicEdgeOpacity : 0;
+    });
+
+    // Re-render hull labels with filtering
+    rendererRef.current?.tick();
+  }, [semanticZoomEnabled, semanticZoom.visibleIds, semanticZoom.edgeOpacity, simLinks]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full bg-white dark:bg-zinc-900">
@@ -520,6 +604,11 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
         onCurveMethodChange={setCurveMethod}
         hullOpacity={hullOpacity}
         onHullOpacityChange={setHullOpacity}
+        semanticZoomEnabled={semanticZoomEnabled}
+        onSemanticZoomEnabledChange={setSemanticZoomEnabled}
+        semanticZoomMaxThreshold={semanticZoomMaxThreshold}
+        onSemanticZoomMaxThresholdChange={setSemanticZoomMaxThreshold}
+        semanticZoomThreshold={semanticZoom.threshold}
       />
 
       {/* Map */}

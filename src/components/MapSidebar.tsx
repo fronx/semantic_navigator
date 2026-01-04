@@ -48,6 +48,13 @@ interface Props {
   onCurveMethodChange: (value: CurveMethod) => void;
   hullOpacity: number;
   onHullOpacityChange: (value: number) => void;
+
+  // Semantic zoom settings
+  semanticZoomEnabled: boolean;
+  onSemanticZoomEnabledChange: (value: boolean) => void;
+  semanticZoomMaxThreshold: number;
+  onSemanticZoomMaxThresholdChange: (value: number) => void;
+  semanticZoomThreshold: number; // Display only (current computed threshold)
 }
 
 export function MapSidebar({
@@ -84,6 +91,11 @@ export function MapSidebar({
   onCurveMethodChange,
   hullOpacity,
   onHullOpacityChange,
+  semanticZoomEnabled,
+  onSemanticZoomEnabledChange,
+  semanticZoomMaxThreshold,
+  onSemanticZoomMaxThresholdChange,
+  semanticZoomThreshold,
 }: Props) {
   return (
     <>
@@ -227,6 +239,45 @@ export function MapSidebar({
               />
               <span>Fit to canvas</span>
             </label>
+          </div>
+
+          {/* Semantic Zoom Settings */}
+          <div className="space-y-2">
+            <h3 className="font-medium text-zinc-700 dark:text-zinc-300 uppercase tracking-wide text-[10px]">Semantic Zoom</h3>
+
+            <label className="flex items-center gap-2 text-zinc-600 dark:text-zinc-400 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={semanticZoomEnabled}
+                onChange={(e) => onSemanticZoomEnabledChange(e.target.checked)}
+                className="w-3.5 h-3.5 accent-blue-500"
+              />
+              <span>Enable</span>
+            </label>
+
+            {semanticZoomEnabled && (
+              <>
+                <div className="space-y-1">
+                  <div className="flex justify-between text-zinc-600 dark:text-zinc-400">
+                    <span>Max threshold</span>
+                    <span className="text-zinc-500">{semanticZoomMaxThreshold.toFixed(2)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.3"
+                    max="0.8"
+                    step="0.05"
+                    value={semanticZoomMaxThreshold}
+                    onChange={(e) => onSemanticZoomMaxThresholdChange(parseFloat(e.target.value))}
+                    className="w-full h-1.5 accent-blue-500"
+                  />
+                </div>
+
+                <div className="text-zinc-500 text-[10px]">
+                  Current: {semanticZoomThreshold.toFixed(2)}
+                </div>
+              </>
+            )}
           </div>
 
           {/* Visual Settings */}

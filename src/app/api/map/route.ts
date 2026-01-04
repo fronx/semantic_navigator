@@ -70,6 +70,8 @@ export interface MapNode {
   // Community info for hub keywords (when clustered=true)
   communityId?: number;
   communityMembers?: string[]; // Labels of other keywords in the community
+  // 256-dim embedding for semantic zoom (client-side distance computation)
+  embedding?: number[];
 }
 
 export interface MapEdge {
@@ -290,7 +292,8 @@ function buildSemanticMapData(
     const artNodeId = `art:${id}`;
     if (!articleNodes.has(artNodeId)) {
       const label = path.split("/").pop()?.replace(".md", "") || path;
-      articleNodes.set(artNodeId, { id: artNodeId, type: "article", label, size });
+      const embedding = articleEmbeddings.get(id);
+      articleNodes.set(artNodeId, { id: artNodeId, type: "article", label, size, embedding });
     }
     return artNodeId;
   }
@@ -299,7 +302,8 @@ function buildSemanticMapData(
     // Key by text to deduplicate identical keywords across articles
     const kwNodeId = `kw:${text}`;
     if (!keywordNodes.has(kwNodeId)) {
-      keywordNodes.set(kwNodeId, { id: kwNodeId, type: "keyword", label: text });
+      const embedding = keywordEmbeddings.get(text);
+      keywordNodes.set(kwNodeId, { id: kwNodeId, type: "keyword", label: text, embedding });
     }
     return kwNodeId;
   }

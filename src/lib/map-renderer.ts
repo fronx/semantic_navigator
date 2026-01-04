@@ -20,6 +20,8 @@ export interface SimLink extends d3.SimulationLinkDatum<SimNode> {
 export interface RendererCallbacks {
   onNodeExpand?: (graphNodeId: string, dbNodeId: string) => void;
   onKeywordClick?: (keyword: string) => void;
+  /** Called when zoom gesture ends (for semantic zoom) */
+  onZoomEnd?: (transform: { k: number; x: number; y: number }, viewport: { width: number; height: number }) => void;
 }
 
 export interface MapRenderer {
@@ -31,6 +33,10 @@ export interface MapRenderer {
   nodeSelection: d3.Selection<SVGGElement, SimNode, SVGGElement, unknown>;
   /** Get link selection for external styling */
   linkSelection: d3.Selection<SVGPathElement, SimLink, SVGGElement, unknown>;
+  /** Get current zoom transform */
+  getTransform: () => { k: number; x: number; y: number };
+  /** Get viewport dimensions */
+  getViewport: () => { width: number; height: number };
   /** Clean up */
   destroy: () => void;
 }
@@ -54,6 +60,8 @@ interface RendererOptions {
   nodes: SimNode[];
   links: SimLink[];
   immediateParams: { current: ImmediateParams };
+  /** Ref to visible node IDs for semantic zoom filtering (optional) */
+  visibleIdsRef?: { current: Set<string> | null };
   initialZoom?: number; // Initial zoom level (default 1.0)
   /** If true, layout fits canvas - use smaller visual elements. If false (overflow mode), use larger elements. */
   fit?: boolean;
@@ -279,7 +287,7 @@ function computeCurvedPath(link: SimLink, curveIntensity: number, direction: num
  * Sets up D3 selections and returns tick function for position updates.
  */
 export function createRenderer(options: RendererOptions): MapRenderer {
-  const { svg: svgElement, nodes, links, immediateParams, initialZoom = 1, fit = false, callbacks } = options;
+  const { svg: svgElement, nodes, links, immediateParams, visibleIdsRef, initialZoom = 1, fit = false, callbacks } = options;
 
   // In fit mode, scale down visual elements since we're not zoomed out
   // Overflow mode assumes ~0.4x zoom, so fit mode uses 0.4x visual scale
@@ -296,7 +304,16 @@ export function createRenderer(options: RendererOptions): MapRenderer {
   // Zoom behavior
   const zoom = d3.zoom<SVGSVGElement, unknown>()
     .scaleExtent([0.1, 4])
-    .on("zoom", (event) => g.attr("transform", event.transform));
+    .on("zoom", (event) => g.attr("transform", event.transform))
+    .on("end", (event) => {
+      if (callbacks.onZoomEnd) {
+        const transform = event.transform;
+        callbacks.onZoomEnd(
+          { k: transform.k, x: transform.x, y: transform.y },
+          { width, height }
+        );
+      }
+    });
   svg.call(zoom);
 
   // Apply initial zoom (centered)
@@ -416,19 +433,34 @@ export function createRenderer(options: RendererOptions): MapRenderer {
     // Update hull labels
     hullLabelGroup.selectAll("text").remove();
 
+    // Get current visible IDs (if semantic zoom is active)
+    const visibleIds = visibleIdsRef?.current;
+
     for (const [communityId, members] of communitiesMap) {
-      const points: [number, number][] = members.map((n) => [n.x!, n.y!]);
+      // Filter members to only visible ones (if semantic zoom active)
+      const visibleMembers = visibleIds
+        ? members.filter((m) => visibleIds.has(m.id))
+        : members;
+
+      // Skip communities with no visible members
+      if (visibleMembers.length === 0) continue;
+
+      const points: [number, number][] = visibleMembers.map((n) => [n.x!, n.y!]);
       const geometry = computeHullGeometry(points);
 
       if (geometry) {
         const centroid = geometry.centroid;
 
         // Hull label (scaled with dot size and visual mode)
-        const hub = members.find((m) => m.communityMembers && m.communityMembers.length > 0);
-        const label = hub?.label || members[0].label;
+        const hub = visibleMembers.find((m) => m.communityMembers && m.communityMembers.length > 0);
+        const label = hub?.label || visibleMembers[0].label;
         const words = label.split(/\s+/);
         const fontSize = 60 * immediateParams.current.dotScale * visualScale;
         const lineHeight = fontSize;
+
+        // Compute opacity based on how many members are visible vs total
+        const visibilityRatio = visibleMembers.length / members.length;
+        const labelOpacity = visibleIds ? Math.max(0.2, visibilityRatio) * 0.7 : 0.7;
 
         const textEl = hullLabelGroup
           .append("text")
@@ -438,7 +470,7 @@ export function createRenderer(options: RendererOptions): MapRenderer {
           .attr("font-size", `${fontSize}px`)
           .attr("font-weight", "600")
           .attr("fill", communityColorScale(String(communityId)))
-          .attr("fill-opacity", 0.7)
+          .attr("fill-opacity", labelOpacity)
           .style("pointer-events", "none");
 
         words.forEach((word, i) => {
@@ -482,6 +514,11 @@ export function createRenderer(options: RendererOptions): MapRenderer {
     updateVisuals,
     nodeSelection,
     linkSelection,
+    getTransform: () => {
+      const transform = d3.zoomTransform(svgElement);
+      return { k: transform.k, x: transform.x, y: transform.y };
+    },
+    getViewport: () => ({ width, height }),
     destroy: () => {
       svg.selectAll("*").remove();
     },
