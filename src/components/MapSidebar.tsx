@@ -2,6 +2,8 @@
 
 import type { LayoutMode } from "@/lib/map-layout";
 
+export type CurveMethod = "outward" | "angular" | "hybrid";
+
 interface Props {
   open: boolean;
   onToggle: () => void;
@@ -42,6 +44,8 @@ interface Props {
   onEdgeOpacityChange: (value: number) => void;
   edgeCurve: number;
   onEdgeCurveChange: (value: number) => void;
+  curveMethod: CurveMethod;
+  onCurveMethodChange: (value: CurveMethod) => void;
   hullOpacity: number;
   onHullOpacityChange: (value: number) => void;
 }
@@ -76,6 +80,8 @@ export function MapSidebar({
   onEdgeOpacityChange,
   edgeCurve,
   onEdgeCurveChange,
+  curveMethod,
+  onCurveMethodChange,
   hullOpacity,
   onHullOpacityChange,
 }: Props) {
@@ -273,6 +279,15 @@ export function MapSidebar({
                 onChange={(e) => onEdgeCurveChange(parseFloat(e.target.value))}
                 className="w-full h-1.5 accent-blue-500"
               />
+              <select
+                value={curveMethod}
+                onChange={(e) => onCurveMethodChange(e.target.value as CurveMethod)}
+                className="w-full bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-2 py-1 text-zinc-700 dark:text-zinc-300 mt-1"
+              >
+                <option value="outward">Outward (convex)</option>
+                <option value="angular">Angular resolution</option>
+                <option value="hybrid">Hybrid</option>
+              </select>
             </div>
 
             <div className="space-y-1">

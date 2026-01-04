@@ -19,7 +19,7 @@ import {
 } from "@/lib/map-renderer";
 import { useMapSearch } from "@/hooks/useMapSearch";
 import { useMapFilterOpacity } from "@/hooks/useMapFilterOpacity";
-import { MapSidebar } from "./MapSidebar";
+import { MapSidebar, type CurveMethod } from "./MapSidebar";
 
 /** Hook to get a stable ref that always holds the latest value */
 function useLatestRef<T>(value: T): { current: T } {
@@ -65,6 +65,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
   const [edgeOpacity, setEdgeOpacity] = useState(0.4);
   const [hullOpacity, setHullOpacity] = useState(0.1);
   const [edgeCurve, setEdgeCurve] = useState(0.25); // 0-0.7, using circular arcs
+  const [curveMethod, setCurveMethod] = useState<CurveMethod>("hybrid");
   const [clustered, setClustered] = useState(false); // Default to clustered view
   const [expandingId, setExpandingId] = useState<string | null>(null);
   const [umapProgress, setUmapProgress] = useState<number | null>(null);
@@ -90,6 +91,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
     edgeOpacity,
     hullOpacity,
     edgeCurve,
+    curveMethod,
   });
 
   // Fit mode: if true, layout fits within canvas with smaller elements
@@ -452,7 +454,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
     if (!rendererRef.current) return;
     rendererRef.current.updateVisuals();
     rendererRef.current.tick(); // Re-render hull labels with new font size
-  }, [dotSize, edgeOpacity, hullOpacity, edgeCurve]);
+  }, [dotSize, edgeOpacity, hullOpacity, edgeCurve, curveMethod]);
 
   if (loading) {
     return (
@@ -514,6 +516,8 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
         onEdgeOpacityChange={setEdgeOpacity}
         edgeCurve={edgeCurve}
         onEdgeCurveChange={setEdgeCurve}
+        curveMethod={curveMethod}
+        onCurveMethodChange={setCurveMethod}
         hullOpacity={hullOpacity}
         onHullOpacityChange={setHullOpacity}
       />

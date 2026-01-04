@@ -39,11 +39,14 @@ export interface MapRenderer {
  * Visual parameters that can be updated without relayout.
  * Pass as a ref so updates are reflected immediately.
  */
+export type CurveMethod = "outward" | "angular" | "hybrid";
+
 export interface ImmediateParams {
   dotScale: number;
   edgeOpacity: number;
   hullOpacity: number;
   edgeCurve: number; // 0 = straight, 0.3 = max curve
+  curveMethod: CurveMethod;
 }
 
 interface RendererOptions {
@@ -116,23 +119,58 @@ function getNodeColor(d: SimNode, blendedColors: Map<string, string>): string {
 }
 
 /**
- * Compute curve directions for edges based on angular resolution.
- * For each node, sorts incident edges by angle and assigns alternating
- * directions so adjacent edges curve opposite ways, spreading them apart.
+ * Compute curve directions for edges based on selected method.
+ *
+ * Methods:
+ * - "outward": All edges curve away from global centroid (convex appearance)
+ * - "angular": Alternating directions around each node (angular resolution)
+ * - "hybrid": Angular resolution with outward fallback for conflicts
  *
  * Returns a Map from link to direction (-1 or 1).
  */
 function computeEdgeCurveDirections(
   nodes: SimNode[],
-  links: SimLink[]
+  links: SimLink[],
+  method: CurveMethod
 ): Map<SimLink, number> {
-  // Build adjacency: node id -> edges with the other endpoint
-  const adjacency = new Map<string, Array<{ link: SimLink; other: SimNode }>>();
+  // Compute global centroid
+  let globalCx = 0, globalCy = 0;
+  for (const node of nodes) {
+    globalCx += node.x ?? 0;
+    globalCy += node.y ?? 0;
+  }
+  globalCx /= nodes.length;
+  globalCy /= nodes.length;
 
+  // Helper: compute outward direction for a single link
+  function getOutwardDir(link: SimLink): number {
+    const source = link.source as SimNode;
+    const target = link.target as SimNode;
+    const mx = ((source.x ?? 0) + (target.x ?? 0)) / 2;
+    const my = ((source.y ?? 0) + (target.y ?? 0)) / 2;
+    const outwardX = mx - globalCx;
+    const outwardY = my - globalCy;
+    const dx = (target.x ?? 0) - (source.x ?? 0);
+    const dy = (target.y ?? 0) - (source.y ?? 0);
+    const dot = outwardX * (-dy) + outwardY * dx;
+    return dot >= 0 ? 1 : -1;
+  }
+
+  const directions = new Map<SimLink, number>();
+
+  if (method === "outward") {
+    // Simple: all edges curve away from centroid
+    for (const link of links) {
+      directions.set(link, getOutwardDir(link));
+    }
+    return directions;
+  }
+
+  // For angular and hybrid: build adjacency and compute angular votes
+  const adjacency = new Map<string, Array<{ link: SimLink; other: SimNode }>>();
   for (const node of nodes) {
     adjacency.set(node.id, []);
   }
-
   for (const link of links) {
     const source = link.source as SimNode;
     const target = link.target as SimNode;
@@ -140,7 +178,7 @@ function computeEdgeCurveDirections(
     adjacency.get(target.id)?.push({ link, other: source });
   }
 
-  // Track direction votes per edge (each endpoint votes)
+  // Track direction votes per edge
   const edgeVotes = new Map<SimLink, { votes: number[]; degrees: number[] }>();
   for (const link of links) {
     edgeVotes.set(link, { votes: [], degrees: [] });
@@ -151,35 +189,40 @@ function computeEdgeCurveDirections(
     const edges = adjacency.get(node.id)!;
     if (edges.length === 0) continue;
 
-    // Sort by angle to other endpoint
     edges.sort((a, b) => {
       const angleA = Math.atan2((a.other.y ?? 0) - (node.y ?? 0), (a.other.x ?? 0) - (node.x ?? 0));
       const angleB = Math.atan2((b.other.y ?? 0) - (node.y ?? 0), (b.other.x ?? 0) - (node.x ?? 0));
       return angleA - angleB;
     });
 
-    // Alternate directions around the node
     edges.forEach(({ link }, i) => {
-      const baseDir = (i % 2 === 0) ? 1 : -1;
       const vote = edgeVotes.get(link)!;
-      vote.votes.push(baseDir);
+      vote.votes.push((i % 2 === 0) ? 1 : -1);
       vote.degrees.push(edges.length);
     });
   }
 
-  // Resolve votes: if both endpoints agree, use that direction
-  // If they conflict, prefer the higher-degree node's vote (hubs matter more)
-  const directions = new Map<SimLink, number>();
+  // Resolve votes based on method
+  const DEGREE_RATIO_THRESHOLD = 2;
+
   for (const [link, { votes, degrees }] of edgeVotes) {
     if (votes.length === 0) {
-      directions.set(link, 1);
+      directions.set(link, method === "hybrid" ? getOutwardDir(link) : 1);
     } else if (votes.length === 1) {
       directions.set(link, votes[0]);
     } else if (votes[0] === votes[1]) {
       directions.set(link, votes[0]);
-    } else {
-      // Conflict: prefer higher-degree node's vote
+    } else if (method === "angular") {
+      // Angular: higher-degree node wins
       directions.set(link, degrees[0] >= degrees[1] ? votes[0] : votes[1]);
+    } else {
+      // Hybrid: check if one is a clear hub
+      const ratio = Math.max(degrees[0], degrees[1]) / Math.min(degrees[0], degrees[1]);
+      if (ratio >= DEGREE_RATIO_THRESHOLD) {
+        directions.set(link, degrees[0] >= degrees[1] ? votes[0] : votes[1]);
+      } else {
+        directions.set(link, getOutwardDir(link));
+      }
     }
   }
 
@@ -349,11 +392,16 @@ export function createRenderer(options: RendererOptions): MapRenderer {
       });
   }
 
+  // Track current curve method to detect changes
+  let currentCurveMethod: CurveMethod | null = null;
+
   // Tick function to update positions
   function tick() {
-    // Compute edge curve directions on first tick (positions are stable by then)
-    if (!edgeCurveDirections) {
-      edgeCurveDirections = computeEdgeCurveDirections(nodes, links);
+    // Compute edge curve directions on first tick or when method changes
+    const method = immediateParams.current.curveMethod;
+    if (!edgeCurveDirections || currentCurveMethod !== method) {
+      edgeCurveDirections = computeEdgeCurveDirections(nodes, links, method);
+      currentCurveMethod = method;
     }
 
     // Update link positions (curved paths)
@@ -407,6 +455,12 @@ export function createRenderer(options: RendererOptions): MapRenderer {
   /** Update all visual attributes without relayout (reads from immediateParams ref) */
   function updateVisuals() {
     const params = immediateParams.current;
+
+    // Recompute curve directions if method changed
+    if (currentCurveMethod !== params.curveMethod) {
+      edgeCurveDirections = computeEdgeCurveDirections(nodes, links, params.curveMethod);
+      currentCurveMethod = params.curveMethod;
+    }
 
     // Update circle sizes
     nodeSelection

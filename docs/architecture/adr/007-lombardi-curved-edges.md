@@ -43,7 +43,7 @@ Instead of using arbitrary ID comparison to determine curve direction, we now op
 
 This spreads edges evenly around high-degree nodes rather than letting them bunch up.
 
-### Phase 3: True Circular Arcs (current)
+### Phase 3: True Circular Arcs (completed)
 Switching from quadratic Bezier curves to true circular arcs using SVG `A` command.
 
 **Why circular arcs?**
@@ -66,6 +66,21 @@ For edge from (x1, y1) to (x2, y2) with direction d:
 5. SVG path: M x1,y1 A r,r 0 0,sweep x2,y2
 ```
 
+### Phase 4: Curve Direction Methods (current)
+Added user-selectable methods for determining curve direction, balancing two competing goals:
+- **Angular resolution**: Edges should spread apart around high-degree nodes
+- **Convex appearance**: Edges on the periphery should bow outward
+
+**Three methods available:**
+
+1. **Outward (convex)**: All edges curve away from the global centroid of all nodes. Guarantees convex appearance on the periphery but ignores angular resolution.
+
+2. **Angular resolution**: For each node, edges are sorted by angle and assigned alternating directions (1, -1, 1, -1...). When endpoints disagree, the higher-degree node wins. Optimizes for spreading edges at vertices but can create concave curves on the outside.
+
+3. **Hybrid** (default): Uses angular resolution voting, but when endpoints conflict and neither is a clear hub (degree ratio < 2x), falls back to outward direction. Balances both goals.
+
+**Implementation:** `computeEdgeCurveDirections()` in [map-renderer.ts](../../../src/lib/map-renderer.ts)
+
 ## Consequences
 
 ### Positive
@@ -74,16 +89,18 @@ For edge from (x1, y1) to (x2, y2) with direction d:
 - True circular arcs match Lombardi's artistic style
 - Minimal performance impact (simple math per edge)
 - User can disable by setting intensity to 0
+- User can choose curve direction method via UI dropdown
 
 ### Negative
 - Fixed curve intensity rather than dynamic repulsion
-- Angular resolution is approximate (not perfect Lombardi)
+- Trade-off between angular resolution and convex appearance (no perfect solution)
 
 ## Future Enhancements
 If needed, could implement:
 - Dynamic curve intensity based on edge density
 - Full tangent-based approach for perfect angular resolution
 - Edge bundling for high-density regions
+- Per-community centroids for better outward direction in multi-cluster graphs
 
 ## References
 - Chernobelskiy et al., "Force-Directed Lombardi-Style Graph Drawing"
