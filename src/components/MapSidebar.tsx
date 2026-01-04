@@ -54,6 +54,8 @@ interface Props {
   onSemanticZoomEnabledChange: (value: boolean) => void;
   semanticZoomMaxThreshold: number;
   onSemanticZoomMaxThresholdChange: (value: number) => void;
+  semanticZoomFocalRadius: number;
+  onSemanticZoomFocalRadiusChange: (value: number) => void;
   semanticZoomThreshold: number; // Display only (current computed threshold)
 }
 
@@ -95,6 +97,8 @@ export function MapSidebar({
   onSemanticZoomEnabledChange,
   semanticZoomMaxThreshold,
   onSemanticZoomMaxThresholdChange,
+  semanticZoomFocalRadius,
+  onSemanticZoomFocalRadiusChange,
   semanticZoomThreshold,
 }: Props) {
   return (
@@ -259,6 +263,22 @@ export function MapSidebar({
               <>
                 <div className="space-y-1">
                   <div className="flex justify-between text-zinc-600 dark:text-zinc-400">
+                    <span>Focal radius</span>
+                    <span className="text-zinc-500">{Math.round(semanticZoomFocalRadius * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.02"
+                    max="0.4"
+                    step="0.02"
+                    value={semanticZoomFocalRadius}
+                    onChange={(e) => onSemanticZoomFocalRadiusChange(parseFloat(e.target.value))}
+                    className="w-full h-1.5 accent-blue-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex justify-between text-zinc-600 dark:text-zinc-400">
                     <span>Max threshold</span>
                     <span className="text-zinc-500">{semanticZoomMaxThreshold.toFixed(2)}</span>
                   </div>
@@ -274,7 +294,7 @@ export function MapSidebar({
                 </div>
 
                 <div className="text-zinc-500 text-[10px]">
-                  Current: {semanticZoomThreshold.toFixed(2)}
+                  Current threshold: {semanticZoomThreshold.toFixed(2)}
                 </div>
               </>
             )}

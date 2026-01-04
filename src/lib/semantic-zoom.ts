@@ -20,6 +20,10 @@ export interface SemanticZoomConfig {
   zoomFloor: number;
   /** Maximum zoom level */
   zoomCeiling: number;
+  /** Focal radius as fraction of viewport diagonal (0.05-0.5). Smaller = tighter focus */
+  focalRadius: number;
+  /** Hysteresis: zoom level "dead zone" when zooming out (must zoom out by this much before refiltering) */
+  hysteresis: number;
 }
 
 export interface ViewportBounds {
@@ -46,8 +50,10 @@ export const DEFAULT_CONFIG: SemanticZoomConfig = {
   steepness: 0.0,      // Linear curve for predictable filtering
   minThreshold: 0.50,  // Jump to meaningful filtering immediately
   maxThreshold: 0.80,
-  zoomFloor: 1.0,      // At 1x zoom, threshold = minThreshold
+  zoomFloor: 0.5,      // At 1x zoom, threshold = minThreshold
   zoomCeiling: 1.75,   // Reach max threshold quickly
+  focalRadius: 0.1,    // 10% of viewport diagonal (was 20%, tighter default)
+  hysteresis: 1.0,     // Must zoom out by 0.5 before refiltering (dead zone)
 };
 // Expected: zoom 1x→0.50, 1.375x→0.55, 1.75x→0.60
 

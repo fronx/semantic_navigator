@@ -59,6 +59,8 @@ export function groupNodesByCommunity(nodes: SimNode[]): Map<number, SimNode[]> 
 export interface HullRenderer {
   /** Update hull positions (call on each tick). Optionally update opacity. */
   update: (opacity?: number) => void;
+  /** Update the communities map (for dynamic filtering) */
+  updateCommunities: (newCommunitiesMap: Map<number, SimNode[]>) => void;
   /** The SVG group containing hulls */
   group: d3.Selection<SVGGElement, unknown, null, undefined>;
 }
@@ -74,7 +76,8 @@ interface HullRendererOptions {
  * Create a hull renderer for keyword communities.
  */
 export function createHullRenderer(options: HullRendererOptions): HullRenderer {
-  const { parent, communitiesMap, visualScale } = options;
+  const { parent, visualScale } = options;
+  let communitiesMap = options.communitiesMap;
   let opacity = options.opacity;
 
   const group = parent.append("g").attr("class", "hulls");
@@ -102,5 +105,9 @@ export function createHullRenderer(options: HullRendererOptions): HullRenderer {
     }
   }
 
-  return { update, group };
+  function updateCommunities(newCommunitiesMap: Map<number, SimNode[]>) {
+    communitiesMap = newCommunitiesMap;
+  }
+
+  return { update, updateCommunities, group };
 }

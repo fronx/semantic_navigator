@@ -29,6 +29,10 @@ export interface MapRenderer {
   tick: () => void;
   /** Update all visual attributes without relayout (reads from immediateParams ref) */
   updateVisuals: () => void;
+  /** Update nodes and links dynamically (for semantic zoom filtering) */
+  updateData: (newNodes: SimNode[], newLinks: SimLink[]) => void;
+  /** Fit view to show all current nodes with padding */
+  fitToNodes: (padding?: number, animate?: boolean) => void;
   /** Get node selection for external styling (search highlighting) */
   nodeSelection: d3.Selection<SVGGElement, SimNode, SVGGElement, unknown>;
   /** Get link selection for external styling */
@@ -287,7 +291,7 @@ function computeCurvedPath(link: SimLink, curveIntensity: number, direction: num
  * Sets up D3 selections and returns tick function for position updates.
  */
 export function createRenderer(options: RendererOptions): MapRenderer {
-  const { svg: svgElement, nodes, links, immediateParams, visibleIdsRef, initialZoom = 1, fit = false, callbacks } = options;
+  const { svg: svgElement, nodes: initialNodes, links: initialLinks, immediateParams, visibleIdsRef, initialZoom = 1, fit = false, callbacks } = options;
 
   // In fit mode, scale down visual elements since we're not zoomed out
   // Overflow mode assumes ~0.4x zoom, so fit mode uses 0.4x visual scale
@@ -325,15 +329,12 @@ export function createRenderer(options: RendererOptions): MapRenderer {
     svg.call(zoom.transform, initialTransform);
   }
 
-  // Precompute blended colors
-  const blendedColors = computeBlendedColors(nodes, links);
-
-  // Precompute edge curve directions for angular resolution
-  // (will be recomputed on first tick when positions are more stable)
+  // Mutable state for dynamic updates
+  let currentNodes = initialNodes;
+  let currentLinks = initialLinks;
+  let blendedColors = computeBlendedColors(currentNodes, currentLinks);
   let edgeCurveDirections: Map<SimLink, number> | null = null;
-
-  // Group keyword nodes by community for hulls
-  const communitiesMap = groupNodesByCommunity(nodes);
+  let communitiesMap = groupNodesByCommunity(currentNodes);
 
   // Draw layers (order matters: hulls -> labels -> edges -> nodes)
   const hullRenderer = createHullRenderer({ parent: g, communitiesMap, visualScale, opacity: immediateParams.current.hullOpacity });
@@ -343,71 +344,89 @@ export function createRenderer(options: RendererOptions): MapRenderer {
     .attr("stroke", colors.edge.default)
     .attr("stroke-opacity", immediateParams.current.edgeOpacity * 0.4);
 
-  const linkSelection = linkGroup
+  // Node group container (persists across updateData)
+  const nodeGroup = g.append("g");
+
+  // Hover tooltip (persists across updateData)
+  const tooltip = createHoverTooltip(g);
+
+  // Helper to set up node visuals and event handlers
+  function setupNodeGroup(
+    selection: d3.Selection<SVGGElement, SimNode, SVGGElement, unknown>,
+    colors: Map<string, string>
+  ) {
+    // Draw circles
+    selection
+      .append("circle")
+      .attr("r", (d) => getNodeRadius(d, immediateParams.current.dotScale) * visualScale)
+      .attr("fill", (d) => getNodeColor(d, colors))
+      .attr("stroke", "#fff")
+      .attr("stroke-width", 1.5 * visualScale);
+
+    // Hover tooltips for articles/chunks
+    selection
+      .filter((d) => d.type === "article" || d.type === "chunk")
+      .on("mouseenter", (_, d) => {
+        const offset = getNodeRadius(d, immediateParams.current.dotScale) * visualScale * 0.7;
+        tooltip.show(d.label, d.x! + offset + 8, d.y! + offset + 16);
+      })
+      .on("mouseleave", () => tooltip.hide());
+
+    // Hover tooltips for keywords
+    selection
+      .filter((d) => d.type === "keyword")
+      .on("mouseenter", (_, d) => {
+        const memberCount = d.communityMembers?.length || 0;
+        const label = memberCount > 0
+          ? `${d.label} (+${memberCount}: ${d.communityMembers!.slice(0, 3).join(", ")}${memberCount > 3 ? "..." : ""})`
+          : d.label;
+        const offset = getNodeRadius(d, immediateParams.current.dotScale) * visualScale * 0.7;
+        tooltip.show(label, d.x! + offset + 8, d.y! + offset + 16);
+      })
+      .on("mouseleave", () => tooltip.hide());
+
+    // Click handlers
+    if (callbacks.onNodeExpand) {
+      selection
+        .filter((d) => d.type === "article")
+        .style("cursor", "pointer")
+        .on("dblclick", (event, d) => {
+          event.stopPropagation();
+          const dbNodeId = d.id.replace(/^art:/, "");
+          callbacks.onNodeExpand!(d.id, dbNodeId);
+        });
+    }
+
+    if (callbacks.onKeywordClick) {
+      selection
+        .filter((d) => d.type === "keyword")
+        .style("cursor", "pointer")
+        .on("click", (event, d) => {
+          event.stopPropagation();
+          callbacks.onKeywordClick!(d.label);
+        });
+    }
+  }
+
+  // Initial link selection
+  let linkSelection = linkGroup
     .selectAll<SVGPathElement, SimLink>("path")
-    .data(links)
+    .data(currentLinks, (d) => {
+      const sourceId = typeof d.source === "string" ? d.source : d.source.id;
+      const targetId = typeof d.target === "string" ? d.target : d.target.id;
+      return `${sourceId}-${targetId}`;
+    })
     .join("path")
     .attr("fill", "none")
     .attr("stroke-width", 3 * visualScale);
 
-  const nodeSelection = g
-    .append("g")
+  // Initial node selection
+  let nodeSelection = nodeGroup
     .selectAll<SVGGElement, SimNode>("g")
-    .data(nodes)
+    .data(currentNodes, (d) => d.id)
     .join("g");
 
-  // Draw node circles
-  nodeSelection
-    .append("circle")
-    .attr("r", (d) => getNodeRadius(d, immediateParams.current.dotScale) * visualScale)
-    .attr("fill", (d) => getNodeColor(d, blendedColors))
-    .attr("stroke", "#fff")
-    .attr("stroke-width", 1.5 * visualScale);
-
-  // Hover tooltips
-  const tooltip = createHoverTooltip(g);
-
-  nodeSelection
-    .filter((d) => d.type === "article" || d.type === "chunk")
-    .on("mouseenter", (_, d) => {
-      const offset = getNodeRadius(d, immediateParams.current.dotScale) * visualScale * 0.7;
-      tooltip.show(d.label, d.x! + offset + 8, d.y! + offset + 16);
-    })
-    .on("mouseleave", () => tooltip.hide());
-
-  nodeSelection
-    .filter((d) => d.type === "keyword")
-    .on("mouseenter", (_, d) => {
-      const memberCount = d.communityMembers?.length || 0;
-      const label = memberCount > 0
-        ? `${d.label} (+${memberCount}: ${d.communityMembers!.slice(0, 3).join(", ")}${memberCount > 3 ? "..." : ""})`
-        : d.label;
-      const offset = getNodeRadius(d, immediateParams.current.dotScale) * visualScale * 0.7;
-      tooltip.show(label, d.x! + offset + 8, d.y! + offset + 16);
-    })
-    .on("mouseleave", () => tooltip.hide());
-
-  // Click handlers
-  if (callbacks.onNodeExpand) {
-    nodeSelection
-      .filter((d) => d.type === "article")
-      .style("cursor", "pointer")
-      .on("dblclick", (event, d) => {
-        event.stopPropagation();
-        const dbNodeId = d.id.replace(/^art:/, "");
-        callbacks.onNodeExpand!(d.id, dbNodeId);
-      });
-  }
-
-  if (callbacks.onKeywordClick) {
-    nodeSelection
-      .filter((d) => d.type === "keyword")
-      .style("cursor", "pointer")
-      .on("click", (event, d) => {
-        event.stopPropagation();
-        callbacks.onKeywordClick!(d.label);
-      });
-  }
+  setupNodeGroup(nodeSelection, blendedColors);
 
   // Track current curve method to detect changes
   let currentCurveMethod: CurveMethod | null = null;
@@ -417,7 +436,7 @@ export function createRenderer(options: RendererOptions): MapRenderer {
     // Compute edge curve directions on first tick or when method changes
     const method = immediateParams.current.curveMethod;
     if (!edgeCurveDirections || currentCurveMethod !== method) {
-      edgeCurveDirections = computeEdgeCurveDirections(nodes, links, method);
+      edgeCurveDirections = computeEdgeCurveDirections(currentNodes, currentLinks, method);
       currentCurveMethod = method;
     }
 
@@ -490,7 +509,7 @@ export function createRenderer(options: RendererOptions): MapRenderer {
 
     // Recompute curve directions if method changed
     if (currentCurveMethod !== params.curveMethod) {
-      edgeCurveDirections = computeEdgeCurveDirections(nodes, links, params.curveMethod);
+      edgeCurveDirections = computeEdgeCurveDirections(currentNodes, currentLinks, params.curveMethod);
       currentCurveMethod = params.curveMethod;
     }
 
@@ -509,11 +528,95 @@ export function createRenderer(options: RendererOptions): MapRenderer {
     hullRenderer.update(params.hullOpacity);
   }
 
+  /** Update nodes and links dynamically (for semantic zoom Phase 2) */
+  function updateData(newNodes: SimNode[], newLinks: SimLink[]) {
+    // Update internal state
+    currentNodes = newNodes;
+    currentLinks = newLinks;
+    blendedColors = computeBlendedColors(currentNodes, currentLinks);
+    edgeCurveDirections = null; // Will recompute on next tick
+    communitiesMap = groupNodesByCommunity(currentNodes);
+
+    // Update hull renderer with new communities
+    hullRenderer.updateCommunities(communitiesMap);
+
+    // D3 data join for links (with key function)
+    linkSelection = linkGroup
+      .selectAll<SVGPathElement, SimLink>("path")
+      .data(currentLinks, (d) => {
+        const sourceId = typeof d.source === "string" ? d.source : d.source.id;
+        const targetId = typeof d.target === "string" ? d.target : d.target.id;
+        return `${sourceId}-${targetId}`;
+      })
+      .join(
+        (enter) => enter.append("path")
+          .attr("fill", "none")
+          .attr("stroke-width", 3 * visualScale),
+        (update) => update,
+        (exit) => exit.remove()
+      );
+
+    // D3 data join for nodes (with key function)
+    nodeSelection = nodeGroup
+      .selectAll<SVGGElement, SimNode>("g")
+      .data(currentNodes, (d) => d.id)
+      .join(
+        (enter) => {
+          const g = enter.append("g");
+          setupNodeGroup(g, blendedColors);
+          return g;
+        },
+        (update) => update,
+        (exit) => exit.remove()
+      );
+  }
+
+  // Fit view to show all current nodes with padding
+  function fitToNodes(padding = 0.2, animate = true) {
+    if (currentNodes.length === 0) return;
+
+    // Compute bounding box of current nodes
+    const xs = currentNodes.map(n => n.x ?? 0);
+    const ys = currentNodes.map(n => n.y ?? 0);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+
+    const graphWidth = maxX - minX || 1;
+    const graphHeight = maxY - minY || 1;
+    const graphCenterX = (minX + maxX) / 2;
+    const graphCenterY = (minY + maxY) / 2;
+
+    // Calculate scale to fit with padding
+    const scale = Math.min(
+      width / (graphWidth * (1 + padding)),
+      height / (graphHeight * (1 + padding)),
+      1 // Don't zoom in past 1x
+    );
+
+    // Calculate transform to center the graph
+    const newTransform = d3.zoomIdentity
+      .translate(width / 2, height / 2)
+      .scale(scale)
+      .translate(-graphCenterX, -graphCenterY);
+
+    // Apply transform (with or without animation)
+    if (animate) {
+      svg.transition().duration(300).call(zoom.transform, newTransform);
+    } else {
+      svg.call(zoom.transform, newTransform);
+    }
+  }
+
   return {
     tick,
     updateVisuals,
-    nodeSelection,
-    linkSelection,
+    updateData,
+    fitToNodes,
+    // Use getters so these always return current values after updateData
+    get nodeSelection() { return nodeSelection; },
+    get linkSelection() { return linkSelection; },
     getTransform: () => {
       const transform = d3.zoomTransform(svgElement);
       return { k: transform.k, x: transform.x, y: transform.y };

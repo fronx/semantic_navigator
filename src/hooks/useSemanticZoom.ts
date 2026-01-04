@@ -105,6 +105,8 @@ export function useSemanticZoom(
   // Refs for position persistence (don't need to trigger re-renders)
   const storedPositionsRef = useRef(new Map<string, Point>());
   const lastZoomScaleRef = useRef(1);
+  // Track zoom level when filtering was last applied (for zoom-level hysteresis)
+  const lastFilterZoomRef = useRef(1);
 
   // Store positions for nodes
   const storePositions = useCallback((nodesToStore: SimNode[]) => {
@@ -139,26 +141,60 @@ export function useSemanticZoom(
       }
 
       const zoomScale = transform.k;
+      const lastFilterZoom = lastFilterZoomRef.current;
       lastZoomScaleRef.current = zoomScale;
 
       // Compute new threshold and edge opacity
       const newThreshold = zoomToThreshold(zoomScale, config);
       const newEdgeOpacity = zoomToEdgeOpacity(zoomScale);
 
-      console.log("[SemanticZoom] onZoomEnd:", { zoomScale, newThreshold, nodeCount: currentNodes.length });
+      console.log("[SemanticZoom] onZoomEnd:", { zoomScale, lastFilterZoom, newThreshold, nodeCount: currentNodes.length });
 
       setThreshold(newThreshold);
       setEdgeOpacity(newEdgeOpacity);
 
-      // If threshold is 0, all nodes visible - skip centroid computation
-      if (newThreshold <= 0) {
-        setVisibleIds(new Set(currentNodes.map((n) => n.id)));
-        setCentroid(null);
+      // Zoom-level hysteresis: when zooming out, don't refilter until zoomed out significantly
+      // This creates a "dead zone" where the visible set stays fixed
+      const isZoomingOut = zoomScale < lastFilterZoom;
+      const hysteresisAmount = config.hysteresis ?? 0.2;
+      const inHysteresisZone = isZoomingOut && zoomScale >= lastFilterZoom - hysteresisAmount;
+
+      if (inHysteresisZone) {
+        console.log("[SemanticZoom] In hysteresis zone - keeping current visible set");
         return;
       }
 
       // Compute viewport bounds in graph coordinates
       const bounds = getViewportBounds(transform, viewport);
+
+      // Check if CURRENTLY VISIBLE nodes fit comfortably in viewport (with 50% margin)
+      // Only reset to show all if visible subset fits with margin (avoids feedback loop with fitToNodes)
+      const visibleNodesWithPos = currentNodes.filter(n =>
+        visibleIds.has(n.id) && n.x !== undefined && n.y !== undefined
+      );
+      if (visibleNodesWithPos.length > 0) {
+        const graphMinX = Math.min(...visibleNodesWithPos.map(n => n.x!));
+        const graphMaxX = Math.max(...visibleNodesWithPos.map(n => n.x!));
+        const graphMinY = Math.min(...visibleNodesWithPos.map(n => n.y!));
+        const graphMaxY = Math.max(...visibleNodesWithPos.map(n => n.y!));
+        const graphWidth = graphMaxX - graphMinX;
+        const graphHeight = graphMaxY - graphMinY;
+
+        const viewportWidth = bounds.maxX - bounds.minX;
+        const viewportHeight = bounds.maxY - bounds.minY;
+
+        // Only reset if visible nodes fit with 50% margin AND we're below zoom floor
+        // This prevents reset when programmatic zoom (fitToNodes) triggers
+        const fitsWithMargin = viewportWidth >= graphWidth * 1.5 && viewportHeight >= graphHeight * 1.5;
+        const isBelowZoomFloor = zoomScale < config.zoomFloor;
+
+        if (fitsWithMargin && isBelowZoomFloor) {
+          console.log("[SemanticZoom] Graph fits with margin and below zoom floor - showing all nodes");
+          setVisibleIds(new Set(currentNodes.map((n) => n.id)));
+          setCentroid(null);
+          return;
+        }
+      }
 
       // Screen center in graph coordinates
       const screenCenter: Point = {
@@ -166,10 +202,10 @@ export function useSemanticZoom(
         y: (bounds.minY + bounds.maxY) / 2,
       };
 
-      // Focal radius: 20% of viewport diagonal in graph coordinates
+      // Focal radius: fraction of viewport diagonal in graph coordinates
       const viewportWidth = bounds.maxX - bounds.minX;
       const viewportHeight = bounds.maxY - bounds.minY;
-      const focalRadius = Math.sqrt(viewportWidth ** 2 + viewportHeight ** 2) * 0.2;
+      const focalRadius = Math.sqrt(viewportWidth ** 2 + viewportHeight ** 2) * config.focalRadius;
 
       // Find focal nodes near screen center (multi-centroid approach)
       const focalEmbeddings = computeFocalNodes(currentNodes, bounds, screenCenter, focalRadius);
@@ -188,8 +224,13 @@ export function useSemanticZoom(
         return;
       }
 
-      // Compute visible set using multi-centroid: visible if similar to ANY focal node
+      // Compute visible set based on similarity threshold
+      // (Zoom-level hysteresis is handled above - if we reach here, we're refiltering)
+      const currentVisible = visibleIds;
       let newVisible = computeVisibleSetMulti(currentNodes, focalEmbeddings, newThreshold);
+
+      // Update lastFilterZoom since we're applying a new filter
+      lastFilterZoomRef.current = zoomScale;
 
       // Extend to include ALL connected neighbors of visible nodes
       // This ensures if a keyword is visible, its connected articles/chunks are too
@@ -216,7 +257,6 @@ export function useSemanticZoom(
       }
 
       // Store positions of nodes that are becoming invisible
-      const currentVisible = visibleIds;
       const nowInvisible = [...currentVisible].filter(
         (id) => !newVisible.has(id)
       );

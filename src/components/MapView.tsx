@@ -75,7 +75,13 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
   // Semantic zoom state
   const [semanticZoomEnabled, setSemanticZoomEnabled] = useState(true);
   const [semanticZoomMaxThreshold, setSemanticZoomMaxThreshold] = useState(0.75);
+  const [semanticZoomFocalRadius, setSemanticZoomFocalRadius] = useState(0.1);
   const visibleIdsRef = useRef<Set<string> | null>(null);
+
+  // Phase 2: Position map tracks ALL node positions (not just visible)
+  const positionMapRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+  // Phase 2: Keep simulation ref for visibility updates (force mode only)
+  const simulationRef = useRef<d3.Simulation<SimNode, SimLink> | null>(null);
 
   // Track current nodes/links for semantic zoom
   // Using state (not refs) so the hook re-runs when nodes are populated
@@ -107,7 +113,9 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
 
   // Fit mode: if true, layout fits within canvas with smaller elements
   // If false (overflow), layout extends beyond canvas, need to zoom out
-  const fitMode = searchParams.get("fit") === "true"; // Default to false (overflow mode)
+  // Force-directed layout always uses overflow mode (fitMode=false) for semantic zoom stability
+  const fitModeParam = searchParams.get("fit") === "true";
+  const fitMode = layoutMode === "force" ? false : fitModeParam;
 
   // UMAP force balance tuning (for debugging layout convergence)
   // Experiments show repulsion=100 gives balanced article/keyword distribution (ratio ~1.03)
@@ -275,7 +283,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
     nodes: simNodes,
     links: simLinks,
     enabled: semanticZoomEnabled,
-    config: { maxThreshold: semanticZoomMaxThreshold },
+    config: { maxThreshold: semanticZoomMaxThreshold, focalRadius: semanticZoomFocalRadius },
     onMetrics: (metrics) => {
       console.log("[SemanticZoom]", metrics);
     },
@@ -412,6 +420,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
     rendererRef.current = renderer;
     nodeSelectionRef.current = renderer.nodeSelection;
     linkSelectionRef.current = renderer.linkSelection;
+    simulationRef.current = simulation;
 
     // Configure and start animated simulation (shared function returns stopped)
     simulation.alphaTarget(0.2).alphaDecay(0.02).restart();
@@ -477,11 +486,19 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
         }
       }
 
+      // Phase 2: Track positions of all visible nodes
+      for (const node of nodes) {
+        if (node.x !== undefined && node.y !== undefined) {
+          positionMapRef.current.set(node.id, { x: node.x, y: node.y });
+        }
+      }
+
       renderer.tick();
     });
 
     return () => {
       simulation.stop();
+      simulationRef.current = null;
       renderer.destroy();
     };
   }, [data, layoutMode, fitMode]);
@@ -493,52 +510,114 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
     rendererRef.current.tick(); // Re-render hull labels with new font size
   }, [dotSize, edgeOpacity, hullOpacity, edgeCurve, curveMethod]);
 
-  // Apply semantic zoom visibility
+  // Phase 2: Apply semantic zoom with real graph filtering (force mode only)
+  // Track previous visible IDs to detect changes
+  const prevVisibleIdsRef = useRef<Set<string> | null>(null);
+
   useEffect(() => {
     // Update ref for hull label filtering
     visibleIdsRef.current = semanticZoomEnabled ? semanticZoom.visibleIds : null;
 
-    if (!nodeSelectionRef.current || !linkSelectionRef.current) return;
-    if (!semanticZoomEnabled) {
-      // When disabled, reset to full opacity (let search filter handle it)
-      nodeSelectionRef.current.attr("opacity", 1);
-      linkSelectionRef.current.attr("opacity", semanticZoom.edgeOpacity);
-      // Re-render hull labels without filtering
-      rendererRef.current?.tick();
+    if (!rendererRef.current) return;
+
+    // UMAP mode: use opacity-based filtering (no simulation to update)
+    if (layoutMode === "umap") {
+      if (!nodeSelectionRef.current || !linkSelectionRef.current) return;
+      if (!semanticZoomEnabled) {
+        nodeSelectionRef.current.attr("opacity", 1);
+        linkSelectionRef.current.attr("opacity", 0.3);
+        rendererRef.current.tick();
+        return;
+      }
+      const MIN_OPACITY = 0.05;
+      nodeSelectionRef.current.attr("opacity", (d) =>
+        semanticZoom.visibleIds.has(d.id) ? 1 : MIN_OPACITY
+      );
+      linkSelectionRef.current.attr("opacity", (d) => {
+        const sourceId = typeof d.source === "string" ? d.source : d.source.id;
+        const targetId = typeof d.target === "string" ? d.target : d.target.id;
+        return semanticZoom.visibleIds.has(sourceId) && semanticZoom.visibleIds.has(targetId) ? 0.3 : 0;
+      });
+      rendererRef.current.tick();
       return;
     }
 
-    const MIN_OPACITY = 0.05;
+    // Force mode: real graph filtering
+    const simulation = simulationRef.current;
+    if (!simulation || simNodes.length === 0) return;
 
-    // Count visible edges to compute dynamic opacity
-    let visibleEdgeCount = 0;
-    simLinks.forEach((l) => {
+    // Check if visibleIds actually changed (avoid unnecessary updates)
+    const prevIds = prevVisibleIdsRef.current;
+    const currentIds = semanticZoom.visibleIds;
+    if (prevIds && prevIds.size === currentIds.size) {
+      let same = true;
+      for (const id of currentIds) {
+        if (!prevIds.has(id)) { same = false; break; }
+      }
+      if (same) return; // No change
+    }
+    prevVisibleIdsRef.current = new Set(currentIds);
+
+    // When disabled, show all nodes
+    if (!semanticZoomEnabled) {
+      // Restore all nodes
+      for (const node of simNodes) {
+        const pos = positionMapRef.current.get(node.id);
+        if (pos) {
+          node.x = pos.x;
+          node.y = pos.y;
+        }
+      }
+      simulation.nodes(simNodes);
+      const linkForce = simulation.force("link") as d3.ForceLink<SimNode, SimLink> | undefined;
+      if (linkForce) linkForce.links(simLinks);
+      rendererRef.current.updateData(simNodes, simLinks);
+      nodeSelectionRef.current = rendererRef.current.nodeSelection;
+      linkSelectionRef.current = rendererRef.current.linkSelection;
+      addDragBehavior(rendererRef.current.nodeSelection, simulation);
+      // The following line breaks the regular map rendering.
+      // So don't put it back without a proper analysis:
+      // simulation.alpha(0.05).alphaTarget(0).restart();
+      rendererRef.current.tick();
+      return;
+    }
+
+    // Derive visible nodes from full graph
+    const visibleNodes = simNodes.filter((n) => currentIds.has(n.id));
+
+    // Set positions on visible nodes from position map
+    for (const node of visibleNodes) {
+      const pos = positionMapRef.current.get(node.id);
+      if (pos) {
+        node.x = pos.x;
+        node.y = pos.y;
+      }
+    }
+
+    // Derive visible links
+    const visibleLinks = simLinks.filter((l) => {
       const sourceId = typeof l.source === "string" ? l.source : l.source.id;
       const targetId = typeof l.target === "string" ? l.target : l.target.id;
-      if (semanticZoom.visibleIds.has(sourceId) && semanticZoom.visibleIds.has(targetId)) {
-        visibleEdgeCount++;
-      }
+      return currentIds.has(sourceId) && currentIds.has(targetId);
     });
 
-    // Dynamic edge opacity: more edges = lighter (less clutter)
-    // ~100 edges → 0.8 opacity, 2000+ edges → 0.1 opacity
-    const dynamicEdgeOpacity = Math.max(0.1, Math.min(0.8, 0.9 - (visibleEdgeCount / 2500)));
+    // Update simulation with visible subset
+    simulation.nodes(visibleNodes);
+    const linkForce = simulation.force("link") as d3.ForceLink<SimNode, SimLink> | undefined;
+    if (linkForce) linkForce.links(visibleLinks);
 
-    // Apply visibility based on semantic zoom
-    nodeSelectionRef.current.attr("opacity", (d) => {
-      return semanticZoom.visibleIds.has(d.id) ? 1 : MIN_OPACITY;
-    });
+    // Update renderer
+    rendererRef.current.updateData(visibleNodes, visibleLinks);
+    nodeSelectionRef.current = rendererRef.current.nodeSelection;
+    linkSelectionRef.current = rendererRef.current.linkSelection;
 
-    linkSelectionRef.current.attr("opacity", (d) => {
-      const sourceId = typeof d.source === "string" ? d.source : d.source.id;
-      const targetId = typeof d.target === "string" ? d.target : d.target.id;
-      const bothVisible = semanticZoom.visibleIds.has(sourceId) && semanticZoom.visibleIds.has(targetId);
-      return bothVisible ? dynamicEdgeOpacity : 0;
-    });
+    // Re-apply drag behavior to new nodes
+    addDragBehavior(rendererRef.current.nodeSelection, simulation);
 
-    // Re-render hull labels with filtering
-    rendererRef.current?.tick();
-  }, [semanticZoomEnabled, semanticZoom.visibleIds, semanticZoom.edgeOpacity, simLinks]);
+    // Gentle restart for subtle adaptation
+    // simulation.alpha(0.05).alphaTarget(0).restart();
+    rendererRef.current.tick();
+  }, [semanticZoomEnabled, semanticZoom.visibleIds, simNodes, simLinks, layoutMode]);
 
   if (loading) {
     return (
@@ -608,6 +687,8 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
         onSemanticZoomEnabledChange={setSemanticZoomEnabled}
         semanticZoomMaxThreshold={semanticZoomMaxThreshold}
         onSemanticZoomMaxThresholdChange={setSemanticZoomMaxThreshold}
+        semanticZoomFocalRadius={semanticZoomFocalRadius}
+        onSemanticZoomFocalRadiusChange={setSemanticZoomFocalRadius}
         semanticZoomThreshold={semanticZoom.threshold}
       />
 
