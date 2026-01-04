@@ -19,6 +19,13 @@ import {
 import { useMapSearch } from "@/hooks/useMapSearch";
 import { useMapFilterOpacity } from "@/hooks/useMapFilterOpacity";
 
+/** Hook to get a stable ref that always holds the latest value */
+function useLatestRef<T>(value: T): { current: T } {
+  const ref = useRef(value);
+  ref.current = value;
+  return ref;
+}
+
 interface SimilarKeyword {
   keyword: string;
   similarity: number;
@@ -48,6 +55,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
   const svgRef = useRef<SVGSVGElement>(null);
   const nodeSelectionRef = useRef<d3.Selection<SVGGElement, SimNode, SVGGElement, unknown> | null>(null);
   const linkSelectionRef = useRef<d3.Selection<SVGLineElement, SimLink, SVGGElement, unknown> | null>(null);
+  const rendererRef = useRef<MapRenderer | null>(null);
   const [data, setData] = useState<MapData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -71,6 +79,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
   // Default: 0 (center) = 1.0x
   const dotSlider = parseFloat(searchParams.get("dotSize") || "0");
   const dotSize = Math.pow(10, dotSlider); // Convert log slider to linear scale
+  const dotSizeRef = useLatestRef(dotSize);
 
   // Fit mode: if true, layout fits within canvas with smaller elements
   // If false (overflow), layout extends beyond canvas, need to zoom out
@@ -291,7 +300,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
         nodes,
         links,
         showEdges,
-        dotScale: dotSize,
+        dotScaleRef: dotSizeRef,
         fit: fitMode,
         hullOpacity,
         callbacks: {
@@ -300,6 +309,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
         },
       });
 
+      rendererRef.current = renderer;
       nodeSelectionRef.current = renderer.nodeSelection;
       linkSelectionRef.current = renderer.linkSelection;
 
@@ -344,7 +354,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
       nodes: nodes as SimNode[],
       links: links as SimLink[],
       showEdges,
-      dotScale: dotSize,
+      dotScaleRef: dotSizeRef,
       fit: fitMode,
       hullOpacity,
       callbacks: {
@@ -353,6 +363,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
       },
     });
 
+    rendererRef.current = renderer;
     nodeSelectionRef.current = renderer.nodeSelection;
     linkSelectionRef.current = renderer.linkSelection;
 
@@ -427,7 +438,14 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
       simulation.stop();
       renderer.destroy();
     };
-  }, [data, showEdges, layoutMode, dotSize, fitMode, hullOpacity]);
+  }, [data, showEdges, layoutMode, fitMode, hullOpacity]);
+
+  // Update circle sizes without relayout when dotSize changes
+  useEffect(() => {
+    if (!rendererRef.current) return;
+    rendererRef.current.updateCircleSizes();
+    rendererRef.current.tick(); // Re-render hull labels with new font size
+  }, [dotSize]);
 
   if (loading) {
     return (
