@@ -14,10 +14,11 @@ export default function FilteredPage({ params }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const initialThreshold = parseFloat(searchParams.get("threshold") || "0.75");
+  const initialThreshold = parseFloat(searchParams.get("threshold") || "0.5");
   const level = parseInt(searchParams.get("level") || "3", 10);
   const [searchQuery, setSearchQuery] = useState("");
   const [synonymThreshold, setSynonymThreshold] = useState(initialThreshold);
+  const [draftThreshold, setDraftThreshold] = useState(initialThreshold);
 
   const filterQuery = decodeURIComponent(query);
 
@@ -83,14 +84,15 @@ export default function FilteredPage({ params }: Props) {
               <span>Threshold:</span>
               <input
                 type="range"
-                min="0.7"
+                min="0.25"
                 max="0.95"
                 step="0.05"
-                value={synonymThreshold}
-                onChange={(e) => handleThresholdChange(parseFloat(e.target.value))}
+                value={draftThreshold}
+                onChange={(e) => setDraftThreshold(parseFloat(e.target.value))}
+                onPointerUp={(e) => handleThresholdChange(parseFloat((e.target as HTMLInputElement).value))}
                 className="w-16 h-3"
               />
-              <span className="w-8">{synonymThreshold.toFixed(2)}</span>
+              <span className="w-8">{draftThreshold.toFixed(2)}</span>
             </label>
           </div>
         </div>

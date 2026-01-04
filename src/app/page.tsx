@@ -17,7 +17,8 @@ export default function Home() {
   const router = useRouter();
 
   const [searchQuery, setSearchQuery] = useState("");
-  const [synonymThreshold, setSynonymThreshold] = useState(0.75);
+  const [synonymThreshold, setSynonymThreshold] = useState(0.5);
+  const [draftThreshold, setDraftThreshold] = useState(0.5);
   const [showImport, setShowImport] = useState(false);
   const [importProgress, setImportProgress] = useState<ImportProgressState>(initialProgressState);
 
@@ -147,14 +148,15 @@ export default function Home() {
               <span>Threshold:</span>
               <input
                 type="range"
-                min="0.7"
+                min="0.25"
                 max="0.95"
                 step="0.05"
-                value={synonymThreshold}
-                onChange={(e) => setSynonymThreshold(parseFloat(e.target.value))}
+                value={draftThreshold}
+                onChange={(e) => setDraftThreshold(parseFloat(e.target.value))}
+                onPointerUp={(e) => setSynonymThreshold(parseFloat((e.target as HTMLInputElement).value))}
                 className="w-16 h-3"
               />
-              <span className="w-8">{synonymThreshold.toFixed(2)}</span>
+              <span className="w-8">{draftThreshold.toFixed(2)}</span>
             </label>
           </div>
 
