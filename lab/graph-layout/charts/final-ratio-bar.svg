@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="700" height="400" viewBox="0 0 700 400">
+  <rect width="700" height="400" fill="white"/>
+
+  <!-- Title -->
+  <text x="350" y="25" text-anchor="middle" font-size="16" font-weight="bold" fill="#333">Final Centrality Ratio by Repulsion Strength</text>
+
+  <!-- Grid -->
+  <line x1="70" y1="320" x2="680" y2="320" stroke="#e0e0e0" stroke-width="1"/>
+  <text x="60" y="324" text-anchor="end" font-size="12" fill="#666">0.50</text>
+  <line x1="70" y1="264" x2="680" y2="264" stroke="#e0e0e0" stroke-width="1"/>
+  <text x="60" y="268" text-anchor="end" font-size="12" fill="#666">0.70</text>
+  <line x1="70" y1="208" x2="680" y2="208" stroke="#e0e0e0" stroke-width="1"/>
+  <text x="60" y="212" text-anchor="end" font-size="12" fill="#666">0.90</text>
+  <line x1="70" y1="151.99999999999997" x2="680" y2="151.99999999999997" stroke="#e0e0e0" stroke-width="1"/>
+  <text x="60" y="155.99999999999997" text-anchor="end" font-size="12" fill="#666">1.10</text>
+  <line x1="70" y1="96" x2="680" y2="96" stroke="#e0e0e0" stroke-width="1"/>
+  <text x="60" y="100" text-anchor="end" font-size="12" fill="#666">1.30</text>
+  <line x1="70" y1="40" x2="680" y2="40" stroke="#e0e0e0" stroke-width="1"/>
+  <text x="60" y="44" text-anchor="end" font-size="12" fill="#666">1.50</text>
+
+  <!-- Reference line -->
+  <line x1="70" y1="180" x2="680" y2="180" stroke="#e74c3c" stroke-width="2" stroke-dasharray="5,5"/>
+
+  <!-- Axes -->
+  <line x1="70" y1="320" x2="680" y2="320" stroke="#333" stroke-width="2"/>
+  <line x1="70" y1="40" x2="70" y2="320" stroke="#333" stroke-width="2"/>
+
+  <!-- Y-axis label -->
+  <text x="20" y="180" text-anchor="middle" font-size="14" fill="#333" transform="rotate(-90, 20, 180)">Mean Ratio</text>
+
+  <!-- Bars -->
+  
+      <rect x="75.54545454545455" y="261.70755839043454" width="44.36363636363637" height="58.29244160956548" fill="#3498db"/>
+      <text x="97.72727272727273" y="335" text-anchor="middle" font-size="11" fill="#333" transform="rotate(45, 97.72727272727273, 335)">rep=1</text>
+    
+      <rect x="131" y="260.74987827880426" width="44.36363636363637" height="59.25012172119573" fill="#3498db"/>
+      <text x="153.1818181818182" y="335" text-anchor="middle" font-size="11" fill="#333" transform="rotate(45, 153.1818181818182, 335)">rep=2</text>
+    
+      <rect x="186.45454545454547" y="266.11360813063175" width="44.36363636363637" height="53.886391869368275" fill="#3498db"/>
+      <text x="208.63636363636365" y="335" text-anchor="middle" font-size="11" fill="#333" transform="rotate(45, 208.63636363636365, 335)">rep=5</text>
+    
+      <rect x="241.9090909090909" y="252.95494404513903" width="44.36363636363637" height="67.04505595486098" fill="#3498db"/>
+      <text x="264.09090909090907" y="335" text-anchor="middle" font-size="11" fill="#333" transform="rotate(45, 264.09090909090907, 335)">rep=10</text>
+    
+      <rect x="297.36363636363643" y="245.3131634399347" width="44.36363636363637" height="74.6868365600653" fill="#3498db"/>
+      <text x="319.5454545454546" y="335" text-anchor="middle" font-size="11" fill="#333" transform="rotate(45, 319.5454545454546, 335)">rep=20</text>
+    
+      <rect x="352.81818181818187" y="233.15292196800172" width="44.36363636363637" height="86.84707803199828" fill="#3498db"/>
+      <text x="375.00000000000006" y="335" text-anchor="middle" font-size="11" fill="#333" transform="rotate(45, 375.00000000000006, 335)">rep=30</text>
+    
+      <rect x="408.2727272727273" y="209.8627599053956" width="44.36363636363637" height="110.13724009460442" fill="#2ecc71"/>
+      <text x="430.4545454545455" y="335" text-anchor="middle" font-size="11" fill="#333" transform="rotate(45, 430.4545454545455, 335)">rep=50</text>
+    
+      <rect x="463.7272727272728" y="189.4362144066837" width="44.36363636363637" height="130.5637855933163" fill="#2ecc71"/>
+      <text x="485.909090909091" y="335" text-anchor="middle" font-size="11" fill="#333" transform="rotate(45, 485.909090909091, 335)">rep=75</text>
+    
+      <rect x="519.1818181818182" y="171.64269568309348" width="44.36363636363637" height="148.35730431690652" fill="#2ecc71"/>
+      <text x="541.3636363636364" y="335" text-anchor="middle" font-size="11" fill="#333" transform="rotate(45, 541.3636363636364, 335)">rep=100</text>
+    
+      <rect x="574.6363636363636" y="138.22321460997432" width="44.36363636363637" height="181.77678539002568" fill="#2ecc71"/>
+      <text x="596.8181818181818" y="335" text-anchor="middle" font-size="11" fill="#333" transform="rotate(45, 596.8181818181818, 335)">rep=150</text>
+    
+      <rect x="630.0909090909091" y="131.36812031371045" width="44.36363636363637" height="188.63187968628955" fill="#e74c3c"/>
+      <text x="652.2727272727273" y="335" text-anchor="middle" font-size="11" fill="#333" transform="rotate(45, 652.2727272727273, 335)">rep=200</text>
+    
+</svg>
