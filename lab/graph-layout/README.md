@@ -118,6 +118,20 @@ These suggest the current UMAP configuration optimizes for article/keyword balan
 - Add degree-weighted repulsion (high-degree keywords get more repulsion)
 - Investigate why community structure isn't preserved (edge weights? initialization?)
 
+### 5. Bipartite Community Detection (2025-01-04)
+
+**Goal**: Address issue #2 (no color colocation) by computing communities on the same bipartite graph used for layout.
+
+**Hypothesis**: Current communities are computed on the keyword-similarity graph only, but the layout uses the full bipartite article-keyword graph. If we run Louvain on the bipartite graph, communities should better match visual clusters.
+
+**Scripts**:
+- `prototype-bipartite-communities.ts` - Computes Louvain on bipartite graph at 8 resolution levels
+- `evaluate-community-cohesion.ts` - Measures how well communities match spatial layout
+
+**API integration**: Added `?bipartite=true` parameter to `/api/map` route to use bipartite communities from `data/bipartite-communities.json` instead of database communities.
+
+**Status**: Prototype complete. Results cached in `data/` (gitignored). Needs cohesion evaluation to determine if bipartite communities actually improve color colocation.
+
 ---
 
 ## Scripts
@@ -131,6 +145,8 @@ Run with: `npm run script lab/graph-layout/<script>.ts`
 | `test-force-balance.ts` | Trajectory test for convergence |
 | `analyze-edge-distances.ts` | Edge distance distribution by type |
 | `analyze-umap-centrality.ts` | UMAP centrality with attraction sweep |
+| `prototype-bipartite-communities.ts` | Compute Louvain on bipartite article-keyword graph |
+| `evaluate-community-cohesion.ts` | Evaluate community-layout alignment |
 
 ## Key Metrics
 

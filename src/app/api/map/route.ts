@@ -1,6 +1,66 @@
 import { NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase";
 import { generateEmbedding, truncateEmbedding } from "@/lib/embeddings";
+import * as fs from "fs";
+import * as path from "path";
+
+// Bipartite communities JSON structure
+interface BipartiteCommunityResult {
+  level: number;
+  resolution: number;
+  communityCount: number;
+  assignments: Record<string, number>;
+}
+
+// Cache for bipartite communities (loaded once per server restart)
+let bipartiteCommunitiesCache: BipartiteCommunityResult[] | null = null;
+
+function loadBipartiteCommunities(): BipartiteCommunityResult[] | null {
+  if (bipartiteCommunitiesCache) return bipartiteCommunitiesCache;
+
+  const filePath = path.join(process.cwd(), "data", "bipartite-communities.json");
+  if (!fs.existsSync(filePath)) {
+    console.log("[map] Bipartite communities file not found:", filePath);
+    return null;
+  }
+
+  try {
+    bipartiteCommunitiesCache = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    console.log("[map] Loaded bipartite communities from file");
+    return bipartiteCommunitiesCache;
+  } catch (e) {
+    console.error("[map] Failed to load bipartite communities:", e);
+    return null;
+  }
+}
+
+/**
+ * Add community IDs from bipartite JSON file (assigns to both articles and keywords).
+ */
+function addBipartiteCommunityColors(
+  mapData: { nodes: MapNode[]; edges: MapEdge[]; articleCount: number; keywordCount: number },
+  level: number
+) {
+  const communities = loadBipartiteCommunities();
+  if (!communities) return mapData;
+
+  const levelData = communities.find(c => c.level === level);
+  if (!levelData) {
+    console.log(`[map] No bipartite communities for level ${level}`);
+    return mapData;
+  }
+
+  // Add communityId to all nodes (both articles and keywords)
+  const nodes = mapData.nodes.map(node => {
+    const communityId = levelData.assignments[node.id];
+    return communityId !== undefined
+      ? { ...node, communityId }
+      : node;
+  });
+
+  console.log(`[map] Applied bipartite communities (level ${level}, ${levelData.communityCount} communities)`);
+  return { ...mapData, nodes };
+}
 
 export interface MapNode {
   id: string;
@@ -68,6 +128,8 @@ export async function GET(request: Request) {
   const maxEdgesPerArticle = parseInt(searchParams.get("maxEdges") || "5", 10);
   // level: community resolution level (0=coarsest/fewest communities, 7=finest/most communities)
   const level = parseInt(searchParams.get("level") || "3", 10);
+  // bipartite: use experimental bipartite communities from JSON file
+  const useBipartite = searchParams.get("bipartite") === "true";
 
   const supabase = createServerClient();
 
@@ -164,7 +226,7 @@ export async function GET(request: Request) {
     }
   }
 
-  return buildSemanticMap(supabase, typedPairs, keywordTextToEmbedding, articleIdToEmbedding, includeNeighbors, clustered, level);
+  return buildSemanticMap(supabase, typedPairs, keywordTextToEmbedding, articleIdToEmbedding, includeNeighbors, clustered, level, useBipartite);
 }
 
 /**
@@ -307,11 +369,15 @@ async function buildSemanticMap(
   articleEmbeddings: Map<string, number[]>,
   includeNeighbors: boolean,
   clustered: boolean,
-  level: number
+  level: number,
+  useBipartite: boolean = false
 ) {
   let result = buildSemanticMapData(pairs, keywordEmbeddings, articleEmbeddings, includeNeighbors);
 
-  if (clustered) {
+  if (useBipartite) {
+    // Use experimental bipartite communities from JSON file
+    result = addBipartiteCommunityColors(result, level);
+  } else if (clustered) {
     result = await collapseCommunitiesToHubs(supabase, result, level);
   } else {
     // Fetch community IDs for coloring (not collapsing)

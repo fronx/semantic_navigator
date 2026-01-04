@@ -4,6 +4,10 @@
 
 - [Local NPM Packages](guides/local-npm-packages.md) - Developing with locally checked-out packages (umapper)
 
+## Lab Experiments
+
+- [Graph Layout Lab](../lab/graph-layout/README.md) - UMAP layout investigations: centrality balance, repulsion tuning, bipartite community detection
+
 ## Architecture
 
 ### Features

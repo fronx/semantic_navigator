@@ -95,3 +95,7 @@ Or run the SQL files manually in the Supabase SQL Editor.
 ## Design
 
 See [IDEA.md](./IDEA.md) for the full design spec.
+
+## Documentation
+
+See [docs/README.md](docs/README.md) for architecture docs, guides, and lab experiments.
