@@ -10,12 +10,20 @@ import {
 } from "@/lib/map-renderer";
 import { createForceSimulation, type ForceLink, type ForceNode } from "@/lib/map-layout";
 import { forceBoundary } from "@/lib/d3-forces";
+import {
+  spatialSemanticFilter,
+  buildAdjacencyMap,
+  buildEmbeddingMap,
+} from "@/lib/spatial-semantic";
 import type { KeywordNode, SimilarityEdge } from "@/lib/graph-queries";
 
 interface TopicsData {
   nodes: KeywordNode[];
   edges: SimilarityEdge[];
 }
+
+// Hover highlight handlers
+const SCREEN_RADIUS_FRACTION = 0.15; // 15% of screen height
 
 // Convert linear slider (0-100) to logarithmic scale (0.01 to 10)
 // Middle (50) = 1.0, 0 = 0.01, 100 = 10
@@ -53,6 +61,16 @@ export default function TopicsPage() {
   const [error, setError] = useState<string | null>(null);
   const [knnStrength, setKnnStrength] = useState(4.0); // 4.0 = stronger k-NN pull
   const [contrast, setContrast] = useState(5.0); // Exponent for similarity (1 = linear, higher = more contrast)
+
+  // Hover highlighting settings
+  const [hoverRadius, setHoverRadius] = useState(0.7); // Semantic similarity threshold
+  const [baseDim, setBaseDim] = useState(0.7); // Dim amount when nothing nearby (0-1)
+
+  // Refs for hover settings (accessed in event handlers without triggering re-renders)
+  const hoverRadiusRef = useRef(hoverRadius);
+  const baseDimRef = useRef(baseDim);
+  hoverRadiusRef.current = hoverRadius;
+  baseDimRef.current = baseDim;
 
   // Fetch data
   useEffect(() => {
@@ -186,6 +204,80 @@ export default function TopicsPage() {
       simulation.force("collision", null);
     });
 
+    // Build lookups for spatial-semantic filtering
+    const adjacency = buildAdjacencyMap(mapEdges);
+    const embeddings = buildEmbeddingMap(data.nodes, (n) => `kw:${n.label}`);
+
+    // Store base opacities for restoration
+    const computeEdgeOpacity = (d: SimLink) => {
+      const sim = d.similarity ?? 0.5;
+      const adjusted = applyContrast(sim, contrast);
+      return 0.1 + adjusted * 0.7;
+    };
+
+    function applyHighlight(highlightedIds: Set<string> | null) {
+      if (highlightedIds === null) {
+        // Dim everything slightly (nothing nearby)
+        const dim = 1 - baseDimRef.current;
+        renderer.nodeSelection.select("circle").attr("opacity", dim);
+        renderer.linkSelection.attr("stroke-opacity", (d) => computeEdgeOpacity(d) * dim);
+      } else if (highlightedIds.size === 0) {
+        // Restore full opacity (hover ended)
+        renderer.nodeSelection.select("circle").attr("opacity", 1);
+        renderer.linkSelection.attr("stroke-opacity", computeEdgeOpacity);
+      } else {
+        // Highlight selected, dim others
+        renderer.nodeSelection.select("circle").attr("opacity", (d) =>
+          highlightedIds.has(d.id) ? 1 : 0.15
+        );
+        renderer.linkSelection.attr("stroke-opacity", (d) => {
+          const sourceId = typeof d.source === "string" ? d.source : d.source.id;
+          const targetId = typeof d.target === "string" ? d.target : d.target.id;
+          const bothHighlighted = highlightedIds.has(sourceId) && highlightedIds.has(targetId);
+          return bothHighlighted ? computeEdgeOpacity(d) : 0.05;
+        });
+      }
+    }
+
+    d3.select(svgRef.current)
+      .on("mousemove.hover", (event: MouseEvent) => {
+        const [screenX, screenY] = d3.pointer(event, svgRef.current);
+
+        const result = spatialSemanticFilter({
+          nodes,
+          screenCenter: { x: screenX, y: screenY },
+          screenRadius: height * SCREEN_RADIUS_FRACTION,
+          transform: renderer.getTransform(),
+          similarityThreshold: hoverRadiusRef.current,
+          embeddings,
+          adjacency,
+        });
+        const { highlightedIds, spatialIds, debug } = result;
+
+        // Log debug info occasionally
+        if (debug && Math.random() < 0.02) {
+          console.log("[hover]", {
+            spatial: debug.spatialCount,
+            simPass: debug.similarityPassCount,
+            neighbors: debug.neighborAddCount,
+            total: highlightedIds.size,
+            simRange: `${debug.minSimilarity.toFixed(2)}-${debug.maxSimilarity.toFixed(2)}`,
+            threshold: hoverRadiusRef.current,
+          });
+        }
+
+        if (spatialIds.size === 0) {
+          // Nothing nearby - dim everything slightly
+          applyHighlight(null);
+        } else {
+          applyHighlight(highlightedIds);
+        }
+      })
+      .on("mouseleave.hover", () => {
+        // Restore full opacity
+        applyHighlight(new Set());
+      });
+
     // Start simulation - sustained energy until velocity settles
     simulation
       .alphaTarget(0.3)      // Sustained energy for layout
@@ -221,6 +313,10 @@ export default function TopicsPage() {
     return () => {
       simulation.stop();
       simulationRef.current = null;
+      // Remove hover handlers
+      d3.select(svgRef.current)
+        .on("mousemove.hover", null)
+        .on("mouseleave.hover", null);
       renderer.destroy();
     };
   }, [data, knnStrength, contrast]); // Re-create when params change
@@ -284,6 +380,36 @@ export default function TopicsPage() {
                 className="w-20 h-3"
               />
               <span className="w-12 tabular-nums">{knnStrength.toFixed(2)}</span>
+            </label>
+
+            <span className="text-zinc-300 dark:text-zinc-600">|</span>
+
+            <label className="flex items-center gap-1">
+              <span>Hover sim:</span>
+              <input
+                type="range"
+                min="0.3"
+                max="0.95"
+                step="0.05"
+                value={hoverRadius}
+                onChange={(e) => setHoverRadius(parseFloat(e.target.value))}
+                className="w-20 h-3"
+              />
+              <span className="w-8 tabular-nums">{hoverRadius.toFixed(2)}</span>
+            </label>
+
+            <label className="flex items-center gap-1">
+              <span>Base dim:</span>
+              <input
+                type="range"
+                min="0"
+                max="0.5"
+                step="0.05"
+                value={baseDim}
+                onChange={(e) => setBaseDim(parseFloat(e.target.value))}
+                className="w-20 h-3"
+              />
+              <span className="w-8 tabular-nums">{(baseDim * 100).toFixed(0)}%</span>
             </label>
           </div>
 

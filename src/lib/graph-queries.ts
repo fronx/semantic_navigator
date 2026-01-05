@@ -15,6 +15,8 @@ export interface KeywordNode {
   id: string;
   label: string;
   communityId?: number;
+  /** 256-dim embedding for semantic operations */
+  embedding?: number[];
 }
 
 export interface SimilarityEdge {
@@ -134,15 +136,25 @@ export async function getKeywordBackbone(
     };
   });
 
-  // Add k-nearest-neighbor edges for connectivity
+  // Add k-nearest-neighbor edges for connectivity and get embeddings
+  let embeddingsMap = new Map<string, number[]>();
   if (nearestNeighbors > 0 && keywordTextToId.size > 0) {
-    const neighborEdges = await computeNearestNeighborEdges(
+    const { edges: neighborEdges, embeddings } = await computeNearestNeighborEdges(
       supabase,
       keywordTextToId,
       nearestNeighbors,
       edgeMap
     );
     edges.push(...neighborEdges);
+    embeddingsMap = embeddings;
+  }
+
+  // Add embeddings to nodes
+  for (const node of nodes) {
+    const embedding = embeddingsMap.get(node.label);
+    if (embedding) {
+      node.embedding = embedding;
+    }
   }
 
   // Add community colors
@@ -153,17 +165,23 @@ export async function getKeywordBackbone(
   return { nodes, edges };
 }
 
+interface NearestNeighborResult {
+  edges: SimilarityEdge[];
+  embeddings: Map<string, number[]>;
+}
+
 /**
  * Compute k-nearest-neighbor edges to ensure graph connectivity.
  * Each keyword gets connected to its K nearest semantic neighbors.
  * Skips edges that already exist in the edge map.
+ * Also returns the embeddings map for use in the result.
  */
 async function computeNearestNeighborEdges(
   supabase: SupabaseClient,
   keywordTextToId: Map<string, string>,
   k: number,
   existingEdges: Map<string, { similarity: number; count: number }>
-): Promise<SimilarityEdge[]> {
+): Promise<NearestNeighborResult> {
   const BATCH_SIZE = 100;
   const keywordIds = [...keywordTextToId.values()];
   const embeddings = new Map<string, number[]>();
@@ -221,7 +239,7 @@ async function computeNearestNeighborEdges(
     }
   }
 
-  return results;
+  return { edges: results, embeddings };
 }
 
 /**
