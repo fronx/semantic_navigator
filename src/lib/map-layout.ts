@@ -226,6 +226,7 @@ export interface ForceLink extends d3.SimulationLinkDatum<ForceNode> {
   source: ForceNode;
   target: ForceNode;
   similarity?: number;
+  isKNN?: boolean;
 }
 
 export interface ForceSimulationResult {
@@ -259,6 +260,7 @@ export function createForceSimulation(
       source: nodeMap.get(e.source)!,
       target: nodeMap.get(e.target)!,
       similarity: e.similarity,
+      isKNN: e.isKNN,
     }))
     .filter((l) => l.source && l.target);
 

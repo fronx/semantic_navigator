@@ -79,6 +79,8 @@ export interface MapEdge {
   target: string;
   // For keyword-keyword edges, indicates semantic similarity (0-1)
   similarity?: number;
+  // True if this is a k-NN connectivity edge
+  isKNN?: boolean;
 }
 
 export interface MapData {
