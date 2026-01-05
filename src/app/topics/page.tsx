@@ -30,13 +30,29 @@ function strengthToSlider(strength: number): number {
   return Math.log10(strength) * 50 + 50;
 }
 
+/**
+ * Apply contrast curve to similarity value.
+ * Symmetric S-curve around 0.5: weak becomes weaker, strong becomes stronger.
+ * At contrast=1: linear (no change)
+ * At contrast=3: 0.3→0.11, 0.5→0.5, 0.7→0.89, 0.9→0.996
+ */
+function applyContrast(similarity: number, contrast: number): number {
+  if (contrast === 1) return similarity;
+  if (similarity <= 0.5) {
+    return 0.5 * Math.pow(2 * similarity, contrast);
+  } else {
+    return 1 - 0.5 * Math.pow(2 * (1 - similarity), contrast);
+  }
+}
+
 export default function TopicsPage() {
   const svgRef = useRef<SVGSVGElement>(null);
   const simulationRef = useRef<d3.Simulation<ForceNode, ForceLink> | null>(null);
   const [data, setData] = useState<TopicsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [knnStrength, setKnnStrength] = useState(1.0); // 1.0 = normal strength
+  const [knnStrength, setKnnStrength] = useState(4.0); // 4.0 = stronger k-NN pull
+  const [contrast, setContrast] = useState(5.0); // Exponent for similarity (1 = linear, higher = more contrast)
 
   // Fetch data
   useEffect(() => {
@@ -74,7 +90,7 @@ export default function TopicsPage() {
       communityId: n.communityId,
     }));
 
-    // Convert edges to include similarity and isKNN flag
+    // Convert edges
     const mapEdges = data.edges.map((e) => ({
       source: e.source,
       target: e.target,
@@ -96,18 +112,20 @@ export default function TopicsPage() {
     // Reduce repulsion - keyword-only graph doesn't need as much separation
     simulation.force("charge", d3.forceManyBody().strength(-200));
 
-    // Custom link force with k-NN strength multiplier
+    // Custom link force with contrast exaggeration and k-NN strength
     const linkForce = d3
       .forceLink<d3.SimulationNodeDatum, ForceLink>(links)
       .id((d: d3.SimulationNodeDatum & { id?: string }) => d.id ?? "")
       .distance((d) => {
         const sim = (d as ForceLink).similarity ?? 0.5;
-        return 40 + (1 - sim) * 100;
+        const adjustedSim = applyContrast(sim, contrast);
+        return 40 + (1 - adjustedSim) * 150;
       })
       .strength((d) => {
         const link = d as ForceLink;
         const baseSim = link.similarity ?? 0.5;
-        const baseStrength = 0.5 + baseSim * 0.5;
+        const adjustedSim = applyContrast(baseSim, contrast);
+        const baseStrength = 0.2 + adjustedSim * 0.8; // 0.2 to 1.0 range
         // Apply k-NN multiplier for connectivity edges
         return link.isKNN ? baseStrength * knnStrength : baseStrength;
       });
@@ -147,6 +165,13 @@ export default function TopicsPage() {
           // TODO: Expand to show articles
         },
       },
+    });
+
+    // Apply per-edge opacity based on similarity with contrast
+    renderer.linkSelection.attr("stroke-opacity", (d) => {
+      const sim = d.similarity ?? 0.5;
+      const adjusted = applyContrast(sim, contrast);
+      return 0.1 + adjusted * 0.7; // Range: 0.1 to 0.8
     });
 
     // Track simulation settling
@@ -198,7 +223,7 @@ export default function TopicsPage() {
       simulationRef.current = null;
       renderer.destroy();
     };
-  }, [data, knnStrength]); // Re-create when knnStrength changes
+  }, [data, knnStrength, contrast]); // Re-create when params change
 
   if (loading) {
     return (
@@ -229,10 +254,24 @@ export default function TopicsPage() {
       <header className="flex-shrink-0 border-b bg-white dark:bg-zinc-900 dark:border-zinc-800">
         <div className="px-3 py-1.5 flex items-center gap-3">
           <h1 className="text-sm font-medium text-zinc-600 dark:text-zinc-400">
-            Topics ({data.nodes.length} keywords, {data.edges.length} edges, {data.edges.filter(e => e.isKNN).length} k-NN)
+            Topics ({data.nodes.length} keywords, {data.edges.length} edges)
           </h1>
 
-          <div className="flex items-center gap-2 text-xs text-zinc-500">
+          <div className="flex items-center gap-3 text-xs text-zinc-500">
+            <label className="flex items-center gap-1">
+              <span>Contrast:</span>
+              <input
+                type="range"
+                min="1"
+                max="5"
+                step="0.1"
+                value={contrast}
+                onChange={(e) => setContrast(parseFloat(e.target.value))}
+                className="w-20 h-3"
+              />
+              <span className="w-8 tabular-nums">{contrast.toFixed(1)}</span>
+            </label>
+
             <label className="flex items-center gap-1">
               <span>k-NN:</span>
               <input
