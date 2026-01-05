@@ -5,6 +5,9 @@
  * See docs/architecture/adr/008-semantic-zoom.md for design decisions.
  */
 
+// Re-export normalize from shared utils for backward compatibility
+export { normalize } from "./math-utils";
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -64,6 +67,8 @@ export const DEFAULT_CONFIG: SemanticZoomConfig = {
 /**
  * Compute cosine similarity between two unit vectors.
  * Since embeddings are normalized, this is just the dot product.
+ *
+ * NOTE: For non-normalized vectors, use cosineSimilarity from math-utils.ts
  */
 export function cosineSimilarity(a: number[], b: number[]): number {
   if (a.length !== b.length) {
@@ -97,14 +102,6 @@ export function cosineSimilarityF32(a: Float32Array, b: Float32Array): number {
   return dot;
 }
 
-/**
- * Normalize a vector to unit length.
- */
-export function normalize(v: number[]): number[] {
-  const norm = Math.sqrt(v.reduce((sum, x) => sum + x * x, 0));
-  if (norm === 0) return v;
-  return v.map((x) => x / norm);
-}
 
 /**
  * Normalize a Float32Array in place.

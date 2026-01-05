@@ -1,20 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import * as d3 from "d3";
-import {
-  createRenderer,
-  addDragBehavior,
-  type SimNode,
-  type SimLink,
-} from "@/lib/map-renderer";
-import { createForceSimulation, type ForceLink, type ForceNode } from "@/lib/map-layout";
-import { forceBoundary } from "@/lib/d3-forces";
-import {
-  spatialSemanticFilter,
-  buildAdjacencyMap,
-  buildEmbeddingMap,
-} from "@/lib/spatial-semantic";
+import { useEffect, useState } from "react";
+import { TopicsView } from "@/components/TopicsView";
 import type { KeywordNode, SimilarityEdge } from "@/lib/graph-queries";
 
 interface TopicsData {
@@ -22,55 +9,29 @@ interface TopicsData {
   edges: SimilarityEdge[];
 }
 
-// Hover highlight handlers
-const SCREEN_RADIUS_FRACTION = 0.15; // 15% of screen height
-
 // Convert linear slider (0-100) to logarithmic scale (0.01 to 10)
-// Middle (50) = 1.0, 0 = 0.01, 100 = 10
 function sliderToStrength(value: number): number {
   if (value === 0) return 0;
   return Math.pow(10, (value - 50) / 50);
 }
 
-// Convert strength back to slider value
 function strengthToSlider(strength: number): number {
   if (strength === 0) return 0;
   return Math.log10(strength) * 50 + 50;
 }
 
-/**
- * Apply contrast curve to similarity value.
- * Symmetric S-curve around 0.5: weak becomes weaker, strong becomes stronger.
- * At contrast=1: linear (no change)
- * At contrast=3: 0.3→0.11, 0.5→0.5, 0.7→0.89, 0.9→0.996
- */
-function applyContrast(similarity: number, contrast: number): number {
-  if (contrast === 1) return similarity;
-  if (similarity <= 0.5) {
-    return 0.5 * Math.pow(2 * similarity, contrast);
-  } else {
-    return 1 - 0.5 * Math.pow(2 * (1 - similarity), contrast);
-  }
-}
-
 export default function TopicsPage() {
-  const svgRef = useRef<SVGSVGElement>(null);
-  const simulationRef = useRef<d3.Simulation<ForceNode, ForceLink> | null>(null);
   const [data, setData] = useState<TopicsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [knnStrength, setKnnStrength] = useState(4.0); // 4.0 = stronger k-NN pull
-  const [contrast, setContrast] = useState(5.0); // Exponent for similarity (1 = linear, higher = more contrast)
 
-  // Hover highlighting settings
-  const [hoverRadius, setHoverRadius] = useState(0.7); // Semantic similarity threshold
-  const [baseDim, setBaseDim] = useState(0.7); // Dim amount when nothing nearby (0-1)
+  // Layout controls
+  const [knnStrength, setKnnStrength] = useState(4.0);
+  const [contrast, setContrast] = useState(5.0);
 
-  // Refs for hover settings (accessed in event handlers without triggering re-renders)
-  const hoverRadiusRef = useRef(hoverRadius);
-  const baseDimRef = useRef(baseDim);
-  hoverRadiusRef.current = hoverRadius;
-  baseDimRef.current = baseDim;
+  // Hover highlighting controls
+  const [hoverSimilarity, setHoverSimilarity] = useState(0.7);
+  const [baseDim, setBaseDim] = useState(0.7);
 
   // Fetch data
   useEffect(() => {
@@ -92,234 +53,6 @@ export default function TopicsPage() {
         setLoading(false);
       });
   }, []);
-
-  // Render graph
-  useEffect(() => {
-    if (!data || !svgRef.current) return;
-
-    const width = svgRef.current.clientWidth;
-    const height = svgRef.current.clientHeight;
-
-    // Convert to MapNode format expected by renderer
-    const mapNodes = data.nodes.map((n) => ({
-      id: n.id,
-      type: "keyword" as const,
-      label: n.label,
-      communityId: n.communityId,
-    }));
-
-    // Convert edges
-    const mapEdges = data.edges.map((e) => ({
-      source: e.source,
-      target: e.target,
-      similarity: e.similarity,
-      isKNN: e.isKNN,
-    }));
-
-    // Create force simulation
-    const { simulation, nodes, links } = createForceSimulation(
-      mapNodes,
-      mapEdges,
-      width,
-      height
-    );
-
-    // Store simulation ref for real-time updates
-    simulationRef.current = simulation;
-
-    // Reduce repulsion - keyword-only graph doesn't need as much separation
-    simulation.force("charge", d3.forceManyBody().strength(-200));
-
-    // Custom link force with contrast exaggeration and k-NN strength
-    const linkForce = d3
-      .forceLink<d3.SimulationNodeDatum, ForceLink>(links)
-      .id((d: d3.SimulationNodeDatum & { id?: string }) => d.id ?? "")
-      .distance((d) => {
-        const sim = (d as ForceLink).similarity ?? 0.5;
-        const adjustedSim = applyContrast(sim, contrast);
-        return 40 + (1 - adjustedSim) * 150;
-      })
-      .strength((d) => {
-        const link = d as ForceLink;
-        const baseSim = link.similarity ?? 0.5;
-        const adjustedSim = applyContrast(baseSim, contrast);
-        const baseStrength = 0.2 + adjustedSim * 0.8; // 0.2 to 1.0 range
-        // Apply k-NN multiplier for connectivity edges
-        return link.isKNN ? baseStrength * knnStrength : baseStrength;
-      });
-    simulation.force("link", linkForce);
-
-    // Boundary force - prevents disconnected components from drifting off
-    simulation.force("boundary", forceBoundary(nodes, {
-      width,
-      height,
-      radiusFactor: 2,
-    }));
-
-    // Disable collision initially - let nodes glide through each other
-    // We'll enable it once positions settle
-    simulation.force("collision", null);
-
-    // Visual params - simple defaults
-    const immediateParams = {
-      current: {
-        dotScale: 1,
-        edgeOpacity: 0.6,
-        hullOpacity: 0.1,
-        edgeCurve: 0.25,
-        curveMethod: "hybrid" as const,
-      },
-    };
-
-    const renderer = createRenderer({
-      svg: svgRef.current,
-      nodes: nodes as SimNode[],
-      links: links as SimLink[],
-      immediateParams,
-      fit: false,
-      callbacks: {
-        onKeywordClick: (keyword) => {
-          console.log("Clicked keyword:", keyword);
-          // TODO: Expand to show articles
-        },
-      },
-    });
-
-    // Apply per-edge opacity based on similarity with contrast
-    renderer.linkSelection.attr("stroke-opacity", (d) => {
-      const sim = d.similarity ?? 0.5;
-      const adjusted = applyContrast(sim, contrast);
-      return 0.1 + adjusted * 0.7; // Range: 0.1 to 0.8
-    });
-
-    // Track simulation settling
-    let tickCount = 0;
-    let coolingDown = false;
-
-    // Add drag behavior - resets cooling when user drags
-    addDragBehavior(renderer.nodeSelection, simulation, () => {
-      coolingDown = false;
-      tickCount = 0;
-      // Disable collision while repositioning
-      simulation.force("collision", null);
-    });
-
-    // Build lookups for spatial-semantic filtering
-    const adjacency = buildAdjacencyMap(mapEdges);
-    const embeddings = buildEmbeddingMap(data.nodes, (n) => `kw:${n.label}`);
-
-    // Store base opacities for restoration
-    const computeEdgeOpacity = (d: SimLink) => {
-      const sim = d.similarity ?? 0.5;
-      const adjusted = applyContrast(sim, contrast);
-      return 0.1 + adjusted * 0.7;
-    };
-
-    function applyHighlight(highlightedIds: Set<string> | null) {
-      if (highlightedIds === null) {
-        // Dim everything slightly (nothing nearby)
-        const dim = 1 - baseDimRef.current;
-        renderer.nodeSelection.select("circle").attr("opacity", dim);
-        renderer.linkSelection.attr("stroke-opacity", (d) => computeEdgeOpacity(d) * dim);
-      } else if (highlightedIds.size === 0) {
-        // Restore full opacity (hover ended)
-        renderer.nodeSelection.select("circle").attr("opacity", 1);
-        renderer.linkSelection.attr("stroke-opacity", computeEdgeOpacity);
-      } else {
-        // Highlight selected, dim others
-        renderer.nodeSelection.select("circle").attr("opacity", (d) =>
-          highlightedIds.has(d.id) ? 1 : 0.15
-        );
-        renderer.linkSelection.attr("stroke-opacity", (d) => {
-          const sourceId = typeof d.source === "string" ? d.source : d.source.id;
-          const targetId = typeof d.target === "string" ? d.target : d.target.id;
-          const bothHighlighted = highlightedIds.has(sourceId) && highlightedIds.has(targetId);
-          return bothHighlighted ? computeEdgeOpacity(d) : 0.05;
-        });
-      }
-    }
-
-    d3.select(svgRef.current)
-      .on("mousemove.hover", (event: MouseEvent) => {
-        const [screenX, screenY] = d3.pointer(event, svgRef.current);
-
-        const result = spatialSemanticFilter({
-          nodes,
-          screenCenter: { x: screenX, y: screenY },
-          screenRadius: height * SCREEN_RADIUS_FRACTION,
-          transform: renderer.getTransform(),
-          similarityThreshold: hoverRadiusRef.current,
-          embeddings,
-          adjacency,
-        });
-        const { highlightedIds, spatialIds, debug } = result;
-
-        // Log debug info occasionally
-        if (debug && Math.random() < 0.02) {
-          console.log("[hover]", {
-            spatial: debug.spatialCount,
-            simPass: debug.similarityPassCount,
-            neighbors: debug.neighborAddCount,
-            total: highlightedIds.size,
-            simRange: `${debug.minSimilarity.toFixed(2)}-${debug.maxSimilarity.toFixed(2)}`,
-            threshold: hoverRadiusRef.current,
-          });
-        }
-
-        if (spatialIds.size === 0) {
-          // Nothing nearby - dim everything slightly
-          applyHighlight(null);
-        } else {
-          applyHighlight(highlightedIds);
-        }
-      })
-      .on("mouseleave.hover", () => {
-        // Restore full opacity
-        applyHighlight(new Set());
-      });
-
-    // Start simulation - sustained energy until velocity settles
-    simulation
-      .alphaTarget(0.3)      // Sustained energy for layout
-      .alphaDecay(0.01)      // Slow decay - let velocity criterion decide when to cool
-      .velocityDecay(0.5)    // Higher friction - nodes slow down faster when near equilibrium
-      .restart();
-
-    simulation.on("tick", () => {
-      tickCount++;
-
-      // After settling period, check velocity to enable collision and cool down
-      if (tickCount > 40 && !coolingDown) {
-        const velocities = nodes
-          .map((d) => Math.sqrt((d.vx ?? 0) ** 2 + (d.vy ?? 0) ** 2))
-          .sort((a, b) => b - a);
-
-        const p95Index = Math.floor(nodes.length * 0.05);
-        const topVelocity = velocities[p95Index] ?? velocities[0] ?? 0;
-
-        // When 95th percentile velocity drops below threshold, layout is stable
-        if (topVelocity < 0.5) {
-          coolingDown = true;
-          // Enable collision now that nodes have found their approximate positions
-          simulation.force("collision", d3.forceCollide<ForceNode>().radius(20));
-          // Cool down and let collision adjust
-          simulation.alphaTarget(0).alpha(0.3);
-        }
-      }
-
-      renderer.tick();
-    });
-
-    return () => {
-      simulation.stop();
-      simulationRef.current = null;
-      // Remove hover handlers
-      d3.select(svgRef.current)
-        .on("mousemove.hover", null)
-        .on("mouseleave.hover", null);
-      renderer.destroy();
-    };
-  }, [data, knnStrength, contrast]); // Re-create when params change
 
   if (loading) {
     return (
@@ -391,11 +124,11 @@ export default function TopicsPage() {
                 min="0.3"
                 max="0.95"
                 step="0.05"
-                value={hoverRadius}
-                onChange={(e) => setHoverRadius(parseFloat(e.target.value))}
+                value={hoverSimilarity}
+                onChange={(e) => setHoverSimilarity(parseFloat(e.target.value))}
                 className="w-20 h-3"
               />
-              <span className="w-8 tabular-nums">{hoverRadius.toFixed(2)}</span>
+              <span className="w-8 tabular-nums">{hoverSimilarity.toFixed(2)}</span>
             </label>
 
             <label className="flex items-center gap-1">
@@ -423,10 +156,18 @@ export default function TopicsPage() {
       </header>
 
       <main className="flex-1 relative overflow-hidden bg-white dark:bg-zinc-900">
-        <svg
-          ref={svgRef}
-          className="w-full h-full"
-          style={{ cursor: "grab" }}
+        <TopicsView
+          nodes={data.nodes}
+          edges={data.edges}
+          knnStrength={knnStrength}
+          contrast={contrast}
+          hoverConfig={{
+            similarityThreshold: hoverSimilarity,
+            baseDim,
+          }}
+          onKeywordClick={(keyword) => {
+            console.log("Clicked keyword:", keyword);
+          }}
         />
       </main>
     </div>

@@ -6,6 +6,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { cosineSimilarity } from "./math-utils";
 
 // ============================================================================
 // Types
@@ -44,6 +45,17 @@ export interface KeywordBackboneOptions {
   nearestNeighbors?: number;
 }
 
+/** Default options for getKeywordBackbone */
+export const DEFAULT_BACKBONE_OPTIONS: Required<KeywordBackboneOptions> = {
+  maxEdgesPerArticle: 10,
+  minSimilarity: 0.3,
+  communityLevel: 3,
+  nearestNeighbors: 1,
+};
+
+/** Supabase query batch size to avoid payload limits */
+const QUERY_BATCH_SIZE = 100;
+
 // ============================================================================
 // Queries
 // ============================================================================
@@ -61,11 +73,11 @@ export async function getKeywordBackbone(
   options: KeywordBackboneOptions = {}
 ): Promise<KeywordBackboneResult> {
   const {
-    maxEdgesPerArticle = 10,
-    minSimilarity = 0.3,
-    communityLevel = 3,
-    nearestNeighbors = 1,
-  } = options;
+    maxEdgesPerArticle,
+    minSimilarity,
+    communityLevel,
+    nearestNeighbors,
+  } = { ...DEFAULT_BACKBONE_OPTIONS, ...options };
 
   // Use existing RPC that finds cross-article keyword connections
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -182,13 +194,12 @@ async function computeNearestNeighborEdges(
   k: number,
   existingEdges: Map<string, { similarity: number; count: number }>
 ): Promise<NearestNeighborResult> {
-  const BATCH_SIZE = 100;
-  const keywordIds = [...keywordTextToId.values()];
+    const keywordIds = [...keywordTextToId.values()];
   const embeddings = new Map<string, number[]>();
 
   // Fetch embeddings in batches
-  for (let i = 0; i < keywordIds.length; i += BATCH_SIZE) {
-    const batch = keywordIds.slice(i, i + BATCH_SIZE);
+  for (let i = 0; i < keywordIds.length; i += QUERY_BATCH_SIZE) {
+    const batch = keywordIds.slice(i, i + QUERY_BATCH_SIZE);
     const { data: kwData } = await supabase
       .from("keywords")
       .select("id, keyword, embedding_256")
@@ -242,20 +253,6 @@ async function computeNearestNeighborEdges(
   return { edges: results, embeddings };
 }
 
-/**
- * Compute cosine similarity between two vectors.
- */
-function cosineSimilarity(a: number[], b: number[]): number {
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
-}
 
 /**
  * Add community IDs to keyword nodes for coloring.
@@ -267,11 +264,10 @@ async function addCommunityIds(
   level: number
 ): Promise<void> {
   const labels = nodes.map((n) => n.label);
-  const BATCH_SIZE = 100;
-  const communityByKeyword = new Map<string, number>();
+    const communityByKeyword = new Map<string, number>();
 
-  for (let i = 0; i < labels.length; i += BATCH_SIZE) {
-    const batch = labels.slice(i, i + BATCH_SIZE);
+  for (let i = 0; i < labels.length; i += QUERY_BATCH_SIZE) {
+    const batch = labels.slice(i, i + QUERY_BATCH_SIZE);
 
     // Get keyword IDs for these labels
     const { data: kwData } = await supabase
