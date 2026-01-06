@@ -4,6 +4,18 @@ import { useEffect, useState } from "react";
 import { TopicsView } from "@/components/TopicsView";
 import type { KeywordNode, SimilarityEdge } from "@/lib/graph-queries";
 
+/** Debounce a value - returns the value after it stops changing for `delay` ms */
+function useDebouncedValue<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+
+  return debouncedValue;
+}
+
 interface TopicsData {
   nodes: KeywordNode[];
   edges: SimilarityEdge[];
@@ -29,6 +41,9 @@ export default function TopicsPage() {
   const [knnStrength, setKnnStrength] = useState(4.0);
   const [contrast, setContrast] = useState(5.0);
   const [clusterResolution, setClusterResolution] = useState(1.5);
+
+  // Debounce cluster resolution to avoid wasted Louvain/Haiku calls while sliding
+  const debouncedClusterResolution = useDebouncedValue(clusterResolution, 300);
 
   // Hover highlighting controls
   const [hoverSimilarity, setHoverSimilarity] = useState(0.7);
@@ -176,7 +191,7 @@ export default function TopicsPage() {
           edges={data.edges}
           knnStrength={knnStrength}
           contrast={contrast}
-          clusterResolution={clusterResolution}
+          clusterResolution={debouncedClusterResolution}
           hoverConfig={{
             similarityThreshold: hoverSimilarity,
             baseDim,

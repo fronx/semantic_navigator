@@ -58,11 +58,16 @@ export function TopicsView({
   const svgRef = useRef<SVGSVGElement>(null);
 
   // Client-side Louvain clustering
-  const { nodeToCluster, clusters } = useClusterLabels(keywordNodes, edges, clusterResolution);
+  // baseClusters is stable (only changes when nodes/edges/resolution change)
+  // labels changes when semantic labels arrive from Haiku
+  const { nodeToCluster, baseClusters, labels } = useClusterLabels(keywordNodes, edges, clusterResolution);
 
   // Refs for hover config (accessed in event handlers without triggering re-renders)
   const hoverConfigRef = useRef(hoverConfig);
   hoverConfigRef.current = hoverConfig;
+
+  // Store simulation nodes for label updates without restarting simulation
+  const simulationNodesRef = useRef<Array<{ hullLabel?: string; label: string }>>([]);
 
   // Main rendering effect
   useEffect(() => {
@@ -72,10 +77,11 @@ export function TopicsView({
     const width = svg.clientWidth;
     const height = svg.clientHeight;
 
-    // Build hub lookup: hub keyword -> cluster (for semantic labels)
-    const hubToCluster = new Map<string, { hub: string; label: string }>();
-    for (const cluster of clusters.values()) {
-      hubToCluster.set(cluster.hub, { hub: cluster.hub, label: cluster.label });
+    // Build hub lookup: hub keyword -> cluster
+    // Use baseClusters (stable) - labels are updated separately via ref
+    const hubToCluster = new Map<string, { hub: string }>();
+    for (const cluster of baseClusters.values()) {
+      hubToCluster.set(cluster.hub, { hub: cluster.hub });
     }
 
     // Convert to format expected by renderer
@@ -91,10 +97,13 @@ export function TopicsView({
         embedding: n.embedding,
         // Mark hub nodes - renderer uses communityMembers presence to identify hubs
         communityMembers: clusterInfo ? [n.label] : undefined,
-        // Semantic label from Haiku (or hub keyword if not yet loaded)
-        hullLabel: clusterInfo?.label,
+        // Start with hub keyword, updated by separate effect when semantic labels arrive
+        hullLabel: clusterInfo?.hub,
       };
     });
+
+    // Store nodes in ref for label updates without restarting simulation
+    simulationNodesRef.current = mapNodes;
 
     const mapEdges = edges.map((e) => ({
       source: e.source,
@@ -293,7 +302,29 @@ export function TopicsView({
         .on("mouseleave.hover", null);
       renderer.destroy();
     };
-  }, [keywordNodes, edges, knnStrength, contrast, nodeToCluster, clusters, hoverConfig.screenRadiusFraction, onKeywordClick]);
+  }, [keywordNodes, edges, knnStrength, contrast, nodeToCluster, baseClusters, hoverConfig.screenRadiusFraction, onKeywordClick]);
+
+  // Update hull labels when semantic labels arrive (without restarting simulation)
+  useEffect(() => {
+    if (Object.keys(labels).length === 0) return;
+
+    // Build hub -> label lookup from baseClusters
+    const hubToLabel = new Map<string, string>();
+    for (const [clusterId, cluster] of baseClusters) {
+      const semanticLabel = labels[clusterId];
+      if (semanticLabel) {
+        hubToLabel.set(cluster.hub, semanticLabel);
+      }
+    }
+
+    // Update hullLabel on nodes (mutate in place - renderer reads on next tick)
+    for (const node of simulationNodesRef.current) {
+      const newLabel = hubToLabel.get(node.label);
+      if (newLabel) {
+        node.hullLabel = newLabel;
+      }
+    }
+  }, [labels, baseClusters]);
 
   return (
     <svg

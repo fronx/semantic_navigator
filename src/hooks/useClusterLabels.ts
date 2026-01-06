@@ -23,8 +23,12 @@ export interface Cluster {
 export interface ClusterLabelsResult {
   /** Map from node ID (e.g., "kw:machine learning") to cluster ID */
   nodeToCluster: Map<string, number>;
-  /** Cluster metadata indexed by cluster ID */
+  /** Cluster metadata indexed by cluster ID (stable - doesn't change when labels arrive) */
+  baseClusters: Map<number, Omit<Cluster, "label">>;
+  /** Cluster metadata with labels (changes when semantic labels arrive) */
   clusters: Map<number, Cluster>;
+  /** Semantic labels from Haiku (empty until loaded) */
+  labels: Record<number, string>;
 }
 
 interface ClusteringResult {
@@ -109,17 +113,6 @@ function computeClustering(
 }
 
 /**
- * Create a stable key for a clustering result.
- * Used to detect when we need to fetch new labels.
- */
-function clusterKey(clusters: Map<number, Omit<Cluster, "label">>): string {
-  const entries = [...clusters.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([id, c]) => `${id}:${c.members.slice(0, 5).join(",")}`);
-  return entries.join("|");
-}
-
-/**
  * Run Louvain clustering on the provided graph edges.
  * Fetches semantic labels from Haiku API asynchronously.
  *
@@ -148,7 +141,6 @@ export function useClusterLabels(
       return;
     }
 
-    const currentKey = clusterKey(clustering.clusters);
     let cancelled = false;
 
     async function fetchLabels() {
@@ -202,6 +194,8 @@ export function useClusterLabels(
 
   return {
     nodeToCluster: clustering.nodeToCluster,
+    baseClusters: clustering.clusters,
     clusters: clustersWithLabels,
+    labels: semanticLabels,
   };
 }

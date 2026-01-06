@@ -145,10 +145,10 @@ With client-side clustering established:
 
 6. **Parallel label requests**: Current implementation sends one request for all clusters (~2.7s). If latency is from sequential processing, split into parallel batch requests for faster response.
 
-### Known Issues
+### Resolved Issues
 
-7. **Full re-render on label arrival**: When semantic labels arrive, `clusters` changes and triggers full useEffect re-run, restarting the force simulation. Nodes may jump/reset positions. Should decouple label updates from simulation setup.
+7. **Full re-render on label arrival**: Fixed by separating `baseClusters` (stable) from `labels` (volatile) in `useClusterLabels`. TopicsView now depends only on `baseClusters` for simulation setup, and updates hull labels via a ref when semantic labels arrive.
 
-8. **Hull labels redraw every tick**: `map-renderer.ts` removes and redraws hull labels on every animation frame. Should only update when clusters change or after significant node movement.
+8. **Hull labels redraw every tick**: Fixed by using D3 data join pattern in `map-renderer.ts`. Labels are now updated in place instead of removed/recreated every frame. Tspan content is only rebuilt when the label text actually changes.
 
-9. **No debounce on resolution slider**: Rapid slider movement fires many Louvain computations and Haiku requests. Requests get cancelled but computation is wasted. Should debounce resolution input.
+9. **No debounce on resolution slider**: Fixed by adding `useDebouncedValue` hook in `topics/page.tsx`. The slider provides immediate visual feedback, but computation only triggers after 300ms of inactivity.

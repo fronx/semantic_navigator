@@ -449,59 +449,90 @@ export function createRenderer(options: RendererOptions): MapRenderer {
     // Update cluster hulls
     hullRenderer.update();
 
-    // Update hull labels
-    hullLabelGroup.selectAll("text").remove();
-
-    // Get current visible IDs (if semantic zoom is active)
+    // Update hull labels using D3 data join (avoids recreating DOM elements every tick)
     const visibleIds = visibleIdsRef?.current;
+    const fontSize = 60 * immediateParams.current.dotScale * visualScale;
+
+    // Build label data array
+    interface LabelData {
+      communityId: number;
+      centroid: [number, number];
+      label: string;
+      opacity: number;
+    }
+    const labelData: LabelData[] = [];
 
     for (const [communityId, members] of communitiesMap) {
-      // Filter members to only visible ones (if semantic zoom active)
       const visibleMembers = visibleIds
         ? members.filter((m) => visibleIds.has(m.id))
         : members;
 
-      // Skip communities with no visible members
       if (visibleMembers.length === 0) continue;
 
       const points: [number, number][] = visibleMembers.map((n) => [n.x!, n.y!]);
       const geometry = computeHullGeometry(points);
 
       if (geometry) {
-        const centroid = geometry.centroid;
-
-        // Hull label (scaled with dot size and visual mode)
-        // Use hullLabel if present (e.g., semantic label from Haiku), otherwise fall back to hub's label
         const hub = visibleMembers.find((m) => m.communityMembers && m.communityMembers.length > 0);
         const label = hub?.hullLabel || hub?.label || visibleMembers[0].label;
-        const words = label.split(/\s+/);
-        const fontSize = 60 * immediateParams.current.dotScale * visualScale;
-        const lineHeight = fontSize;
-
-        // Compute opacity based on how many members are visible vs total
         const visibilityRatio = visibleMembers.length / members.length;
-        const labelOpacity = visibleIds ? Math.max(0.2, visibilityRatio) * 0.7 : 0.7;
+        const opacity = visibleIds ? Math.max(0.2, visibilityRatio) * 0.7 : 0.7;
 
-        const textEl = hullLabelGroup
-          .append("text")
-          .attr("x", centroid[0])
-          .attr("y", centroid[1] - ((words.length - 1) * lineHeight) / 2)
-          .attr("text-anchor", "middle")
-          .attr("font-size", `${fontSize}px`)
-          .attr("font-weight", "600")
-          .attr("fill", communityColorScale(String(communityId)))
-          .attr("fill-opacity", labelOpacity)
-          .style("pointer-events", "none");
+        labelData.push({ communityId, centroid: geometry.centroid, label, opacity });
+      }
+    }
 
+    // D3 data join for hull labels
+    const textSelection = hullLabelGroup
+      .selectAll<SVGTextElement, LabelData>("text")
+      .data(labelData, (d) => String(d.communityId));
+
+    // Remove exiting labels
+    textSelection.exit().remove();
+
+    // Enter new labels
+    const enterSelection = textSelection
+      .enter()
+      .append("text")
+      .attr("text-anchor", "middle")
+      .attr("font-weight", "600")
+      .style("pointer-events", "none");
+
+    // Update all labels (enter + update)
+    const merged = enterSelection.merge(textSelection);
+
+    merged.each(function (d) {
+      const text = d3.select(this);
+      const words = d.label.split(/\s+/);
+      const lineHeight = fontSize;
+
+      // Update position and style
+      text
+        .attr("x", d.centroid[0])
+        .attr("y", d.centroid[1] - ((words.length - 1) * lineHeight) / 2)
+        .attr("font-size", `${fontSize}px`)
+        .attr("fill", communityColorScale(String(d.communityId)))
+        .attr("fill-opacity", d.opacity);
+
+      // Check if label text changed (compare current tspan content)
+      const currentTspans = text.selectAll<SVGTSpanElement, unknown>("tspan");
+      const currentText = currentTspans.nodes().map((n) => n.textContent ?? "").join(" ");
+
+      if (currentText !== d.label) {
+        // Label changed - rebuild tspans
+        text.selectAll("tspan").remove();
         words.forEach((word, i) => {
-          textEl
+          text
             .append("tspan")
-            .attr("x", centroid[0])
+            .attr("x", d.centroid[0])
             .attr("dy", i === 0 ? 0 : lineHeight)
             .text(word);
         });
+      } else {
+        // Label same - just update tspan x positions
+        currentTspans.attr("x", d.centroid[0]);
       }
-    }
+    });
   }
 
   /** Update all visual attributes without relayout (reads from immediateParams ref) */
