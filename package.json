@@ -13,6 +13,8 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
     "@supabase/supabase-js": "^2.89.0",
+    "@types/three": "^0.182.0",
+    "3d-force-graph": "^1.79.0",
     "d3": "^7.9.0",
     "mdast-util-from-markdown": "^2.0.2",
     "next": "16.1.1",
@@ -20,6 +22,8 @@
     "p-limit": "^7.2.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "three": "^0.182.0",
+    "umapper": "file:../umapper",
     "unist-util-visit": "^5.0.0"
   },
   "devDependencies": {
