@@ -4,9 +4,12 @@
  */
 
 import ForceGraph3DFactory from "3d-force-graph";
+import * as d3 from "d3";
 import type { SimNode, SimLink, HighlightConfig, ImmediateParams } from "./map-renderer";
 import type { RendererCallbacks } from "./map-renderer";
-import { communityColorScale } from "./hull-renderer";
+
+// Color scale for community/cluster coloring (matches D3 renderer)
+const communityColorScale = d3.scaleOrdinal(d3.schemeCategory10);
 
 // 3d-force-graph types are incomplete, define what we need
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
