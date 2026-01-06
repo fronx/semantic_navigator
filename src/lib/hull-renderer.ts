@@ -39,20 +39,48 @@ export function computeHullGeometry(
 }
 
 /**
- * Group nodes by community ID.
+ * Get the label for a community (used for merging same-name clusters).
+ */
+function getCommunityLabel(members: SimNode[]): string {
+  const hub = members.find((m) => m.communityMembers && m.communityMembers.length > 0);
+  return hub?.hullLabel || hub?.label || members[0]?.label || "";
+}
+
+/**
+ * Group nodes by community ID, merging communities with the same hub label.
  * Pure function - just data transformation.
  */
 export function groupNodesByCommunity(nodes: SimNode[]): Map<number, SimNode[]> {
-  const communitiesMap = new Map<number, SimNode[]>();
+  // First pass: group by communityId
+  const rawCommunities = new Map<number, SimNode[]>();
   for (const n of nodes) {
     if (n.type === "keyword" && n.communityId !== undefined) {
-      if (!communitiesMap.has(n.communityId)) {
-        communitiesMap.set(n.communityId, []);
+      if (!rawCommunities.has(n.communityId)) {
+        rawCommunities.set(n.communityId, []);
       }
-      communitiesMap.get(n.communityId)!.push(n);
+      rawCommunities.get(n.communityId)!.push(n);
     }
   }
-  return communitiesMap;
+
+  // Second pass: merge communities with the same label
+  const labelToCanonicalId = new Map<string, number>();
+  const mergedCommunities = new Map<number, SimNode[]>();
+
+  for (const [communityId, members] of rawCommunities) {
+    const label = getCommunityLabel(members);
+
+    if (labelToCanonicalId.has(label)) {
+      // Merge into existing community with same label
+      const canonicalId = labelToCanonicalId.get(label)!;
+      mergedCommunities.get(canonicalId)!.push(...members);
+    } else {
+      // New label - use this communityId as canonical
+      labelToCanonicalId.set(label, communityId);
+      mergedCommunities.set(communityId, [...members]);
+    }
+  }
+
+  return mergedCommunities;
 }
 
 // --- Rendering ---
