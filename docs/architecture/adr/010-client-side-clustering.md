@@ -141,6 +141,14 @@ With client-side clustering established:
 
 ### Optimizations
 
-5. **Translation glossary/cache**: Store previously generated labels so Haiku can reference them for consistency. Direct re-matches (identical keyword sets) skip Haiku entirely and map to cached labels.
+5. **Translation glossary/cache**: Store previously generated labels so Haiku can reference them for consistency. Direct re-matches (identical keyword sets) skip Haiku entirely and map to cached labels. Consider: should cache key be based on exact keyword match, or semantic similarity of keyword sets?
 
 6. **Parallel label requests**: Current implementation sends one request for all clusters (~2.7s). If latency is from sequential processing, split into parallel batch requests for faster response.
+
+### Known Issues
+
+7. **Full re-render on label arrival**: When semantic labels arrive, `clusters` changes and triggers full useEffect re-run, restarting the force simulation. Nodes may jump/reset positions. Should decouple label updates from simulation setup.
+
+8. **Hull labels redraw every tick**: `map-renderer.ts` removes and redraws hull labels on every animation frame. Should only update when clusters change or after significant node movement.
+
+9. **No debounce on resolution slider**: Rapid slider movement fires many Louvain computations and Haiku requests. Requests get cancelled but computation is wasted. Should debounce resolution input.
