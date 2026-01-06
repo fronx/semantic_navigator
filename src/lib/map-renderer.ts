@@ -31,6 +31,8 @@ export interface MapRenderer {
   updateVisuals: () => void;
   /** Update nodes and links dynamically (for semantic zoom filtering) */
   updateData: (newNodes: SimNode[], newLinks: SimLink[]) => void;
+  /** Recompute cluster colors and communities from current node properties */
+  refreshClusters: () => void;
   /** Fit view to show all current nodes with padding */
   fitToNodes: (padding?: number, animate?: boolean) => void;
   /** Get node selection for external styling (search highlighting) */
@@ -451,7 +453,10 @@ export function createRenderer(options: RendererOptions): MapRenderer {
 
     // Update hull labels using D3 data join (reuses geometry from hull renderer)
     const visibleIds = visibleIdsRef?.current;
-    const fontSize = 60 * immediateParams.current.dotScale * visualScale;
+    // Scale font inversely with zoom - text gets smaller when zoomed in
+    // Use sqrt for gentler scaling: zoom 2x → ~11px, zoom 4x → 8px
+    const zoomK = d3.zoomTransform(svgElement).k;
+    const fontSize = (28 * immediateParams.current.dotScale * visualScale) / Math.sqrt(zoomK);
 
     // Build label data from hull geometry
     interface LabelData {
@@ -520,8 +525,10 @@ export function createRenderer(options: RendererOptions): MapRenderer {
             .text(word);
         });
       } else {
-        // Label same - just update tspan x positions
-        currentTspans.attr("x", d.centroid[0]);
+        // Label same - update tspan positions (x and dy for line spacing)
+        currentTspans
+          .attr("x", d.centroid[0])
+          .attr("dy", (_, i) => (i === 0 ? 0 : lineHeight));
       }
     });
   }
@@ -632,10 +639,22 @@ export function createRenderer(options: RendererOptions): MapRenderer {
     }
   }
 
+  // Recompute cluster colors and communities from current node properties
+  // Call this after updating node.communityId without changing the graph structure
+  function refreshClusters() {
+    blendedColors = computeBlendedColors(currentNodes, currentLinks);
+    communitiesMap = groupNodesByCommunity(currentNodes);
+    hullRenderer.updateCommunities(communitiesMap);
+
+    // Update node circle colors based on new communityId values
+    nodeSelection.select("circle").attr("fill", (d) => getNodeColor(d, blendedColors));
+  }
+
   return {
     tick,
     updateVisuals,
     updateData,
+    refreshClusters,
     fitToNodes,
     // Use getters so these always return current values after updateData
     get nodeSelection() { return nodeSelection; },

@@ -164,4 +164,5 @@ Requires `.env.local` with:
 
 ## Documentation
 
-See `docs/README.md` for architecture documentation, ADRs, and investigation notes.
+- `docs/README.md` - Architecture documentation and ADRs
+- `docs/patterns/` - Reusable code patterns (stable refs, etc.)

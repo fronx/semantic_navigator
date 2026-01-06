@@ -4,6 +4,10 @@
 
 - [Local NPM Packages](guides/local-npm-packages.md) - Developing with locally checked-out packages (umapper)
 
+## Patterns
+
+- [Stable Refs](patterns/stable-refs.md) - Prevent React effect re-runs for callbacks and config (`useLatest`, `useStableCallback`)
+
 ## Lab Experiments
 
 - [Graph Layout Lab](../lab/graph-layout/README.md) - UMAP layout investigations: centrality balance, repulsion tuning, bipartite community detection

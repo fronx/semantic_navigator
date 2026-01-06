@@ -21,6 +21,7 @@ import {
   type HoverHighlightConfig,
 } from "@/hooks/useGraphHoverHighlight";
 import { useClusterLabels } from "@/hooks/useClusterLabels";
+import { useLatest, useStableCallback } from "@/hooks/useStableRef";
 import type { KeywordNode, SimilarityEdge } from "@/lib/graph-queries";
 
 // ============================================================================
@@ -40,6 +41,8 @@ export interface TopicsViewProps {
   hoverConfig: HoverHighlightConfig;
   /** Callback when a keyword is clicked */
   onKeywordClick?: (keyword: string) => void;
+  /** Callback when zoom level changes */
+  onZoomChange?: (zoomScale: number) => void;
 }
 
 // ============================================================================
@@ -54,20 +57,27 @@ export function TopicsView({
   clusterResolution,
   hoverConfig,
   onKeywordClick,
+  onZoomChange,
 }: TopicsViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
+
+  // Stable callbacks - won't trigger effect re-runs when parent re-renders
+  const handleZoomChange = useStableCallback(onZoomChange);
+  const handleKeywordClick = useStableCallback(onKeywordClick);
+
+  // Stable refs for values accessed in event handlers without triggering re-renders
+  const hoverConfigRef = useLatest(hoverConfig);
 
   // Client-side Louvain clustering
   // baseClusters is stable (only changes when nodes/edges/resolution change)
   // labels changes when semantic labels arrive from Haiku
   const { nodeToCluster, baseClusters, labels } = useClusterLabels(keywordNodes, edges, clusterResolution);
 
-  // Refs for hover config (accessed in event handlers without triggering re-renders)
-  const hoverConfigRef = useRef(hoverConfig);
-  hoverConfigRef.current = hoverConfig;
+  // Store simulation nodes for cluster updates without restarting simulation
+  const simulationNodesRef = useRef<Array<{ id: string; hullLabel?: string; label: string; communityId?: number; communityMembers?: string[] }>>([]);
 
-  // Store simulation nodes for label updates without restarting simulation
-  const simulationNodesRef = useRef<Array<{ hullLabel?: string; label: string }>>([]);
+  // Store renderer for cluster update effect
+  const rendererRef = useRef<ReturnType<typeof createRenderer> | null>(null);
 
   // Main rendering effect
   useEffect(() => {
@@ -77,33 +87,18 @@ export function TopicsView({
     const width = svg.clientWidth;
     const height = svg.clientHeight;
 
-    // Build hub lookup: hub keyword -> cluster
-    // Use baseClusters (stable) - labels are updated separately via ref
-    const hubToCluster = new Map<string, { hub: string }>();
-    for (const cluster of baseClusters.values()) {
-      hubToCluster.set(cluster.hub, { hub: cluster.hub });
-    }
-
     // Convert to format expected by renderer
-    // Use client-side computed cluster IDs instead of pre-computed communityId
-    // Mark hub nodes with communityMembers so hull labels render correctly
-    const mapNodes = keywordNodes.map((n) => {
-      const clusterInfo = hubToCluster.get(n.label);
-      return {
-        id: n.id,
-        type: "keyword" as const,
-        label: n.label,
-        communityId: nodeToCluster.get(n.id),
-        embedding: n.embedding,
-        // Mark hub nodes - renderer uses communityMembers presence to identify hubs
-        communityMembers: clusterInfo ? [n.label] : undefined,
-        // Start with hub keyword, updated by separate effect when semantic labels arrive
-        hullLabel: clusterInfo?.hub,
-      };
-    });
-
-    // Store nodes in ref for label updates without restarting simulation
-    simulationNodesRef.current = mapNodes;
+    // Cluster data is added via refs (not dependencies) to avoid relayout
+    // Actual cluster assignments are applied by the cluster update effect
+    const mapNodes = keywordNodes.map((n) => ({
+      id: n.id,
+      type: "keyword" as const,
+      label: n.label,
+      communityId: undefined as number | undefined,
+      embedding: n.embedding,
+      communityMembers: undefined as string[] | undefined,
+      hullLabel: undefined as string | undefined,
+    }));
 
     const mapEdges = edges.map((e) => ({
       source: e.source,
@@ -112,13 +107,17 @@ export function TopicsView({
       isKNN: e.isKNN,
     }));
 
-    // Create force simulation
+    // Create force simulation (note: this creates COPIES of nodes)
     const { simulation, nodes, links } = createForceSimulation(
       mapNodes,
       mapEdges,
       width,
       height
     );
+
+    // Store the simulation's nodes (not mapNodes) for cluster updates
+    // The simulation creates copies, so we need to reference those copies
+    simulationNodesRef.current = nodes as Array<{ id: string; hullLabel?: string; label: string; communityId?: number; communityMembers?: string[] }>;
 
     // Reduce repulsion - keyword-only graph doesn't need as much separation
     simulation.force("charge", d3.forceManyBody().strength(-200));
@@ -169,11 +168,15 @@ export function TopicsView({
       immediateParams,
       fit: false,
       callbacks: {
-        onKeywordClick: (keyword) => {
-          onKeywordClick?.(keyword);
+        onKeywordClick: handleKeywordClick,
+        onZoomEnd: (transform) => {
+          handleZoomChange(transform.k);
         },
       },
     });
+
+    // Store renderer for cluster update effect
+    rendererRef.current = renderer;
 
     // Compute edge opacity based on contrast
     const computeEdgeOpacity = (d: SimLink) => {
@@ -301,30 +304,46 @@ export function TopicsView({
         .on("mousemove.hover", null)
         .on("mouseleave.hover", null);
       renderer.destroy();
+      rendererRef.current = null;
     };
-  }, [keywordNodes, edges, knnStrength, contrast, nodeToCluster, baseClusters, hoverConfig.screenRadiusFraction, onKeywordClick]);
+    // Stable callbacks (handleZoomChange, handleKeywordClick) and refs (hoverConfigRef)
+    // don't need to be in deps - they never change identity
+  }, [keywordNodes, edges, knnStrength, contrast, hoverConfig.screenRadiusFraction]);
 
-  // Update hull labels when semantic labels arrive (without restarting simulation)
+  // Update cluster assignments when clustering changes (without restarting simulation)
+  // This runs when nodeToCluster, baseClusters, or labels change
   useEffect(() => {
-    if (Object.keys(labels).length === 0) return;
+    if (simulationNodesRef.current.length === 0 || !rendererRef.current) return;
 
-    // Build hub -> label lookup from baseClusters
-    const hubToLabel = new Map<string, string>();
+    // Build hub lookup: hub keyword -> cluster info
+    const hubToCluster = new Map<string, { clusterId: number; hub: string }>();
     for (const [clusterId, cluster] of baseClusters) {
-      const semanticLabel = labels[clusterId];
-      if (semanticLabel) {
-        hubToLabel.set(cluster.hub, semanticLabel);
+      hubToCluster.set(cluster.hub, { clusterId, hub: cluster.hub });
+    }
+
+    // Update all nodes with their cluster assignments
+    for (const node of simulationNodesRef.current) {
+      // Update communityId (affects dot color)
+      node.communityId = nodeToCluster.get(node.id);
+
+      // Check if this node is a hub
+      const clusterInfo = hubToCluster.get(node.label);
+      if (clusterInfo) {
+        // This is a hub node - set hullLabel and communityMembers
+        const cluster = baseClusters.get(clusterInfo.clusterId);
+        node.communityMembers = cluster ? [node.label] : undefined;
+        node.hullLabel = labels[clusterInfo.clusterId] || clusterInfo.hub;
+      } else {
+        // Not a hub - clear hull properties
+        node.communityMembers = undefined;
+        node.hullLabel = undefined;
       }
     }
 
-    // Update hullLabel on nodes (mutate in place - renderer reads on next tick)
-    for (const node of simulationNodesRef.current) {
-      const newLabel = hubToLabel.get(node.label);
-      if (newLabel) {
-        node.hullLabel = newLabel;
-      }
-    }
-  }, [labels, baseClusters]);
+    // Recompute colors and communities, then redraw
+    rendererRef.current.refreshClusters();
+    rendererRef.current.tick();
+  }, [nodeToCluster, baseClusters, labels]);
 
   return (
     <svg

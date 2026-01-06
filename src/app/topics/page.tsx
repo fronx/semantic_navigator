@@ -41,10 +41,23 @@ export default function TopicsPage() {
   // Layout controls
   const [knnStrength, setKnnStrength] = useState(4.0);
   const [contrast, setContrast] = useState(5.0);
-  const [clusterResolution, setClusterResolution] = useState(1.5);
 
-  // Debounce cluster resolution to avoid wasted Louvain/Haiku calls while sliding
-  const debouncedClusterResolution = useDebouncedValue(clusterResolution, 300);
+  // Zoom-based clustering
+  const [zoomScale, setZoomScale] = useState(1);
+  const [clusterSensitivity, setClusterSensitivity] = useState(1.5);
+
+  // Derive resolution from zoom + slider
+  // zoom 0.5x + sensitivity 1.5 → resolution 0.75 (few clusters)
+  // zoom 2.0x + sensitivity 1.5 → resolution 3.0 (many clusters)
+  // Cap based on node count to ensure minimum cluster size of ~5 nodes
+  // Heuristic: at resolution R, Louvain produces ~R * nodeCount/20 clusters
+  // To get avgSize >= 5: clusters <= N/5, so R <= 4. Scale with N for safety.
+  const nodeCount = data?.nodes.length ?? 100;
+  const maxResolution = Math.max(2, nodeCount / 30);
+  const effectiveResolution = Math.max(0.3, Math.min(maxResolution, zoomScale * clusterSensitivity));
+
+  // Debounce cluster resolution to avoid wasted Louvain/Haiku calls while zooming
+  const debouncedClusterResolution = useDebouncedValue(effectiveResolution, 300);
 
   // Hover highlighting controls
   const [hoverSimilarity, setHoverSimilarity] = useState(0.7);
@@ -129,17 +142,17 @@ export default function TopicsPage() {
 
           <div className="flex items-center gap-3 text-xs text-zinc-500">
             <label className="flex items-center gap-1">
-              <span>Clusters:</span>
+              <span>Cluster sens:</span>
               <input
                 type="range"
-                min="0.1"
-                max="10"
+                min="0.5"
+                max="5"
                 step="0.1"
-                value={clusterResolution}
-                onChange={(e) => setClusterResolution(parseFloat(e.target.value))}
+                value={clusterSensitivity}
+                onChange={(e) => setClusterSensitivity(parseFloat(e.target.value))}
                 className="w-20 h-3"
               />
-              <span className="w-8 tabular-nums">{clusterResolution.toFixed(1)}</span>
+              <span className="w-8 tabular-nums">{clusterSensitivity.toFixed(1)}</span>
             </label>
 
             <label className="flex items-center gap-1">
@@ -224,6 +237,7 @@ export default function TopicsPage() {
           onKeywordClick={(keyword) => {
             console.log("Clicked keyword:", keyword);
           }}
+          onZoomChange={setZoomScale}
         />
       </main>
     </div>
