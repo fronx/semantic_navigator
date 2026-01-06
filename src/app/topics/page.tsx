@@ -54,6 +54,9 @@ export default function TopicsPage() {
   useEffect(() => {
     const CACHE_KEY = "topics-data-cache";
 
+    // Pre-warm Anthropic connection for faster label generation
+    fetch("/api/cluster-labels/warm").catch(() => {});
+
     async function fetchData() {
       setLoading(true);
       setIsStale(false);

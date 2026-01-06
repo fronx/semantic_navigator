@@ -139,13 +139,19 @@ With client-side clustering established:
 3. **Interactive labeling**: "Summarize what I'm looking at" via Haiku
 4. **Cross-view consistency**: Share clustering approach across Map and Topics
 
-### Optimizations
+### Future Optimizations
 
-5. **Translation glossary/cache**: Store previously generated labels so Haiku can reference them for consistency. Direct re-matches (identical keyword sets) skip Haiku entirely and map to cached labels. Consider: should cache key be based on exact keyword match, or semantic similarity of keyword sets?
+5. **Database cache**: Migrate from localStorage to database for cross-user caching. See `docs/architecture/cluster-label-caching-plan.md` for proposed schema with pgvector similarity search.
 
-6. **Parallel label requests**: Current implementation sends one request for all clusters (~2.7s). If latency is from sequential processing, split into parallel batch requests for faster response.
+6. **Parallel label requests**: If benchmarks show benefit, split large batches into parallel requests for faster response.
+
+7. **Topics data fetch optimization**: `/api/topics` currently takes ~2.8s due to `getKeywordBackbone` query complexity (k-NN computation, embedding fetches). Could benefit from server-side caching or query optimization.
 
 ### Resolved Issues
+
+5. **Client-side label caching**: Implemented in `src/lib/cluster-label-cache.ts`. Uses localStorage with semantic similarity matching via cluster centroid embeddings (256-dim). Cache hits at 0.85+ similarity reuse labels immediately. Near-matches (0.85-0.95) show cached label then request refinement in background via `/api/cluster-labels/refine`.
+
+6. **Latency investigation**: Added benchmark script `scripts/benchmark-cluster-labels.ts` to measure endpoint vs direct API latency. Run with `npm run script scripts/benchmark-cluster-labels.ts`.
 
 7. **Full re-render on label arrival**: Fixed by separating `baseClusters` (stable) from `labels` (volatile) in `useClusterLabels`. TopicsView now depends only on `baseClusters` for simulation setup, and updates hull labels via a ref when semantic labels arrive.
 

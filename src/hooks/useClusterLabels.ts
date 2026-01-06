@@ -3,12 +3,25 @@
  * Runs community detection on the rendered graph edges,
  * ensuring clusters match the visual layout.
  *
- * Phase 2: Fetches semantic labels from Haiku API.
+ * Features:
+ * - Louvain clustering on rendered graph (matches visual layout)
+ * - Semantic labels from Haiku API
+ * - Client-side caching with semantic similarity matching
  */
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import Graph from "graphology";
 import louvain from "graphology-communities-louvain";
 import type { KeywordNode, SimilarityEdge } from "@/lib/graph-queries";
+import {
+  loadCache,
+  saveCache,
+  computeCentroid,
+  findBestMatch,
+  addToCache,
+  touchCacheEntry,
+  type ClusterLabelCache,
+  type CacheMatch,
+} from "@/lib/cluster-label-cache";
 
 export interface Cluster {
   id: number;
@@ -134,7 +147,21 @@ export function useClusterLabels(
   // Track semantic labels from Haiku
   const [semanticLabels, setSemanticLabels] = useState<Record<number, string>>({});
 
-  // Fetch semantic labels when clustering changes
+  // Cache ref to persist across renders (loaded once on mount)
+  const cacheRef = useRef<ClusterLabelCache | null>(null);
+
+  // Build label-to-embedding lookup for centroid calculation
+  const embeddingsByLabel = useMemo(() => {
+    const map = new Map<string, number[]>();
+    for (const node of nodes) {
+      if (node.embedding) {
+        map.set(node.label, node.embedding);
+      }
+    }
+    return map;
+  }, [nodes]);
+
+  // Fetch semantic labels when clustering changes (with caching)
   useEffect(() => {
     if (clustering.clusters.size === 0) {
       setSemanticLabels({});
@@ -143,42 +170,172 @@ export function useClusterLabels(
 
     let cancelled = false;
 
-    async function fetchLabels() {
-      try {
-        const clustersPayload = [...clustering.clusters.values()].map((c) => ({
-          id: c.id,
-          keywords: c.members,
-        }));
+    async function fetchLabelsWithCache() {
+      // Load cache on first run
+      if (!cacheRef.current) {
+        cacheRef.current = loadCache();
+      }
+      const cache = cacheRef.current;
 
-        const response = await fetch("/api/cluster-labels", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ clusters: clustersPayload }),
+      const cachedLabels: Record<number, string> = {};
+      const cacheHits: Array<{ clusterId: number; match: CacheMatch; keywords: string[] }> = [];
+      const cacheMisses: Array<{
+        id: number;
+        keywords: string[];
+        centroid: number[] | null;
+      }> = [];
+
+      // Threshold for "near match" that needs refinement
+      const REFINEMENT_THRESHOLD = 0.95;
+
+      // Check cache for each cluster
+      for (const cluster of clustering.clusters.values()) {
+        // Collect embeddings for this cluster's keywords
+        const embeddings: number[][] = [];
+        for (const keyword of cluster.members) {
+          const emb = embeddingsByLabel.get(keyword);
+          if (emb) embeddings.push(emb);
+        }
+
+        // Compute centroid if we have embeddings
+        let centroid: number[] | null = null;
+        if (embeddings.length > 0) {
+          centroid = computeCentroid(embeddings);
+
+          // Try to find cached match
+          const match = findBestMatch(centroid, cache);
+          if (match) {
+            cachedLabels[cluster.id] = match.entry.label;
+            cacheHits.push({ clusterId: cluster.id, match, keywords: cluster.members });
+            touchCacheEntry(match.entry);
+            continue;
+          }
+        }
+
+        // No cache hit - need to fetch
+        cacheMisses.push({
+          id: cluster.id,
+          keywords: cluster.members,
+          centroid,
         });
+      }
 
-        if (!response.ok) {
-          // Silently fail - hub labels will be used
-          return;
+      // Show cached labels immediately
+      if (Object.keys(cachedLabels).length > 0 && !cancelled) {
+        setSemanticLabels(cachedLabels);
+      }
+
+      // Identify near-matches that need refinement (0.85 <= similarity < 0.95)
+      const needsRefinement = cacheHits.filter(
+        (hit) => hit.match.similarity < REFINEMENT_THRESHOLD
+      );
+
+      // Log cache stats
+      if (cacheHits.length > 0 || cacheMisses.length > 0) {
+        const exactHits = cacheHits.length - needsRefinement.length;
+        console.log(
+          `[cluster-cache] ${exactHits} exact hits, ${needsRefinement.length} near-matches, ${cacheMisses.length} misses`
+        );
+      }
+
+      // Background refinement for near-matches
+      if (needsRefinement.length > 0 && !cancelled) {
+        // Fire and forget - don't await, let it update labels when done
+        (async () => {
+          try {
+            const refinements = needsRefinement.map((hit) => ({
+              id: hit.clusterId,
+              oldLabel: hit.match.entry.label,
+              oldKeywords: hit.match.entry.keywords,
+              newKeywords: hit.keywords,
+            }));
+
+            const response = await fetch("/api/cluster-labels/refine", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ refinements }),
+            });
+
+            if (!response.ok || cancelled) return;
+
+            const { labels: refinedLabels } = await response.json();
+
+            if (!cancelled && Object.keys(refinedLabels).length > 0) {
+              // Update displayed labels
+              setSemanticLabels((prev) => ({ ...prev, ...refinedLabels }));
+
+              // Update cache with refined labels
+              for (const hit of needsRefinement) {
+                const refinedLabel = refinedLabels[hit.clusterId];
+                if (refinedLabel && refinedLabel !== hit.match.entry.label) {
+                  // Update existing cache entry with new label
+                  hit.match.entry.label = refinedLabel;
+                  hit.match.entry.keywords = hit.keywords.slice().sort();
+                }
+              }
+              saveCache(cache);
+
+              console.log(
+                `[cluster-cache] Refined ${Object.keys(refinedLabels).length} labels`
+              );
+            }
+          } catch {
+            // Silently fail - cached labels remain
+          }
+        })();
+      }
+
+      // Fetch fresh labels for misses only
+      if (cacheMisses.length > 0) {
+        try {
+          const clustersPayload = cacheMisses.map((c) => ({
+            id: c.id,
+            keywords: c.keywords,
+          }));
+
+          const response = await fetch("/api/cluster-labels", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ clusters: clustersPayload }),
+          });
+
+          if (!response.ok) return;
+
+          const { labels } = await response.json();
+
+          if (!cancelled) {
+            // Merge fresh labels with cached ones
+            setSemanticLabels((prev) => ({ ...prev, ...labels }));
+
+            // Update cache with fresh results
+            for (const miss of cacheMisses) {
+              const label = labels[miss.id];
+              if (label && miss.centroid) {
+                addToCache(cache, {
+                  keywords: miss.keywords.slice().sort(),
+                  centroid: miss.centroid,
+                  label,
+                });
+              }
+            }
+
+            // Persist cache
+            saveCache(cache);
+          }
+        } catch {
+          // Silently fail - cached/hub labels will be used
         }
-
-        const { labels } = await response.json();
-
-        if (!cancelled) {
-          setSemanticLabels(labels);
-        }
-      } catch {
-        // Silently fail - hub labels will be used
       }
     }
 
     // Clear previous labels and fetch new ones
     setSemanticLabels({});
-    fetchLabels();
+    fetchLabelsWithCache();
 
     return () => {
       cancelled = true;
     };
-  }, [clustering]);
+  }, [clustering, embeddingsByLabel]);
 
   // Merge clustering with semantic labels
   const clustersWithLabels = useMemo(() => {
