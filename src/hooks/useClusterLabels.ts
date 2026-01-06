@@ -157,7 +157,8 @@ export function useClusterLabels(
         });
 
         if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
+          // Silently fail - hub labels will be used
+          return;
         }
 
         const { labels } = await response.json();
@@ -165,9 +166,8 @@ export function useClusterLabels(
         if (!cancelled) {
           setSemanticLabels(labels);
         }
-      } catch (error) {
-        console.error("[useClusterLabels] Failed to fetch semantic labels:", error);
-        // Keep using hub labels on error
+      } catch {
+        // Silently fail - hub labels will be used
       }
     }
 

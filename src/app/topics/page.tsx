@@ -36,6 +36,7 @@ export default function TopicsPage() {
   const [data, setData] = useState<TopicsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isStale, setIsStale] = useState(false);
 
   // Layout controls
   const [knnStrength, setKnnStrength] = useState(4.0);
@@ -49,25 +50,43 @@ export default function TopicsPage() {
   const [hoverSimilarity, setHoverSimilarity] = useState(0.7);
   const [baseDim, setBaseDim] = useState(0.7);
 
-  // Fetch data
+  // Fetch data with localStorage cache fallback
   useEffect(() => {
-    setLoading(true);
-    fetch("/api/topics")
-      .then((res) => res.json())
-      .then((data) => {
+    const CACHE_KEY = "topics-data-cache";
+
+    async function fetchData() {
+      setLoading(true);
+      setIsStale(false);
+
+      try {
+        const res = await fetch("/api/topics");
+        const data = await res.json();
+
         if (data.error) {
-          setError(data.error);
-          setData(null);
-        } else {
-          setData(data);
-          setError(null);
+          throw new Error(data.error);
         }
+
+        // Cache successful response
+        localStorage.setItem(CACHE_KEY, JSON.stringify(data));
+        setData(data);
+        setError(null);
+      } catch (err) {
+        // Try to load from cache
+        const cached = localStorage.getItem(CACHE_KEY);
+        if (cached) {
+          setData(JSON.parse(cached));
+          setIsStale(true);
+          setError(null);
+        } else {
+          setError(err instanceof Error ? err.message : "Unknown error");
+          setData(null);
+        }
+      } finally {
         setLoading(false);
-      })
-      .catch((err) => {
-        setError(err.message);
-        setLoading(false);
-      });
+      }
+    }
+
+    fetchData();
   }, []);
 
   if (loading) {
@@ -100,6 +119,9 @@ export default function TopicsPage() {
         <div className="px-3 py-1.5 flex items-center gap-3">
           <h1 className="text-sm font-medium text-zinc-600 dark:text-zinc-400">
             Topics ({data.nodes.length} keywords, {data.edges.length} edges)
+            {isStale && (
+              <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">(offline - cached data)</span>
+            )}
           </h1>
 
           <div className="flex items-center gap-3 text-xs text-zinc-500">

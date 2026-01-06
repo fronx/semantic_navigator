@@ -57,8 +57,8 @@ export function groupNodesByCommunity(nodes: SimNode[]): Map<number, SimNode[]> 
 // --- Rendering ---
 
 export interface HullRenderer {
-  /** Update hull positions (call on each tick). Optionally update opacity. */
-  update: (opacity?: number) => void;
+  /** Update hull positions (call on each tick). Optionally update opacity. Returns hull data for label rendering. */
+  update: (opacity?: number) => HullData[];
   /** Update the communities map (for dynamic filtering) */
   updateCommunities: (newCommunitiesMap: Map<number, SimNode[]>) => void;
   /** The SVG group containing hulls */
@@ -72,6 +72,11 @@ interface HullRendererOptions {
   opacity: number; // 0-1, controls hull visibility
 }
 
+export interface HullData {
+  communityId: number;
+  geometry: HullGeometry;
+}
+
 /**
  * Create a hull renderer for keyword communities.
  */
@@ -82,27 +87,41 @@ export function createHullRenderer(options: HullRendererOptions): HullRenderer {
 
   const group = parent.append("g").attr("class", "hulls");
 
-  function update(newOpacity?: number) {
+  function update(newOpacity?: number): HullData[] {
     if (newOpacity !== undefined) opacity = newOpacity;
 
-    group.selectAll("path").remove();
-    if (opacity === 0) return;
+    // Build hull data array (also returned for label rendering)
+    const hullData: HullData[] = [];
 
-    for (const [communityId, members] of communitiesMap) {
-      const points: [number, number][] = members.map((n) => [n.x!, n.y!]);
-      const geometry = computeHullGeometry(points);
-
-      if (geometry) {
-        group
-          .append("path")
-          .attr("d", `M${geometry.expandedHull.join("L")}Z`)
-          .attr("fill", communityColorScale(String(communityId)))
-          .attr("fill-opacity", 0.08 * opacity)
-          .attr("stroke", communityColorScale(String(communityId)))
-          .attr("stroke-opacity", 0.3 * opacity)
-          .attr("stroke-width", 2 * visualScale);
+    if (opacity > 0) {
+      for (const [communityId, members] of communitiesMap) {
+        const points: [number, number][] = members.map((n) => [n.x!, n.y!]);
+        const geometry = computeHullGeometry(points);
+        if (geometry) {
+          hullData.push({ communityId, geometry });
+        }
       }
     }
+
+    // D3 data join for hull paths
+    group
+      .selectAll<SVGPathElement, HullData>("path")
+      .data(hullData, (d) => String(d.communityId))
+      .join(
+        (enter) =>
+          enter
+            .append("path")
+            .attr("stroke-width", 2 * visualScale),
+        (update) => update,
+        (exit) => exit.remove()
+      )
+      .attr("d", (d) => `M${d.geometry.expandedHull.join("L")}Z`)
+      .attr("fill", (d) => communityColorScale(String(d.communityId)))
+      .attr("fill-opacity", 0.08 * opacity)
+      .attr("stroke", (d) => communityColorScale(String(d.communityId)))
+      .attr("stroke-opacity", 0.3 * opacity);
+
+    return hullData;
   }
 
   function updateCommunities(newCommunitiesMap: Map<number, SimNode[]>) {

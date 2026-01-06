@@ -7,7 +7,7 @@ import * as d3 from "d3";
 import type { MapNode } from "@/app/api/map/route";
 import { colors } from "@/lib/colors";
 import { createHoverTooltip } from "@/lib/d3-utils";
-import { createHullRenderer, groupNodesByCommunity, computeHullGeometry, communityColorScale } from "@/lib/hull-renderer";
+import { createHullRenderer, groupNodesByCommunity, communityColorScale, type HullData } from "@/lib/hull-renderer";
 
 export interface SimNode extends d3.SimulationNodeDatum, MapNode {}
 
@@ -446,41 +446,32 @@ export function createRenderer(options: RendererOptions): MapRenderer {
     // Update node positions
     nodeSelection.attr("transform", (d) => `translate(${d.x},${d.y})`);
 
-    // Update cluster hulls
-    hullRenderer.update();
+    // Update cluster hulls and get computed geometry
+    const hullData = hullRenderer.update();
 
-    // Update hull labels using D3 data join (avoids recreating DOM elements every tick)
+    // Update hull labels using D3 data join (reuses geometry from hull renderer)
     const visibleIds = visibleIdsRef?.current;
     const fontSize = 60 * immediateParams.current.dotScale * visualScale;
 
-    // Build label data array
+    // Build label data from hull geometry
     interface LabelData {
       communityId: number;
       centroid: [number, number];
       label: string;
       opacity: number;
     }
-    const labelData: LabelData[] = [];
-
-    for (const [communityId, members] of communitiesMap) {
+    const labelData: LabelData[] = hullData.map((h: HullData) => {
+      const members = communitiesMap.get(h.communityId) || [];
       const visibleMembers = visibleIds
         ? members.filter((m) => visibleIds.has(m.id))
         : members;
+      const hub = visibleMembers.find((m) => m.communityMembers && m.communityMembers.length > 0);
+      const label = hub?.hullLabel || hub?.label || visibleMembers[0]?.label || "";
+      const visibilityRatio = visibleMembers.length / members.length;
+      const opacity = visibleIds ? Math.max(0.2, visibilityRatio) * 0.7 : 0.7;
 
-      if (visibleMembers.length === 0) continue;
-
-      const points: [number, number][] = visibleMembers.map((n) => [n.x!, n.y!]);
-      const geometry = computeHullGeometry(points);
-
-      if (geometry) {
-        const hub = visibleMembers.find((m) => m.communityMembers && m.communityMembers.length > 0);
-        const label = hub?.hullLabel || hub?.label || visibleMembers[0].label;
-        const visibilityRatio = visibleMembers.length / members.length;
-        const opacity = visibleIds ? Math.max(0.2, visibilityRatio) * 0.7 : 0.7;
-
-        labelData.push({ communityId, centroid: geometry.centroid, label, opacity });
-      }
-    }
+      return { communityId: h.communityId, centroid: h.geometry.centroid, label, opacity };
+    });
 
     // D3 data join for hull labels
     const textSelection = hullLabelGroup
