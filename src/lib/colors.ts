@@ -8,6 +8,7 @@ export const colors = {
   node: {
     article: "#3b82f6", // blue-500
     keyword: "#10b981", // emerald-500
+    chunk: "#8b5cf6",   // violet-500
   },
 
   // Overlay/tooltip styling - works on both light and dark backgrounds

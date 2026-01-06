@@ -16,6 +16,8 @@
     "@types/three": "^0.182.0",
     "3d-force-graph": "^1.79.0",
     "d3": "^7.9.0",
+    "graphology": "^0.26.0",
+    "graphology-communities-louvain": "^2.0.2",
     "mdast-util-from-markdown": "^2.0.2",
     "next": "16.1.1",
     "openai": "^6.15.0",

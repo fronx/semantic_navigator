@@ -25,7 +25,7 @@ export interface RendererCallbacks {
 }
 
 /**
- * Highlight configuration for apply highlight.
+ * Highlight configuration for applyHighlight.
  */
 export interface HighlightConfig {
   /** Set of node IDs to highlight. null = dim all, empty Set = restore all */

@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Transpile local packages that need ESM support
+  transpilePackages: ["umapper"],
 };
 
 export default nextConfig;
