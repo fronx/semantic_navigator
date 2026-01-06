@@ -8,6 +8,7 @@ import {
   type SimNode,
   type SimLink,
 } from "@/lib/map-renderer";
+import { createThreeRenderer, type ThreeRenderer } from "@/lib/three-renderer";
 import { createForceSimulation, type ForceLink, type ForceNode } from "@/lib/map-layout";
 import { forceBoundary } from "@/lib/d3-forces";
 import { applyContrast } from "@/lib/math-utils";
@@ -28,6 +29,8 @@ import type { KeywordNode, SimilarityEdge } from "@/lib/graph-queries";
 // Types
 // ============================================================================
 
+export type RendererType = "d3" | "three";
+
 export interface TopicsViewProps {
   nodes: KeywordNode[];
   edges: SimilarityEdge[];
@@ -43,6 +46,8 @@ export interface TopicsViewProps {
   onKeywordClick?: (keyword: string) => void;
   /** Callback when zoom level changes */
   onZoomChange?: (zoomScale: number) => void;
+  /** Which renderer to use: "d3" (SVG) or "three" (WebGL) */
+  rendererType?: RendererType;
 }
 
 // ============================================================================
@@ -58,8 +63,11 @@ export function TopicsView({
   hoverConfig,
   onKeywordClick,
   onZoomChange,
+  rendererType = "d3",
 }: TopicsViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const threeRendererRef = useRef<ThreeRenderer | null>(null);
 
   // Stable callbacks - won't trigger effect re-runs when parent re-renders
   const handleZoomChange = useStableCallback(onZoomChange);
@@ -79,8 +87,9 @@ export function TopicsView({
   // Store renderer for cluster update effect
   const rendererRef = useRef<ReturnType<typeof createRenderer> | null>(null);
 
-  // Main rendering effect
+  // Main D3 rendering effect
   useEffect(() => {
+    if (rendererType !== "d3") return;
     if (!svgRef.current) return;
 
     const svg = svgRef.current;
@@ -308,42 +317,133 @@ export function TopicsView({
     };
     // Stable callbacks (handleZoomChange, handleKeywordClick) and refs (hoverConfigRef)
     // don't need to be in deps - they never change identity
-  }, [keywordNodes, edges, knnStrength, contrast, hoverConfig.screenRadiusFraction]);
+  }, [keywordNodes, edges, knnStrength, contrast, hoverConfig.screenRadiusFraction, rendererType]);
+
+  // Three.js rendering effect
+  // Note: nodeToCluster is NOT in deps - cluster updates are handled separately
+  useEffect(() => {
+    if (rendererType !== "three") return;
+    if (!containerRef.current) return;
+
+    const container = containerRef.current;
+    let cancelled = false;
+
+    // Convert to format expected by renderer
+    // Don't set communityId here - it's updated by the cluster effect
+    const mapNodes: SimNode[] = keywordNodes.map((n) => ({
+      id: `kw:${n.label}`,
+      type: "keyword" as const,
+      label: n.label,
+      communityId: undefined,
+      embedding: n.embedding,
+    }));
+
+    const mapLinks: SimLink[] = edges.map((e) => ({
+      source: e.source,
+      target: e.target,
+      similarity: e.similarity,
+    }));
+
+    const immediateParams = {
+      current: {
+        dotScale: 1,
+        edgeOpacity: 0.6,
+        hullOpacity: 0.1,
+        edgeCurve: 0.25,
+        curveMethod: "hybrid" as const,
+      },
+    };
+
+    // Async initialization
+    (async () => {
+      const threeRenderer = await createThreeRenderer({
+        container,
+        nodes: mapNodes,
+        links: mapLinks,
+        immediateParams,
+        callbacks: {
+          onKeywordClick: handleKeywordClick,
+          onZoomEnd: (transform) => {
+            handleZoomChange(transform.k);
+          },
+        },
+      });
+
+      if (cancelled) {
+        threeRenderer.destroy();
+        return;
+      }
+
+      threeRendererRef.current = threeRenderer;
+    })();
+
+    return () => {
+      cancelled = true;
+      if (threeRendererRef.current) {
+        threeRendererRef.current.destroy();
+        threeRendererRef.current = null;
+      }
+    };
+  }, [keywordNodes, edges, rendererType, handleKeywordClick, handleZoomChange]);
 
   // Update cluster assignments when clustering changes (without restarting simulation)
   // This runs when nodeToCluster, baseClusters, or labels change
   useEffect(() => {
-    if (simulationNodesRef.current.length === 0 || !rendererRef.current) return;
-
-    // Build hub lookup: hub keyword -> cluster info
-    const hubToCluster = new Map<string, { clusterId: number; hub: string }>();
-    for (const [clusterId, cluster] of baseClusters) {
-      hubToCluster.set(cluster.hub, { clusterId, hub: cluster.hub });
-    }
-
-    // Update all nodes with their cluster assignments
-    for (const node of simulationNodesRef.current) {
-      // Update communityId (affects dot color)
-      node.communityId = nodeToCluster.get(node.id);
-
-      // Check if this node is a hub
-      const clusterInfo = hubToCluster.get(node.label);
-      if (clusterInfo) {
-        // This is a hub node - set hullLabel and communityMembers
-        const cluster = baseClusters.get(clusterInfo.clusterId);
-        node.communityMembers = cluster ? [node.label] : undefined;
-        node.hullLabel = labels[clusterInfo.clusterId] || clusterInfo.hub;
-      } else {
-        // Not a hub - clear hull properties
-        node.communityMembers = undefined;
-        node.hullLabel = undefined;
+    // Handle D3 renderer
+    if (rendererType === "d3" && simulationNodesRef.current.length > 0 && rendererRef.current) {
+      // Build hub lookup: hub keyword -> cluster info
+      const hubToCluster = new Map<string, { clusterId: number; hub: string }>();
+      for (const [clusterId, cluster] of baseClusters) {
+        hubToCluster.set(cluster.hub, { clusterId, hub: cluster.hub });
       }
+
+      // Update all nodes with their cluster assignments
+      for (const node of simulationNodesRef.current) {
+        // Update communityId (affects dot color)
+        node.communityId = nodeToCluster.get(node.id);
+
+        // Check if this node is a hub
+        const clusterInfo = hubToCluster.get(node.label);
+        if (clusterInfo) {
+          // This is a hub node - set hullLabel and communityMembers
+          const cluster = baseClusters.get(clusterInfo.clusterId);
+          node.communityMembers = cluster ? [node.label] : undefined;
+          node.hullLabel = labels[clusterInfo.clusterId] || clusterInfo.hub;
+        } else {
+          // Not a hub - clear hull properties
+          node.communityMembers = undefined;
+          node.hullLabel = undefined;
+        }
+      }
+
+      // Recompute colors and communities, then redraw
+      rendererRef.current.refreshClusters();
+      rendererRef.current.tick();
     }
 
-    // Recompute colors and communities, then redraw
-    rendererRef.current.refreshClusters();
-    rendererRef.current.tick();
-  }, [nodeToCluster, baseClusters, labels]);
+    // Handle Three.js renderer
+    if (rendererType === "three" && threeRendererRef.current) {
+      // Build a map from "kw:label" to cluster ID
+      const threeNodeToCluster = new Map<string, number>();
+      for (const node of keywordNodes) {
+        const clusterId = nodeToCluster.get(node.id);
+        if (clusterId !== undefined) {
+          threeNodeToCluster.set(`kw:${node.label}`, clusterId);
+        }
+      }
+      threeRendererRef.current.updateClusters(threeNodeToCluster);
+    }
+  }, [nodeToCluster, baseClusters, labels, rendererType, keywordNodes]);
+
+  if (rendererType === "three") {
+    return (
+      <div
+        ref={containerRef}
+        className="w-full h-full"
+        style={{ cursor: "grab" }}
+      />
+    );
+  }
 
   return (
     <svg

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { TopicsView } from "@/components/TopicsView";
+import { TopicsView, type RendererType } from "@/components/TopicsView";
 import type { KeywordNode, SimilarityEdge } from "@/lib/graph-queries";
 
 /** Debounce a value - returns the value after it stops changing for `delay` ms */
@@ -62,6 +62,9 @@ export default function TopicsPage() {
   // Hover highlighting controls
   const [hoverSimilarity, setHoverSimilarity] = useState(0.7);
   const [baseDim, setBaseDim] = useState(0.7);
+
+  // Renderer selection
+  const [rendererType, setRendererType] = useState<RendererType>("d3");
 
   // Fetch data with localStorage cache fallback
   useEffect(() => {
@@ -212,6 +215,20 @@ export default function TopicsPage() {
               />
               <span className="w-8 tabular-nums">{(baseDim * 100).toFixed(0)}%</span>
             </label>
+
+            <span className="text-zinc-300 dark:text-zinc-600">|</span>
+
+            <label className="flex items-center gap-1">
+              <span>Renderer:</span>
+              <select
+                value={rendererType}
+                onChange={(e) => setRendererType(e.target.value as RendererType)}
+                className="text-xs bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-1 py-0.5"
+              >
+                <option value="d3">D3/SVG</option>
+                <option value="three">Three.js</option>
+              </select>
+            </label>
           </div>
 
           <a
@@ -238,6 +255,7 @@ export default function TopicsPage() {
             console.log("Clicked keyword:", keyword);
           }}
           onZoomChange={setZoomScale}
+          rendererType={rendererType}
         />
       </main>
     </div>
