@@ -72,24 +72,29 @@ export function TopicsView({
     const width = svg.clientWidth;
     const height = svg.clientHeight;
 
-    // Build hub lookup: cluster ID -> hub keyword label
-    const hubLabels = new Set<string>();
+    // Build hub lookup: hub keyword -> cluster (for semantic labels)
+    const hubToCluster = new Map<string, { hub: string; label: string }>();
     for (const cluster of clusters.values()) {
-      hubLabels.add(cluster.hub);
+      hubToCluster.set(cluster.hub, { hub: cluster.hub, label: cluster.label });
     }
 
     // Convert to format expected by renderer
     // Use client-side computed cluster IDs instead of pre-computed communityId
     // Mark hub nodes with communityMembers so hull labels render correctly
-    const mapNodes = keywordNodes.map((n) => ({
-      id: n.id,
-      type: "keyword" as const,
-      label: n.label,
-      communityId: nodeToCluster.get(n.id),
-      embedding: n.embedding,
-      // Mark hub nodes - renderer uses communityMembers presence to identify hubs
-      communityMembers: hubLabels.has(n.label) ? [n.label] : undefined,
-    }));
+    const mapNodes = keywordNodes.map((n) => {
+      const clusterInfo = hubToCluster.get(n.label);
+      return {
+        id: n.id,
+        type: "keyword" as const,
+        label: n.label,
+        communityId: nodeToCluster.get(n.id),
+        embedding: n.embedding,
+        // Mark hub nodes - renderer uses communityMembers presence to identify hubs
+        communityMembers: clusterInfo ? [n.label] : undefined,
+        // Semantic label from Haiku (or hub keyword if not yet loaded)
+        hullLabel: clusterInfo?.label,
+      };
+    });
 
     const mapEdges = edges.map((e) => ({
       source: e.source,

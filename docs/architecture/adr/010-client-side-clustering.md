@@ -1,7 +1,7 @@
 # ADR 010: Client-Side Clustering with Semantic Labeling
 
 ## Status
-Proposed
+Implemented
 
 ## Context
 
@@ -138,3 +138,9 @@ With client-side clustering established:
 2. **Semantic zoom filtering**: Re-cluster only visible/relevant nodes
 3. **Interactive labeling**: "Summarize what I'm looking at" via Haiku
 4. **Cross-view consistency**: Share clustering approach across Map and Topics
+
+### Optimizations
+
+5. **Translation glossary/cache**: Store previously generated labels so Haiku can reference them for consistency. Direct re-matches (identical keyword sets) skip Haiku entirely and map to cached labels.
+
+6. **Parallel label requests**: Current implementation sends one request for all clusters (~2.7s). If latency is from sequential processing, split into parallel batch requests for faster response.

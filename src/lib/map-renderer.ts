@@ -471,8 +471,9 @@ export function createRenderer(options: RendererOptions): MapRenderer {
         const centroid = geometry.centroid;
 
         // Hull label (scaled with dot size and visual mode)
+        // Use hullLabel if present (e.g., semantic label from Haiku), otherwise fall back to hub's label
         const hub = visibleMembers.find((m) => m.communityMembers && m.communityMembers.length > 0);
-        const label = hub?.label || visibleMembers[0].label;
+        const label = hub?.hullLabel || hub?.label || visibleMembers[0].label;
         const words = label.split(/\s+/);
         const fontSize = 60 * immediateParams.current.dotScale * visualScale;
         const lineHeight = fontSize;

@@ -70,6 +70,7 @@ export interface MapNode {
   // Community info for hub keywords (when clustered=true)
   communityId?: number;
   communityMembers?: string[]; // Labels of other keywords in the community
+  hullLabel?: string; // Custom label for hull (e.g., semantic label from Haiku)
   // 256-dim embedding for semantic zoom (client-side distance computation)
   embedding?: number[];
 }

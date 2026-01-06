@@ -1,6 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+import { anthropic, parseJsonArray } from "./llm";
 
 export async function generateArticleSummary(
   title: string,
@@ -22,21 +20,6 @@ ${content}`,
 
   const textBlock = response.content.find((block) => block.type === "text");
   return textBlock?.text ?? "";
-}
-
-function parseJsonArray(text: string): string[] {
-  let jsonText = text.trim();
-  // Handle markdown code blocks
-  const codeBlockMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (codeBlockMatch) {
-    jsonText = codeBlockMatch[1].trim();
-  }
-
-  const parsed = JSON.parse(jsonText);
-  if (Array.isArray(parsed)) {
-    return parsed.filter((k) => typeof k === "string");
-  }
-  return [];
 }
 
 export interface SectionKeywords {
