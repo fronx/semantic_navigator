@@ -1,0 +1,235 @@
+/**
+ * Semantic color mapping for stable cluster coloring.
+ *
+ * Maps keyword embeddings to colors via PCA projection to 2D,
+ * then polar coordinates to HSL (angle→hue, radius→saturation).
+ */
+
+import { normalize } from "./math-utils";
+
+/** PCA transformation matrix: 2 rows × embedding_dim columns */
+export type PCATransform = number[][];
+
+/** Cached PCA transform (loaded once) */
+let cachedTransform: PCATransform | null = null;
+let loadPromise: Promise<PCATransform | null> | null = null;
+
+/**
+ * Load PCA transform from static file.
+ * Returns cached value if already loaded.
+ */
+export async function loadPCATransform(): Promise<PCATransform | null> {
+  if (cachedTransform) return cachedTransform;
+  if (loadPromise) return loadPromise;
+
+  loadPromise = fetch("/data/embedding-pca-transform.json")
+    .then((res) => {
+      if (!res.ok) throw new Error(`Failed to load PCA transform: ${res.status}`);
+      return res.json();
+    })
+    .then((data) => {
+      cachedTransform = data.transform as PCATransform;
+      return cachedTransform;
+    })
+    .catch((err) => {
+      console.warn("[semantic-colors] Failed to load PCA transform:", err);
+      return null;
+    });
+
+  return loadPromise;
+}
+
+/**
+ * Project an embedding to 2D using pre-computed PCA transform.
+ */
+export function pcaProject(
+  embedding: number[],
+  transform: PCATransform
+): [number, number] {
+  const x = dotProduct(transform[0], embedding);
+  const y = dotProduct(transform[1], embedding);
+  return [x, y];
+}
+
+/**
+ * Map 2D coordinates to HSL color string.
+ * Uses polar coordinates: angle→hue, radius→saturation.
+ */
+export function coordinatesToHSL(x: number, y: number): string {
+  // Angle to hue (0-360)
+  const angle = Math.atan2(y, x);
+  const hue = ((angle / Math.PI + 1) * 180) % 360;
+
+  // Radius to saturation (50-100%)
+  // Scale factor tuned for typical PCA coordinate ranges
+  const radius = Math.sqrt(x * x + y * y);
+  const saturation = 50 + Math.min(50, radius * 200);
+
+  // Fixed lightness for readability
+  const lightness = 45;
+
+  return `hsl(${hue.toFixed(0)}, ${saturation.toFixed(0)}%, ${lightness}%)`;
+}
+
+/**
+ * Compute cluster color from member embeddings.
+ * Computes centroid, projects via PCA, maps to HSL.
+ */
+export function centroidToColor(
+  memberEmbeddings: number[][],
+  transform: PCATransform
+): string {
+  if (memberEmbeddings.length === 0) {
+    return "hsl(0, 0%, 50%)"; // Gray fallback
+  }
+
+  const centroid = computeCentroidLocal(memberEmbeddings);
+  const [x, y] = pcaProject(centroid, transform);
+  return coordinatesToHSL(x, y);
+}
+
+/**
+ * Get color for a single keyword from its PCA coordinates.
+ */
+export function pcaCoordsToColor(pcaX: number, pcaY: number): string {
+  return coordinatesToHSL(pcaX, pcaY);
+}
+
+// --- Cluster-based coloring ---
+
+/** Cluster color info for top-down coloring */
+export interface ClusterColorInfo {
+  /** Base hue (0-360) */
+  h: number;
+  /** Base saturation (0-100) */
+  s: number;
+  /** Base lightness (0-100) */
+  l: number;
+  /** Centroid in PCA space */
+  pcaCentroid: [number, number];
+}
+
+/**
+ * Compute cluster color info from member embeddings.
+ * Returns base HSL and PCA centroid for computing node variations.
+ */
+export function computeClusterColorInfo(
+  memberEmbeddings: number[][],
+  transform: PCATransform
+): ClusterColorInfo | null {
+  if (memberEmbeddings.length === 0) return null;
+
+  // Compute centroid in embedding space
+  const centroid = computeCentroidLocal(memberEmbeddings);
+  const [cx, cy] = pcaProject(centroid, transform);
+
+  // Base color from centroid
+  const angle = Math.atan2(cy, cx);
+  const hue = ((angle / Math.PI + 1) * 180) % 360;
+  const radius = Math.sqrt(cx * cx + cy * cy);
+  const saturation = 50 + Math.min(50, radius * 200);
+  const lightness = 45;
+
+  return {
+    h: hue,
+    s: saturation,
+    l: lightness,
+    pcaCentroid: [cx, cy],
+  };
+}
+
+/**
+ * Compute node color as a blend between cluster base color and node's own color.
+ *
+ * @param mixRatio - 0 = pure cluster color (with small variations), 1 = pure node color
+ *
+ * Cluster-derived color (mixRatio=0):
+ * - Direction from centroid → small hue shift (±15°)
+ * - Distance from centroid → saturation adjustment (closer = more saturated)
+ * - Distance from centroid → lightness adjustment (closer = slightly darker)
+ *
+ * Node's own color (mixRatio=1):
+ * - Direct PCA projection → polar → HSL
+ */
+export function nodeColorFromCluster(
+  nodeEmbedding: number[],
+  clusterInfo: ClusterColorInfo,
+  transform: PCATransform,
+  mixRatio: number = 0
+): string {
+  const [nx, ny] = pcaProject(nodeEmbedding, transform);
+  const [cx, cy] = clusterInfo.pcaCentroid;
+
+  // === Cluster-derived color (with small variations) ===
+  const dx = nx - cx;
+  const dy = ny - cy;
+  const offsetDist = Math.sqrt(dx * dx + dy * dy);
+
+  // Direction of offset → hue shift (±15°)
+  const offsetAngle = Math.atan2(dy, dx);
+  const hueShift = (offsetAngle / Math.PI) * 15;
+
+  // Distance → saturation and lightness adjustments
+  const satAdjust = Math.max(-15, 10 - offsetDist * 80);
+  const lightAdjust = Math.min(10, offsetDist * 30);
+
+  const clusterH = (clusterInfo.h + hueShift + 360) % 360;
+  const clusterS = Math.max(30, Math.min(100, clusterInfo.s + satAdjust));
+  const clusterL = Math.max(30, Math.min(60, clusterInfo.l + lightAdjust));
+
+  // === Node's own color (from its embedding directly) ===
+  const nodeAngle = Math.atan2(ny, nx);
+  const nodeH = ((nodeAngle / Math.PI + 1) * 180) % 360;
+  const nodeRadius = Math.sqrt(nx * nx + ny * ny);
+  const nodeS = 50 + Math.min(50, nodeRadius * 200);
+  const nodeL = 45;
+
+  // === Blend based on mixRatio ===
+  // For hue, we need to handle the circular nature (0-360)
+  let h: number;
+  const hueDiff = nodeH - clusterH;
+  // Take the shortest path around the hue circle
+  if (Math.abs(hueDiff) <= 180) {
+    h = clusterH + hueDiff * mixRatio;
+  } else if (hueDiff > 0) {
+    h = clusterH + (hueDiff - 360) * mixRatio;
+  } else {
+    h = clusterH + (hueDiff + 360) * mixRatio;
+  }
+  h = (h + 360) % 360;
+
+  const s = clusterS + (nodeS - clusterS) * mixRatio;
+  const l = clusterL + (nodeL - clusterL) * mixRatio;
+
+  return `hsl(${h.toFixed(0)}, ${s.toFixed(0)}%, ${l.toFixed(0)}%)`;
+}
+
+// --- Internal helpers ---
+
+function dotProduct(a: number[], b: number[]): number {
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) {
+    sum += a[i] * b[i];
+  }
+  return sum;
+}
+
+/**
+ * Compute normalized centroid (local copy to avoid circular import).
+ */
+function computeCentroidLocal(embeddings: number[][]): number[] {
+  const dim = embeddings[0].length;
+  const sum = new Array(dim).fill(0);
+
+  for (const emb of embeddings) {
+    for (let i = 0; i < dim; i++) {
+      sum[i] += emb[i];
+    }
+  }
+
+  for (let i = 0; i < dim; i++) {
+    sum[i] /= embeddings.length;
+  }
+
+  return normalize(sum);
+}

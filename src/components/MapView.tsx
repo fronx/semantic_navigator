@@ -109,6 +109,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
     hullOpacity,
     edgeCurve,
     curveMethod,
+    colorMixRatio: 0.5, // 0 = cluster color, 1 = node color
   });
 
   // Fit mode: if true, layout fits within canvas with smaller elements

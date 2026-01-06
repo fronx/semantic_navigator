@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
 import {
   createRenderer,
@@ -23,6 +23,7 @@ import {
 import { useClusterLabels } from "@/hooks/useClusterLabels";
 import { useLatest, useStableCallback } from "@/hooks/useStableRef";
 import type { KeywordNode, SimilarityEdge } from "@/lib/graph-queries";
+import { loadPCATransform, type PCATransform } from "@/lib/semantic-colors";
 
 // ============================================================================
 // Types
@@ -37,6 +38,8 @@ export interface TopicsViewProps {
   contrast: number;
   /** Louvain resolution for client-side clustering (higher = more clusters) */
   clusterResolution: number;
+  /** Color mix ratio: 0 = cluster color, 1 = node's own color */
+  colorMixRatio: number;
   /** Hover highlight configuration */
   hoverConfig: HoverHighlightConfig;
   /** Callback when a keyword is clicked */
@@ -55,6 +58,7 @@ export function TopicsView({
   knnStrength,
   contrast,
   clusterResolution,
+  colorMixRatio,
   hoverConfig,
   onKeywordClick,
   onZoomChange,
@@ -78,6 +82,17 @@ export function TopicsView({
 
   // Store renderer for cluster update effect
   const rendererRef = useRef<ReturnType<typeof createRenderer> | null>(null);
+
+  // Store immediateParams for live updates without relayout
+  const immediateParamsRef = useRef<{ current: { colorMixRatio: number } } | null>(null);
+
+  // PCA transform for stable semantic colors
+  const [pcaTransform, setPcaTransform] = useState<PCATransform | null>(null);
+
+  // Load PCA transform once on mount
+  useEffect(() => {
+    loadPCATransform().then(setPcaTransform);
+  }, []);
 
   // Main rendering effect
   useEffect(() => {
@@ -158,8 +173,12 @@ export function TopicsView({
         hullOpacity: 0.1,
         edgeCurve: 0.25,
         curveMethod: "hybrid" as const,
+        colorMixRatio, // 0 = cluster color, 1 = node color
       },
     };
+
+    // Store for live updates
+    immediateParamsRef.current = immediateParams;
 
     const renderer = createRenderer({
       svg,
@@ -173,6 +192,7 @@ export function TopicsView({
           handleZoomChange(transform.k);
         },
       },
+      pcaTransform: pcaTransform ?? undefined,
     });
 
     // Store renderer for cluster update effect
@@ -308,7 +328,7 @@ export function TopicsView({
     };
     // Stable callbacks (handleZoomChange, handleKeywordClick) and refs (hoverConfigRef)
     // don't need to be in deps - they never change identity
-  }, [keywordNodes, edges, knnStrength, contrast, hoverConfig.screenRadiusFraction]);
+  }, [keywordNodes, edges, knnStrength, contrast, hoverConfig.screenRadiusFraction, pcaTransform]);
 
   // Update cluster assignments when clustering changes (without restarting simulation)
   // This runs when nodeToCluster, baseClusters, or labels change
@@ -344,6 +364,14 @@ export function TopicsView({
     rendererRef.current.refreshClusters();
     rendererRef.current.tick();
   }, [nodeToCluster, baseClusters, labels]);
+
+  // Update colors when colorMixRatio changes (without relayout)
+  useEffect(() => {
+    if (!rendererRef.current || !immediateParamsRef.current) return;
+
+    immediateParamsRef.current.current.colorMixRatio = colorMixRatio;
+    rendererRef.current.updateVisuals();
+  }, [colorMixRatio]);
 
   return (
     <svg

@@ -8,6 +8,14 @@ import type { MapNode } from "@/app/api/map/route";
 import { colors } from "@/lib/colors";
 import { createHoverTooltip } from "@/lib/d3-utils";
 import { createHullRenderer, groupNodesByCommunity, communityColorScale, type HullData } from "@/lib/hull-renderer";
+import {
+  pcaProject,
+  coordinatesToHSL,
+  computeClusterColorInfo,
+  nodeColorFromCluster,
+  type PCATransform,
+  type ClusterColorInfo,
+} from "@/lib/semantic-colors";
 
 export interface SimNode extends d3.SimulationNodeDatum, MapNode {}
 
@@ -59,6 +67,8 @@ export interface ImmediateParams {
   hullOpacity: number;
   edgeCurve: number; // 0 = straight, 0.3 = max curve
   curveMethod: CurveMethod;
+  /** Color mixing ratio: 0 = pure cluster color, 1 = pure node color */
+  colorMixRatio: number;
 }
 
 interface RendererOptions {
@@ -72,6 +82,8 @@ interface RendererOptions {
   /** If true, layout fits canvas - use smaller visual elements. If false (overflow mode), use larger elements. */
   fit?: boolean;
   callbacks: RendererCallbacks;
+  /** PCA transform for stable semantic colors (optional, falls back to communityColorScale) */
+  pcaTransform?: PCATransform;
 }
 
 // Scale article radius by content size (sqrt for good visual spread)
@@ -122,10 +134,54 @@ function computeBlendedColors(
   return blended;
 }
 
-function getNodeColor(d: SimNode, blendedColors: Map<string, string>): string {
+/**
+ * Compute cluster color info for all communities.
+ */
+function computeClusterColors(
+  communitiesMap: Map<number, SimNode[]>,
+  pcaTransform?: PCATransform
+): Map<number, ClusterColorInfo> {
+  const clusterColors = new Map<number, ClusterColorInfo>();
+  if (!pcaTransform) return clusterColors;
+
+  for (const [communityId, members] of communitiesMap) {
+    const embeddings = members
+      .map((m) => m.embedding)
+      .filter((e): e is number[] => e !== undefined && e.length > 0);
+
+    if (embeddings.length > 0) {
+      const info = computeClusterColorInfo(embeddings, pcaTransform);
+      if (info) {
+        clusterColors.set(communityId, info);
+      }
+    }
+  }
+  return clusterColors;
+}
+
+function getNodeColor(
+  d: SimNode,
+  blendedColors: Map<string, string>,
+  pcaTransform?: PCATransform,
+  clusterColors?: Map<number, ClusterColorInfo>,
+  colorMixRatio: number = 0
+): string {
   if (d.type === "article" || d.type === "chunk") {
     return blendedColors.get(d.id) || (d.type === "article" ? colors.node.article : colors.node.chunk);
   }
+
+  // Keyword: use cluster-based color if available
+  if (pcaTransform && d.embedding && d.embedding.length > 0 && d.communityId !== undefined && clusterColors) {
+    const clusterInfo = clusterColors.get(d.communityId);
+    if (clusterInfo) {
+      return nodeColorFromCluster(d.embedding, clusterInfo, pcaTransform, colorMixRatio);
+    }
+    // Fallback: use node's own embedding if not in cluster color map
+    const [x, y] = pcaProject(d.embedding, pcaTransform);
+    return coordinatesToHSL(x, y);
+  }
+
+  // Fallback to legacy color scale
   if (d.communityId !== undefined) {
     return communityColorScale(String(d.communityId));
   }
@@ -293,7 +349,7 @@ function computeCurvedPath(link: SimLink, curveIntensity: number, direction: num
  * Sets up D3 selections and returns tick function for position updates.
  */
 export function createRenderer(options: RendererOptions): MapRenderer {
-  const { svg: svgElement, nodes: initialNodes, links: initialLinks, immediateParams, visibleIdsRef, initialZoom = 1, fit = false, callbacks } = options;
+  const { svg: svgElement, nodes: initialNodes, links: initialLinks, immediateParams, visibleIdsRef, initialZoom = 1, fit = false, callbacks, pcaTransform } = options;
 
   // In fit mode, scale down visual elements since we're not zoomed out
   // Overflow mode assumes ~0.4x zoom, so fit mode uses 0.4x visual scale
@@ -337,9 +393,10 @@ export function createRenderer(options: RendererOptions): MapRenderer {
   let blendedColors = computeBlendedColors(currentNodes, currentLinks);
   let edgeCurveDirections: Map<SimLink, number> | null = null;
   let communitiesMap = groupNodesByCommunity(currentNodes);
+  let clusterColors = computeClusterColors(communitiesMap, pcaTransform);
 
   // Draw layers (order matters: hulls -> labels -> edges -> nodes)
-  const hullRenderer = createHullRenderer({ parent: g, communitiesMap, visualScale, opacity: immediateParams.current.hullOpacity });
+  const hullRenderer = createHullRenderer({ parent: g, communitiesMap, visualScale, opacity: immediateParams.current.hullOpacity, pcaTransform });
   const hullLabelGroup = g.append("g").attr("class", "hull-labels");
 
   const linkGroup = g.append("g")
@@ -361,7 +418,7 @@ export function createRenderer(options: RendererOptions): MapRenderer {
     selection
       .append("circle")
       .attr("r", (d) => getNodeRadius(d, immediateParams.current.dotScale) * visualScale)
-      .attr("fill", (d) => getNodeColor(d, colors))
+      .attr("fill", (d) => getNodeColor(d, colors, pcaTransform, clusterColors, immediateParams.current.colorMixRatio))
       .attr("stroke", "#fff")
       .attr("stroke-width", 1.5 * visualScale);
 
@@ -548,6 +605,11 @@ export function createRenderer(options: RendererOptions): MapRenderer {
       .select("circle")
       .attr("r", (d) => getNodeRadius(d, params.dotScale) * visualScale);
 
+    // Update node colors (for colorMixRatio changes)
+    nodeSelection
+      .select("circle")
+      .attr("fill", (d) => getNodeColor(d, blendedColors, pcaTransform, clusterColors, params.colorMixRatio));
+
     // Update edge opacity
     linkGroup.attr("stroke-opacity", params.edgeOpacity * 0.4);
 
@@ -644,10 +706,11 @@ export function createRenderer(options: RendererOptions): MapRenderer {
   function refreshClusters() {
     blendedColors = computeBlendedColors(currentNodes, currentLinks);
     communitiesMap = groupNodesByCommunity(currentNodes);
+    clusterColors = computeClusterColors(communitiesMap, pcaTransform);
     hullRenderer.updateCommunities(communitiesMap);
 
     // Update node circle colors based on new communityId values
-    nodeSelection.select("circle").attr("fill", (d) => getNodeColor(d, blendedColors));
+    nodeSelection.select("circle").attr("fill", (d) => getNodeColor(d, blendedColors, pcaTransform, clusterColors, immediateParams.current.colorMixRatio));
   }
 
   return {

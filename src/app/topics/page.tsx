@@ -63,6 +63,9 @@ export default function TopicsPage() {
   const [hoverSimilarity, setHoverSimilarity] = useState(0.7);
   const [baseDim, setBaseDim] = useState(0.7);
 
+  // Color mixing (0 = cluster color, 1 = node color)
+  const [colorMixRatio, setColorMixRatio] = useState(0.3);
+
   // Fetch data with localStorage cache fallback
   useEffect(() => {
     const CACHE_KEY = "topics-data-cache";
@@ -212,6 +215,20 @@ export default function TopicsPage() {
               />
               <span className="w-8 tabular-nums">{(baseDim * 100).toFixed(0)}%</span>
             </label>
+
+            <label className="flex items-center gap-1">
+              <span>Color mix:</span>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={colorMixRatio}
+                onChange={(e) => setColorMixRatio(parseFloat(e.target.value))}
+                className="w-20 h-3"
+              />
+              <span className="w-8 tabular-nums">{(colorMixRatio * 100).toFixed(0)}%</span>
+            </label>
           </div>
 
           <a
@@ -230,6 +247,7 @@ export default function TopicsPage() {
           knnStrength={knnStrength}
           contrast={contrast}
           clusterResolution={debouncedClusterResolution}
+          colorMixRatio={colorMixRatio}
           hoverConfig={{
             similarityThreshold: hoverSimilarity,
             baseDim,

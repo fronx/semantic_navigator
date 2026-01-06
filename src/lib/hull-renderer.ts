@@ -4,8 +4,9 @@
 
 import * as d3 from "d3";
 import type { SimNode } from "./map-renderer";
+import { centroidToColor, type PCATransform } from "./semantic-colors";
 
-// Color scale for keyword communities (shared with map-renderer)
+// Legacy color scale (fallback when no PCA transform provided)
 export const communityColorScale = d3.scaleOrdinal(d3.schemeTableau10);
 
 export interface HullGeometry {
@@ -70,18 +71,44 @@ interface HullRendererOptions {
   communitiesMap: Map<number, SimNode[]>;
   visualScale: number;
   opacity: number; // 0-1, controls hull visibility
+  /** PCA transform for stable semantic colors (optional, falls back to communityColorScale) */
+  pcaTransform?: PCATransform;
 }
 
 export interface HullData {
   communityId: number;
   geometry: HullGeometry;
+  /** Computed color for this hull (semantic or fallback) */
+  color: string;
+}
+
+/**
+ * Compute color for a community from member embeddings.
+ * Falls back to legacy color scale if no PCA transform or embeddings.
+ */
+function computeHullColor(
+  communityId: number,
+  members: SimNode[],
+  pcaTransform?: PCATransform
+): string {
+  if (pcaTransform) {
+    const embeddings = members
+      .map((m) => m.embedding)
+      .filter((e): e is number[] => e !== undefined && e.length > 0);
+
+    if (embeddings.length > 0) {
+      return centroidToColor(embeddings, pcaTransform);
+    }
+  }
+  // Fallback to legacy color scale
+  return communityColorScale(String(communityId));
 }
 
 /**
  * Create a hull renderer for keyword communities.
  */
 export function createHullRenderer(options: HullRendererOptions): HullRenderer {
-  const { parent, visualScale } = options;
+  const { parent, visualScale, pcaTransform } = options;
   let communitiesMap = options.communitiesMap;
   let opacity = options.opacity;
 
@@ -98,7 +125,8 @@ export function createHullRenderer(options: HullRendererOptions): HullRenderer {
         const points: [number, number][] = members.map((n) => [n.x!, n.y!]);
         const geometry = computeHullGeometry(points);
         if (geometry) {
-          hullData.push({ communityId, geometry });
+          const color = computeHullColor(communityId, members, pcaTransform);
+          hullData.push({ communityId, geometry, color });
         }
       }
     }
@@ -116,9 +144,9 @@ export function createHullRenderer(options: HullRendererOptions): HullRenderer {
         (exit) => exit.remove()
       )
       .attr("d", (d) => `M${d.geometry.expandedHull.join("L")}Z`)
-      .attr("fill", (d) => communityColorScale(String(d.communityId)))
+      .attr("fill", (d) => d.color)
       .attr("fill-opacity", 0.08 * opacity)
-      .attr("stroke", (d) => communityColorScale(String(d.communityId)))
+      .attr("stroke", (d) => d.color)
       .attr("stroke-opacity", 0.3 * opacity);
 
     return hullData;
