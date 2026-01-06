@@ -20,6 +20,7 @@ import {
   DEFAULT_HOVER_CONFIG,
   type HoverHighlightConfig,
 } from "@/hooks/useGraphHoverHighlight";
+import { useClusterLabels } from "@/hooks/useClusterLabels";
 import type { KeywordNode, SimilarityEdge } from "@/lib/graph-queries";
 
 // ============================================================================
@@ -33,6 +34,8 @@ export interface TopicsViewProps {
   knnStrength: number;
   /** Contrast exponent for similarity-based layout */
   contrast: number;
+  /** Louvain resolution for client-side clustering (higher = more clusters) */
+  clusterResolution: number;
   /** Hover highlight configuration */
   hoverConfig: HoverHighlightConfig;
   /** Callback when a keyword is clicked */
@@ -48,10 +51,14 @@ export function TopicsView({
   edges,
   knnStrength,
   contrast,
+  clusterResolution,
   hoverConfig,
   onKeywordClick,
 }: TopicsViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
+
+  // Client-side Louvain clustering
+  const { nodeToCluster, clusters } = useClusterLabels(keywordNodes, edges, clusterResolution);
 
   // Refs for hover config (accessed in event handlers without triggering re-renders)
   const hoverConfigRef = useRef(hoverConfig);
@@ -65,13 +72,23 @@ export function TopicsView({
     const width = svg.clientWidth;
     const height = svg.clientHeight;
 
+    // Build hub lookup: cluster ID -> hub keyword label
+    const hubLabels = new Set<string>();
+    for (const cluster of clusters.values()) {
+      hubLabels.add(cluster.hub);
+    }
+
     // Convert to format expected by renderer
+    // Use client-side computed cluster IDs instead of pre-computed communityId
+    // Mark hub nodes with communityMembers so hull labels render correctly
     const mapNodes = keywordNodes.map((n) => ({
       id: n.id,
       type: "keyword" as const,
       label: n.label,
-      communityId: n.communityId,
+      communityId: nodeToCluster.get(n.id),
       embedding: n.embedding,
+      // Mark hub nodes - renderer uses communityMembers presence to identify hubs
+      communityMembers: hubLabels.has(n.label) ? [n.label] : undefined,
     }));
 
     const mapEdges = edges.map((e) => ({
@@ -271,7 +288,7 @@ export function TopicsView({
         .on("mouseleave.hover", null);
       renderer.destroy();
     };
-  }, [keywordNodes, edges, knnStrength, contrast, hoverConfig.screenRadiusFraction, onKeywordClick]);
+  }, [keywordNodes, edges, knnStrength, contrast, nodeToCluster, clusters, hoverConfig.screenRadiusFraction, onKeywordClick]);
 
   return (
     <svg

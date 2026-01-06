@@ -28,6 +28,7 @@ export default function TopicsPage() {
   // Layout controls
   const [knnStrength, setKnnStrength] = useState(4.0);
   const [contrast, setContrast] = useState(5.0);
+  const [clusterResolution, setClusterResolution] = useState(1.5);
 
   // Hover highlighting controls
   const [hoverSimilarity, setHoverSimilarity] = useState(0.7);
@@ -87,6 +88,20 @@ export default function TopicsPage() {
           </h1>
 
           <div className="flex items-center gap-3 text-xs text-zinc-500">
+            <label className="flex items-center gap-1">
+              <span>Clusters:</span>
+              <input
+                type="range"
+                min="0.1"
+                max="10"
+                step="0.1"
+                value={clusterResolution}
+                onChange={(e) => setClusterResolution(parseFloat(e.target.value))}
+                className="w-20 h-3"
+              />
+              <span className="w-8 tabular-nums">{clusterResolution.toFixed(1)}</span>
+            </label>
+
             <label className="flex items-center gap-1">
               <span>Contrast:</span>
               <input
@@ -161,6 +176,7 @@ export default function TopicsPage() {
           edges={data.edges}
           knnStrength={knnStrength}
           contrast={contrast}
+          clusterResolution={clusterResolution}
           hoverConfig={{
             similarityThreshold: hoverSimilarity,
             baseDim,
