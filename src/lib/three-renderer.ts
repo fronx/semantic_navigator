@@ -194,9 +194,9 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
 
   // Set initial data
   graph
-    // Performance: pre-compute layout then freeze simulation
-    .warmupTicks(100) // Run 100 ticks before rendering
-    .cooldownTicks(0) // Don't run simulation after initial render
+    // Animate the force-directed layout (like D3 renderer)
+    .warmupTicks(0) // Don't pre-compute - show from the start
+    .cooldownTicks(300) // Let simulation run for ~300 ticks
     // Cast to any to bridge D3's SimulationNodeDatum (fx: number | null)
     // with 3d-force-graph's NodeObject (fx?: number | undefined)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

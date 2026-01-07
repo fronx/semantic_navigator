@@ -16,6 +16,34 @@ function useDebouncedValue<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
+/** useState that persists to localStorage (SSR-safe) */
+function useLocalStorageState<T>(key: string, defaultValue: T): [T, (value: T) => void, boolean] {
+  const [value, setValue] = useState<T>(defaultValue);
+  const [isReady, setIsReady] = useState(false);
+
+  // Read from localStorage once on mount, then mark as ready
+  useEffect(() => {
+    const stored = localStorage.getItem(key);
+    if (stored !== null) {
+      try {
+        setValue(JSON.parse(stored) as T);
+      } catch {
+        // Keep default
+      }
+    }
+    setIsReady(true);
+  }, [key]);
+
+  // Write to localStorage when value changes (only after ready)
+  useEffect(() => {
+    if (isReady) {
+      localStorage.setItem(key, JSON.stringify(value));
+    }
+  }, [key, value, isReady]);
+
+  return [value, setValue, isReady];
+}
+
 interface TopicsData {
   nodes: KeywordNode[];
   edges: SimilarityEdge[];
@@ -38,13 +66,13 @@ export default function TopicsPage() {
   const [error, setError] = useState<string | null>(null);
   const [isStale, setIsStale] = useState(false);
 
-  // Layout controls
-  const [knnStrength, setKnnStrength] = useState(4.0);
-  const [contrast, setContrast] = useState(5.0);
+  // Layout controls (persisted)
+  const [knnStrength, setKnnStrength, knnReady] = useLocalStorageState("topics-knnStrength", 4.0);
+  const [contrast, setContrast, contrastReady] = useLocalStorageState("topics-contrast", 5.0);
 
-  // Zoom-based clustering
-  const [zoomScale, setZoomScale] = useState(1);
-  const [clusterSensitivity, setClusterSensitivity] = useState(1.5);
+  // Zoom-based clustering (persisted)
+  const [zoomScale, setZoomScale, zoomReady] = useLocalStorageState("topics-zoomScale", 1);
+  const [clusterSensitivity, setClusterSensitivity, clusterSensReady] = useLocalStorageState("topics-clusterSensitivity", 1.5);
 
   // Derive resolution from zoom + slider
   // zoom 0.5x + sensitivity 1.5 → resolution 0.75 (few clusters)
@@ -59,15 +87,19 @@ export default function TopicsPage() {
   // Debounce cluster resolution to avoid wasted Louvain/Haiku calls while zooming
   const debouncedClusterResolution = useDebouncedValue(effectiveResolution, 300);
 
-  // Hover highlighting controls
-  const [hoverSimilarity, setHoverSimilarity] = useState(0.7);
-  const [baseDim, setBaseDim] = useState(0.7);
+  // Hover highlighting controls (persisted)
+  const [hoverSimilarity, setHoverSimilarity, hoverSimReady] = useLocalStorageState("topics-hoverSimilarity", 0.7);
+  const [baseDim, setBaseDim, baseDimReady] = useLocalStorageState("topics-baseDim", 0.7);
 
-  // Color mixing (0 = cluster color, 1 = node color)
-  const [colorMixRatio, setColorMixRatio] = useState(0.3);
+  // Color mixing (0 = cluster color, 1 = node color) (persisted)
+  const [colorMixRatio, setColorMixRatio, colorMixReady] = useLocalStorageState("topics-colorMixRatio", 0.3);
 
-  // Renderer selection
-  const [rendererType, setRendererType] = useState<RendererType>("d3");
+  // Renderer selection (persisted)
+  const [rendererType, setRendererType, rendererReady] = useLocalStorageState<RendererType>("topics-rendererType", "d3");
+
+  // Wait for all persisted settings to load before rendering
+  const settingsReady = knnReady && contrastReady && zoomReady && clusterSensReady &&
+                        hoverSimReady && baseDimReady && colorMixReady && rendererReady;
 
   // Fetch data with localStorage cache fallback
   useEffect(() => {
@@ -111,7 +143,7 @@ export default function TopicsPage() {
     fetchData();
   }, []);
 
-  if (loading) {
+  if (loading || !settingsReady) {
     return (
       <div className="h-screen flex items-center justify-center bg-white dark:bg-zinc-900">
         <span className="text-zinc-500">Loading topics...</span>

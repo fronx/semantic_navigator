@@ -377,31 +377,36 @@ export function TopicsView({
       },
     };
 
-    // Async initialization
-    (async () => {
-      const threeRenderer = await createThreeRenderer({
-        container,
-        nodes: mapNodes,
-        links: mapLinks,
-        immediateParams,
-        callbacks: {
-          onKeywordClick: handleKeywordClick,
-          onZoomEnd: (transform) => {
-            handleZoomChange(transform.k);
+    // Defer initialization to next frame to ensure container is fully laid out
+    const frameId = requestAnimationFrame(() => {
+      if (cancelled) return;
+
+      (async () => {
+        const threeRenderer = await createThreeRenderer({
+          container,
+          nodes: mapNodes,
+          links: mapLinks,
+          immediateParams,
+          callbacks: {
+            onKeywordClick: handleKeywordClick,
+            onZoomEnd: (transform) => {
+              handleZoomChange(transform.k);
+            },
           },
-        },
-      });
+        });
 
-      if (cancelled) {
-        threeRenderer.destroy();
-        return;
-      }
+        if (cancelled) {
+          threeRenderer.destroy();
+          return;
+        }
 
-      threeRendererRef.current = threeRenderer;
-    })();
+        threeRendererRef.current = threeRenderer;
+      })();
+    });
 
     return () => {
       cancelled = true;
+      cancelAnimationFrame(frameId);
       if (threeRendererRef.current) {
         threeRendererRef.current.destroy();
         threeRendererRef.current = null;
