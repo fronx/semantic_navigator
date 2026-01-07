@@ -101,6 +101,19 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
   let currentHighlight: Set<string> | null = null;
   let currentBaseDim = 0.3;
 
+  // Cache for node meshes to avoid recreating on every update
+  const nodeCache = new Map<string, THREE.Mesh<THREE.CircleGeometry, THREE.MeshBasicMaterial>>();
+
+  // Cache for link objects (when using arc rendering)
+  const linkCache = new Map<string, THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>>();
+
+  // Helper to get link cache key
+  const getLinkKey = (link: SimLink): string => {
+    const sourceId = typeof link.source === "string" ? link.source : link.source.id;
+    const targetId = typeof link.target === "string" ? link.target : link.target.id;
+    return `${sourceId}->${targetId}`;
+  };
+
   // Pre-computed curve directions (same logic as D3 renderer)
   let curveDirections = computeEdgeCurveDirections(
     currentNodes,
@@ -119,8 +132,32 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     .nodeId("id")
     .nodeLabel((node: object) => (node as SimNode).label)
     // Use custom node objects with MeshBasicMaterial for vibrant, flat colors (no lighting)
+    // IMPORTANT: We cache meshes to avoid memory leaks from recreating geometries/materials
     .nodeThreeObject((node: object) => {
       const n = node as SimNode;
+
+      // Check cache first
+      const cached = nodeCache.get(n.id);
+      if (cached) {
+        // Update existing mesh properties
+        const material = cached.material;
+        material.color.set(getNodeColor(n));
+
+        // Update opacity based on highlight state
+        let opacity = 1;
+        if (currentHighlight === null) {
+          opacity = 1 - currentBaseDim;
+        } else if (currentHighlight.size > 0) {
+          opacity = currentHighlight.has(n.id) ? 1 : 0.15;
+        }
+        material.opacity = opacity;
+        material.transparent = opacity < 1;
+        material.needsUpdate = true;
+
+        return cached;
+      }
+
+      // Create new mesh and cache it
       const radius = getNodeRadius(n, immediateParams.current.dotScale) * DOT_SCALE_FACTOR;
       const geometry = new THREE.CircleGeometry(radius, CIRCLE_SEGMENTS);
       const color = new THREE.Color(getNodeColor(n));
@@ -139,7 +176,9 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
         opacity,
       });
 
-      return new THREE.Mesh(geometry, material);
+      const mesh = new THREE.Mesh(geometry, material);
+      nodeCache.set(n.id, mesh);
+      return mesh;
     })
     .nodeVal((node: object) => getNodeRadius(node as SimNode, immediateParams.current.dotScale))
     .linkSource("source")
@@ -170,6 +209,18 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       graph
         .linkCurvature(0) // Disable built-in curves
         .linkThreeObject((link: object) => {
+          const l = link as SimLink;
+          const key = getLinkKey(l);
+
+          // Check cache first
+          const cached = linkCache.get(key);
+          if (cached) {
+            // Update opacity in case it changed
+            cached.material.opacity = immediateParams.current.edgeOpacity * 0.4;
+            cached.material.needsUpdate = true;
+            return cached;
+          }
+
           // Create a line with enough vertices for the arc
           const geometry = new THREE.BufferGeometry();
           const positions = new Float32Array((ARC_SEGMENTS + 1) * 3);
@@ -181,7 +232,9 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
             opacity: immediateParams.current.edgeOpacity * 0.4,
           });
 
-          return new THREE.Line(geometry, material);
+          const line = new THREE.Line(geometry, material);
+          linkCache.set(key, line);
+          return line;
         })
         .linkPositionUpdate((line: object, { start, end }: { start: { x: number; y: number; z?: number }; end: { x: number; y: number; z?: number } }, link: object) => {
           const l = link as SimLink;
@@ -474,6 +527,19 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
 
   return {
     updateData(nodes: SimNode[], links: SimLink[]) {
+      // Dispose old cached objects before replacing data
+      for (const mesh of nodeCache.values()) {
+        mesh.geometry.dispose();
+        mesh.material.dispose();
+      }
+      nodeCache.clear();
+
+      for (const line of linkCache.values()) {
+        line.geometry.dispose();
+        line.material.dispose();
+      }
+      linkCache.clear();
+
       currentNodes = nodes;
       currentLinks = links;
       // Recompute curve directions (same logic as D3 renderer)
@@ -500,6 +566,13 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
 
       // Reconfigure curve rendering if type changed
       if (immediateParams.current.curveType !== currentCurveType) {
+        // Dispose old link objects before switching
+        for (const line of linkCache.values()) {
+          line.geometry.dispose();
+          line.material.dispose();
+        }
+        linkCache.clear();
+
         currentCurveType = immediateParams.current.curveType;
         configureCurveRendering();
         // Need to refresh graph data to apply new link objects
@@ -515,22 +588,42 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     },
 
     updateClusters(nodeToCluster: Map<string, number>) {
-      // Update communityId on each node
+      // Update communityId on each node and update material colors in-place
       for (const node of currentNodes) {
-        // Node IDs are like "kw:keyword", nodeToCluster keys are like "kw-123"
-        // We need to find the matching entry
         const clusterId = nodeToCluster.get(node.id);
         node.communityId = clusterId;
+
+        // Update cached mesh color directly
+        const mesh = nodeCache.get(node.id);
+        if (mesh) {
+          mesh.material.color.set(getNodeColor(node));
+          mesh.material.needsUpdate = true;
+        }
       }
-      // Force re-render of custom node objects
-      graph.nodeThreeObject(graph.nodeThreeObject());
     },
 
     applyHighlight(highlightedIds: Set<string> | null, baseDim: number) {
       currentHighlight = highlightedIds;
       currentBaseDim = baseDim;
-      // Force re-render of custom node objects
-      graph.nodeThreeObject(graph.nodeThreeObject());
+
+      // Update materials in-place instead of recreating meshes
+      for (const [nodeId, mesh] of nodeCache) {
+        const material = mesh.material;
+        let opacity = 1;
+
+        if (highlightedIds === null) {
+          // Nothing nearby - dim everything
+          opacity = 1 - baseDim;
+        } else if (highlightedIds.size > 0) {
+          // Highlight selected, dim others
+          opacity = highlightedIds.has(nodeId) ? 1 : 0.15;
+        }
+        // else: highlightedIds is empty Set = hover ended, restore full opacity (1)
+
+        material.opacity = opacity;
+        material.transparent = opacity < 1;
+        material.needsUpdate = true;
+      }
     },
 
     getNodes() {
@@ -578,6 +671,21 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
 
     destroy() {
       cleanup();
+
+      // Dispose all cached node geometries and materials
+      for (const mesh of nodeCache.values()) {
+        mesh.geometry.dispose();
+        mesh.material.dispose();
+      }
+      nodeCache.clear();
+
+      // Dispose all cached link geometries and materials
+      for (const line of linkCache.values()) {
+        line.geometry.dispose();
+        line.material.dispose();
+      }
+      linkCache.clear();
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (graph as any)._destructor?.();
       // Clear container
