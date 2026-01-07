@@ -28,6 +28,8 @@ export interface ThreeRenderer {
   updateVisuals: () => void;
   /** Update cluster assignments on nodes (triggers color refresh) */
   updateClusters: (nodeToCluster: Map<string, number>) => void;
+  /** Update node colors from precomputed map */
+  updateColors: (nodeColors: Map<string, string>) => void;
   /** Apply highlight styling to nodes */
   applyHighlight: (highlightedIds: Set<string> | null, baseDim: number) => void;
   /** Get nodes for external access */
@@ -48,6 +50,8 @@ interface ThreeRendererOptions {
   links: SimLink[];
   immediateParams: { current: ImmediateParams };
   callbacks: ThreeRendererCallbacks;
+  /** Precomputed node colors (from embedding-based neighbor averaging) */
+  nodeColors?: Map<string, string>;
 }
 
 // ============================================================================
@@ -70,7 +74,13 @@ const CIRCLE_SEGMENTS = 64;
 // Helpers
 // ============================================================================
 
-function getNodeColor(node: SimNode): string {
+function getNodeColor(node: SimNode, nodeColors?: Map<string, string>): string {
+  // Use precomputed embedding-based color if available
+  if (nodeColors) {
+    const color = nodeColors.get(node.id);
+    if (color) return color;
+  }
+  // Fall back to community-based coloring
   if (node.communityId !== undefined) {
     return communityColorScale(String(node.communityId));
   }
@@ -87,7 +97,7 @@ function getNodeRadius(_node: SimNode, dotScale: number): number {
 // ============================================================================
 
 export async function createThreeRenderer(options: ThreeRendererOptions): Promise<ThreeRenderer> {
-  const { container, nodes: initialNodes, links: initialLinks, immediateParams, callbacks } = options;
+  const { container, nodes: initialNodes, links: initialLinks, immediateParams, callbacks, nodeColors: initialNodeColors } = options;
 
   // Dynamic import to avoid SSR issues (3d-force-graph requires browser APIs)
   const ForceGraph3D = (await import("3d-force-graph")).default;
@@ -100,6 +110,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
   let currentLinks = initialLinks;
   let currentHighlight: Set<string> | null = null;
   let currentBaseDim = 0.3;
+  let currentNodeColors: Map<string, string> | undefined = initialNodeColors;
 
   // Cache for node meshes to avoid recreating on every update
   const nodeCache = new Map<string, THREE.Mesh<THREE.CircleGeometry, THREE.MeshBasicMaterial>>();
@@ -141,7 +152,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       if (cached) {
         // Update existing mesh properties
         const material = cached.material;
-        material.color.set(getNodeColor(n));
+        material.color.set(getNodeColor(n, currentNodeColors));
 
         // Update opacity based on highlight state
         let opacity = 1;
@@ -160,7 +171,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       // Create new mesh and cache it
       const radius = getNodeRadius(n, immediateParams.current.dotScale) * DOT_SCALE_FACTOR;
       const geometry = new THREE.CircleGeometry(radius, CIRCLE_SEGMENTS);
-      const color = new THREE.Color(getNodeColor(n));
+      const color = new THREE.Color(getNodeColor(n, currentNodeColors));
 
       // Calculate opacity based on highlight state
       let opacity = 1;
@@ -596,7 +607,20 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
         // Update cached mesh color directly
         const mesh = nodeCache.get(node.id);
         if (mesh) {
-          mesh.material.color.set(getNodeColor(node));
+          mesh.material.color.set(getNodeColor(node, currentNodeColors));
+          mesh.material.needsUpdate = true;
+        }
+      }
+    },
+
+    updateColors(nodeColors: Map<string, string>) {
+      currentNodeColors = nodeColors;
+
+      // Update all cached mesh colors
+      for (const node of currentNodes) {
+        const mesh = nodeCache.get(node.id);
+        if (mesh) {
+          mesh.material.color.set(getNodeColor(node, currentNodeColors));
           mesh.material.needsUpdate = true;
         }
       }

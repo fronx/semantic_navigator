@@ -204,6 +204,91 @@ export function nodeColorFromCluster(
   return `hsl(${h.toFixed(0)}, ${s.toFixed(0)}%, ${l.toFixed(0)}%)`;
 }
 
+// --- Neighbor-averaged coloring ---
+
+interface NodeWithEmbedding {
+  id: string;
+  embedding?: number[];
+}
+
+interface Edge {
+  source: string;
+  target: string;
+}
+
+/**
+ * Compute colors for nodes by averaging each node's PCA position with its neighbors.
+ * This creates stable, semantically meaningful colors with local coherence.
+ *
+ * Algorithm:
+ * 1. Project each node's embedding to 2D via PCA
+ * 2. For each node, average its 2D position with neighbors' positions
+ * 3. Convert the averaged position to HSL color
+ *
+ * @returns Map from node ID to HSL color string
+ */
+export function computeNeighborAveragedColors(
+  nodes: NodeWithEmbedding[],
+  edges: Edge[],
+  transform: PCATransform
+): Map<string, string> {
+  const colorMap = new Map<string, string>();
+
+  // Build adjacency map for fast neighbor lookup
+  const adjacency = new Map<string, Set<string>>();
+  for (const node of nodes) {
+    adjacency.set(node.id, new Set());
+  }
+  for (const edge of edges) {
+    adjacency.get(edge.source)?.add(edge.target);
+    adjacency.get(edge.target)?.add(edge.source);
+  }
+
+  // Compute PCA positions for all nodes
+  const pcaPositions = new Map<string, [number, number]>();
+  for (const node of nodes) {
+    if (node.embedding) {
+      pcaPositions.set(node.id, pcaProject(node.embedding, transform));
+    }
+  }
+
+  // Compute neighbor-averaged colors
+  for (const node of nodes) {
+    const nodePos = pcaPositions.get(node.id);
+    if (!nodePos) {
+      colorMap.set(node.id, "hsl(0, 0%, 50%)"); // Gray fallback
+      continue;
+    }
+
+    // Collect positions: node + neighbors
+    const positions: [number, number][] = [nodePos];
+    const neighbors = adjacency.get(node.id);
+    if (neighbors) {
+      for (const neighborId of neighbors) {
+        const neighborPos = pcaPositions.get(neighborId);
+        if (neighborPos) {
+          positions.push(neighborPos);
+        }
+      }
+    }
+
+    // Average positions
+    let avgX = 0;
+    let avgY = 0;
+    for (const [x, y] of positions) {
+      avgX += x;
+      avgY += y;
+    }
+    avgX /= positions.length;
+    avgY /= positions.length;
+
+    // Convert to color
+    colorMap.set(node.id, coordinatesToHSL(avgX, avgY));
+  }
+
+  return colorMap;
+}
+
 // --- Internal helpers ---
 
 function dotProduct(a: number[], b: number[]): number {

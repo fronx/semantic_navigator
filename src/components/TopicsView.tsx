@@ -24,7 +24,7 @@ import {
 import { useClusterLabels } from "@/hooks/useClusterLabels";
 import { useLatest, useStableCallback } from "@/hooks/useStableRef";
 import type { KeywordNode, SimilarityEdge } from "@/lib/graph-queries";
-import { loadPCATransform, type PCATransform } from "@/lib/semantic-colors";
+import { loadPCATransform, computeNeighborAveragedColors, type PCATransform } from "@/lib/semantic-colors";
 
 // ============================================================================
 // Types
@@ -498,11 +498,17 @@ export function TopicsView({
       if (cancelled) return;
 
       (async () => {
+        // Compute embedding-based colors with neighbor averaging
+        const nodeColors = pcaTransform
+          ? computeNeighborAveragedColors(activeNodes, activeEdges, pcaTransform)
+          : undefined;
+
         const threeRenderer = await createThreeRenderer({
           container,
           nodes: mapNodes,
           links: mapLinks,
           immediateParams,
+          nodeColors,
           callbacks: {
             onKeywordClick: handleKeywordClick,
             onZoomEnd: (transform) => {
@@ -574,7 +580,7 @@ export function TopicsView({
         threeRendererRef.current = null;
       }
     };
-  }, [activeNodes, activeEdges, rendererType, handleKeywordClick, handleZoomChange, colorMixRatio, hoverConfig.screenRadiusFraction, filteredNodeIds]);
+  }, [activeNodes, activeEdges, rendererType, handleKeywordClick, handleZoomChange, colorMixRatio, hoverConfig.screenRadiusFraction, filteredNodeIds, pcaTransform]);
 
   // Update cluster assignments when clustering changes (without restarting simulation)
   // This runs when nodeToCluster, baseClusters, or labels change
