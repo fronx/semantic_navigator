@@ -458,6 +458,15 @@ export function TopicsView({
     }
   }, [nodeToCluster, baseClusters, labels, rendererType, keywordNodes]);
 
+  // Update colors when colorMixRatio changes (without relayout)
+  // Must be before conditional return to satisfy Rules of Hooks
+  useEffect(() => {
+    if (!rendererRef.current || !immediateParamsRef.current) return;
+
+    immediateParamsRef.current.current.colorMixRatio = colorMixRatio;
+    rendererRef.current.updateVisuals();
+  }, [colorMixRatio]);
+
   if (rendererType === "three") {
     return (
       <div
@@ -467,14 +476,6 @@ export function TopicsView({
       />
     );
   }
-
-  // Update colors when colorMixRatio changes (without relayout)
-  useEffect(() => {
-    if (!rendererRef.current || !immediateParamsRef.current) return;
-
-    immediateParamsRef.current.current.colorMixRatio = colorMixRatio;
-    rendererRef.current.updateVisuals();
-  }, [colorMixRatio]);
 
   return (
     <svg
