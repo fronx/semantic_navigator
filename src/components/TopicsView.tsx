@@ -401,6 +401,15 @@ export function TopicsView({
       },
     };
 
+    // Build lookups for hover highlighting (same as D3 renderer)
+    const screenRadiusFraction = hoverConfig.screenRadiusFraction ?? DEFAULT_HOVER_CONFIG.screenRadiusFraction!;
+    const adjacency = buildAdjacencyMap(edges);
+    const embeddings = buildEmbeddingMap(keywordNodes, (n) => `kw:${n.label}`);
+
+    // Hover event handlers (stored for cleanup)
+    let handleMouseMove: ((event: MouseEvent) => void) | null = null;
+    let handleMouseLeave: (() => void) | null = null;
+
     // Defer initialization to next frame to ensure container is fully laid out
     const frameId = requestAnimationFrame(() => {
       if (cancelled) return;
@@ -425,18 +434,55 @@ export function TopicsView({
         }
 
         threeRendererRef.current = threeRenderer;
+
+        // Set up hover highlighting
+        const height = container.clientHeight;
+
+        handleMouseMove = (event: MouseEvent) => {
+          const rect = container.getBoundingClientRect();
+          const screenX = event.clientX - rect.left;
+          const screenY = event.clientY - rect.top;
+          const { similarityThreshold, baseDim } = hoverConfigRef.current;
+
+          const result = spatialSemanticFilter({
+            nodes: threeRenderer.getNodes(),
+            screenCenter: { x: screenX, y: screenY },
+            screenRadius: height * screenRadiusFraction,
+            transform: threeRenderer.getTransform(),
+            similarityThreshold,
+            embeddings,
+            adjacency,
+            screenToWorld: (screen) => threeRenderer.screenToWorld(screen),
+          });
+
+          if (result.spatialIds.size === 0) {
+            threeRenderer.applyHighlight(null, baseDim);
+          } else {
+            threeRenderer.applyHighlight(result.highlightedIds, baseDim);
+          }
+        };
+
+        handleMouseLeave = () => {
+          const { baseDim } = hoverConfigRef.current;
+          threeRenderer.applyHighlight(new Set(), baseDim);
+        };
+
+        container.addEventListener("mousemove", handleMouseMove);
+        container.addEventListener("mouseleave", handleMouseLeave);
       })();
     });
 
     return () => {
       cancelled = true;
       cancelAnimationFrame(frameId);
+      if (handleMouseMove) container.removeEventListener("mousemove", handleMouseMove);
+      if (handleMouseLeave) container.removeEventListener("mouseleave", handleMouseLeave);
       if (threeRendererRef.current) {
         threeRendererRef.current.destroy();
         threeRendererRef.current = null;
       }
     };
-  }, [keywordNodes, edges, rendererType, handleKeywordClick, handleZoomChange, colorMixRatio]);
+  }, [keywordNodes, edges, rendererType, handleKeywordClick, handleZoomChange, colorMixRatio, hoverConfig.screenRadiusFraction]);
 
   // Update cluster assignments when clustering changes (without restarting simulation)
   // This runs when nodeToCluster, baseClusters, or labels change

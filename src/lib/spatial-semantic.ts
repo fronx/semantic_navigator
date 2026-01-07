@@ -220,7 +220,7 @@ export interface SpatialSemanticFilterOptions {
   screenCenter: { x: number; y: number };
   /** Screen radius in pixels */
   screenRadius: number;
-  /** D3 zoom transform for coordinate conversion */
+  /** D3 zoom transform for coordinate conversion (used if screenToWorld not provided) */
   transform: { k: number; x: number; y: number };
   /** Cosine similarity threshold (0-1) */
   similarityThreshold: number;
@@ -228,6 +228,8 @@ export interface SpatialSemanticFilterOptions {
   embeddings: EmbeddingLookup;
   /** Adjacency lookup for neighbor re-inclusion */
   adjacency: AdjacencyLookup;
+  /** Optional custom screen-to-world coordinate conversion (for non-D3 renderers) */
+  screenToWorld?: (screen: { x: number; y: number }) => { x: number; y: number };
 }
 
 export interface SpatialSemanticFilterResult {
@@ -257,10 +259,12 @@ export interface SpatialSemanticFilterResult {
 export function spatialSemanticFilter(
   options: SpatialSemanticFilterOptions
 ): SpatialSemanticFilterResult {
-  const { nodes, screenCenter, screenRadius, transform, similarityThreshold, embeddings, adjacency } = options;
+  const { nodes, screenCenter, screenRadius, transform, similarityThreshold, embeddings, adjacency, screenToWorld } = options;
 
   // Convert screen coordinates to graph coordinates
-  const center = screenToGraph(screenCenter.x, screenCenter.y, transform);
+  const center = screenToWorld
+    ? screenToWorld(screenCenter)
+    : screenToGraph(screenCenter.x, screenCenter.y, transform);
   const radius = screenToGraphDistance(screenRadius, transform.k);
 
   // Step 1: Find nodes in spatial radius

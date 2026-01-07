@@ -34,6 +34,8 @@ export interface ThreeRenderer {
   getNodes: () => SimNode[];
   /** Get current zoom/camera info */
   getTransform: () => { k: number; x: number; y: number };
+  /** Convert screen coordinates to world coordinates */
+  screenToWorld: (screen: { x: number; y: number }) => { x: number; y: number };
   /** Fit view to show all nodes with optional padding */
   fitToNodes: (padding?: number) => void;
   /** Clean up */
@@ -537,8 +539,37 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
 
     getTransform() {
       const camera = graph.camera();
-      const k = camera ? 500 / camera.position.z : 1;
+      if (!camera) return { k: 1, x: 0, y: 0 };
+
+      const rect = container.getBoundingClientRect();
+      const fov = (camera as THREE.PerspectiveCamera).fov * Math.PI / 180;
+      const visibleHeight = 2 * camera.position.z * Math.tan(fov / 2);
+      // k = pixels per world unit (for proper radius conversion)
+      const k = rect.height / visibleHeight;
+
       return { k, x: 0, y: 0 };
+    },
+
+    screenToWorld(screen: { x: number; y: number }) {
+      const camera = graph.camera();
+      if (!camera) return { x: 0, y: 0 };
+
+      const rect = container.getBoundingClientRect();
+      const fov = (camera as THREE.PerspectiveCamera).fov * Math.PI / 180;
+
+      // Calculate visible area at z=0
+      const visibleHeight = 2 * camera.position.z * Math.tan(fov / 2);
+      const visibleWidth = visibleHeight * (rect.width / rect.height);
+
+      // Convert screen to normalized device coordinates (-1 to +1)
+      const ndcX = (screen.x / rect.width) * 2 - 1;
+      const ndcY = -((screen.y / rect.height) * 2 - 1); // Flip Y (screen Y down, world Y up)
+
+      // Convert NDC to world coordinates
+      return {
+        x: camera.position.x + ndcX * (visibleWidth / 2),
+        y: camera.position.y + ndcY * (visibleHeight / 2),
+      };
     },
 
     fitToNodes(padding = 0.2) {
