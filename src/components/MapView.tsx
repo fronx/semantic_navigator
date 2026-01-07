@@ -16,6 +16,7 @@ import {
   type SimLink,
   type MapRenderer,
   type ImmediateParams,
+  type CurveType,
 } from "@/lib/map-renderer";
 import { useMapSearch } from "@/hooks/useMapSearch";
 import { useMapFilterOpacity } from "@/hooks/useMapFilterOpacity";
@@ -67,6 +68,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
   const [hullOpacity, setHullOpacity] = useState(0.1);
   const [edgeCurve, setEdgeCurve] = useState(0.25); // 0-0.7, using circular arcs
   const [curveMethod, setCurveMethod] = useState<CurveMethod>("hybrid");
+  const [curveType] = useState<CurveType>("arc"); // D3 renderer always uses arcs
   const [clustered, setClustered] = useState(false); // Default to clustered view
   const [expandingId, setExpandingId] = useState<string | null>(null);
   const [umapProgress, setUmapProgress] = useState<number | null>(null);
@@ -109,6 +111,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
     hullOpacity,
     edgeCurve,
     curveMethod,
+    curveType,
   });
 
   // Fit mode: if true, layout fits within canvas with smaller elements

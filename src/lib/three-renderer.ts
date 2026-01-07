@@ -9,7 +9,8 @@
 import * as d3 from "d3";
 import * as THREE from "three";
 import { communityColorScale } from "@/lib/hull-renderer";
-import type { SimNode, SimLink, ImmediateParams } from "@/lib/map-renderer";
+import { computeEdgeCurveDirections, type SimNode, type SimLink, type ImmediateParams } from "@/lib/map-renderer";
+import { computeArcPoints } from "@/lib/edge-curves";
 
 // ============================================================================
 // Types
@@ -23,6 +24,8 @@ export interface ThreeRendererCallbacks {
 export interface ThreeRenderer {
   /** Update the graph with new data */
   updateData: (nodes: SimNode[], links: SimLink[]) => void;
+  /** Update visual parameters without relayout (reads from immediateParams ref) */
+  updateVisuals: () => void;
   /** Update cluster assignments on nodes (triggers color refresh) */
   updateClusters: (nodeToCluster: Map<string, number>) => void;
   /** Apply highlight styling to nodes */
@@ -78,6 +81,18 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
   let currentHighlight: Set<string> | null = null;
   let currentBaseDim = 0.3;
 
+  // Pre-computed curve directions (same logic as D3 renderer)
+  let curveDirections = computeEdgeCurveDirections(
+    currentNodes,
+    currentLinks,
+    immediateParams.current.curveMethod
+  );
+  let currentCurveMethod = immediateParams.current.curveMethod;
+  let currentCurveType = immediateParams.current.curveType;
+
+  // Arc segments for custom arc rendering (more = smoother, but more geometry)
+  const ARC_SEGMENTS = 16;
+
   // Configure graph for 2D display (top-down view)
   graph
     .numDimensions(2) // 2D layout
@@ -106,7 +121,79 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     .backgroundColor("#ffffff00") // Transparent
     .showNavInfo(false)
     .enableNodeDrag(true)
-    .enableNavigationControls(false) // We handle pan/zoom for zoom-to-cursor
+    .enableNavigationControls(false); // We handle pan/zoom for zoom-to-cursor
+
+  // Configure curve rendering based on curveType
+  function configureCurveRendering() {
+    if (currentCurveType === "bezier") {
+      // Use built-in bezier curves via linkCurvature
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (graph as any)
+        .linkThreeObject(undefined) // Clear any custom object
+        .linkPositionUpdate(undefined) // Clear custom position update
+        .linkCurvature((link: object) => {
+          const l = link as SimLink;
+          const direction = curveDirections.get(l) ?? 1;
+          return immediateParams.current.edgeCurve * direction;
+        });
+    } else {
+      // Use custom circular arc rendering
+      graph
+        .linkCurvature(0) // Disable built-in curves
+        .linkThreeObject((link: object) => {
+          // Create a line with enough vertices for the arc
+          const geometry = new THREE.BufferGeometry();
+          const positions = new Float32Array((ARC_SEGMENTS + 1) * 3);
+          geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+
+          const material = new THREE.LineBasicMaterial({
+            color: 0x888888,
+            transparent: true,
+            opacity: immediateParams.current.edgeOpacity * 0.4,
+          });
+
+          return new THREE.Line(geometry, material);
+        })
+        .linkPositionUpdate((line: object, { start, end }: { start: { x: number; y: number; z?: number }; end: { x: number; y: number; z?: number } }, link: object) => {
+          const l = link as SimLink;
+          const direction = curveDirections.get(l) ?? 1;
+          const curveIntensity = immediateParams.current.edgeCurve;
+
+          // Compute arc points using shared utility
+          const arcPoints = computeArcPoints(
+            { x: start.x, y: start.y },
+            { x: end.x, y: end.y },
+            curveIntensity,
+            direction,
+            ARC_SEGMENTS
+          );
+
+          // Update line geometry
+          const threeObj = line as THREE.Line;
+          const positions = threeObj.geometry.attributes.position as THREE.BufferAttribute;
+
+          for (let i = 0; i < arcPoints.length; i++) {
+            positions.setXYZ(i, arcPoints[i].x, arcPoints[i].y, 0);
+          }
+          // Fill remaining vertices with last point (in case we have fewer points)
+          const lastPoint = arcPoints[arcPoints.length - 1];
+          for (let i = arcPoints.length; i <= ARC_SEGMENTS; i++) {
+            positions.setXYZ(i, lastPoint.x, lastPoint.y, 0);
+          }
+
+          positions.needsUpdate = true;
+          threeObj.geometry.computeBoundingSphere();
+
+          return true; // Indicates we've updated the position
+        });
+    }
+  }
+
+  // Apply initial curve configuration
+  configureCurveRendering();
+
+  // Set initial data
+  graph
     // Performance: pre-compute layout then freeze simulation
     .warmupTicks(100) // Run 100 ticks before rendering
     .cooldownTicks(0) // Don't run simulation after initial render
@@ -267,8 +354,42 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     updateData(nodes: SimNode[], links: SimLink[]) {
       currentNodes = nodes;
       currentLinks = links;
+      // Recompute curve directions (same logic as D3 renderer)
+      curveDirections = computeEdgeCurveDirections(
+        currentNodes,
+        currentLinks,
+        immediateParams.current.curveMethod
+      );
+      currentCurveMethod = immediateParams.current.curveMethod;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       graph.graphData({ nodes: currentNodes as any, links: currentLinks as any });
+    },
+
+    updateVisuals() {
+      // Recompute curve directions if method changed
+      if (immediateParams.current.curveMethod !== currentCurveMethod) {
+        curveDirections = computeEdgeCurveDirections(
+          currentNodes,
+          currentLinks,
+          immediateParams.current.curveMethod
+        );
+        currentCurveMethod = immediateParams.current.curveMethod;
+      }
+
+      // Reconfigure curve rendering if type changed
+      if (immediateParams.current.curveType !== currentCurveType) {
+        currentCurveType = immediateParams.current.curveType;
+        configureCurveRendering();
+        // Need to refresh graph data to apply new link objects
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        graph.graphData({ nodes: currentNodes as any, links: currentLinks as any });
+      }
+
+      // Force re-render of links (curvature) and link opacity
+      if (currentCurveType === "bezier") {
+        graph.linkCurvature(graph.linkCurvature());
+      }
+      graph.linkOpacity(immediateParams.current.edgeOpacity * 0.4);
     },
 
     updateClusters(nodeToCluster: Map<string, number>) {

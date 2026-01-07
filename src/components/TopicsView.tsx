@@ -167,6 +167,7 @@ export function TopicsView({
         hullOpacity: 0.1,
         edgeCurve: 0.25,
         curveMethod: "hybrid" as const,
+        curveType: "arc" as const, // D3 always uses arcs
       },
     };
 
@@ -351,6 +352,7 @@ export function TopicsView({
         hullOpacity: 0.1,
         edgeCurve: 0.25,
         curveMethod: "hybrid" as const,
+        curveType: "arc" as const, // Use circular arcs (matches D3 renderer)
       },
     };
 
