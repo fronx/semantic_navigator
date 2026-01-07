@@ -221,6 +221,15 @@ export function TopicsView({
     // Track simulation settling
     let tickCount = 0;
     let coolingDown = false;
+    let hasFittedInitially = false;
+
+    // Auto-fit after 2 seconds (give simulation time to settle)
+    const autoFitTimeout = setTimeout(() => {
+      if (!hasFittedInitially) {
+        hasFittedInitially = true;
+        renderer.fitToNodes(0.1, true);
+      }
+    }, 2000);
 
     // Add drag behavior - resets cooling when user drags
     addDragBehavior(renderer.nodeSelection, simulation, () => {
@@ -310,6 +319,13 @@ export function TopicsView({
     simulation.on("tick", () => {
       tickCount++;
 
+      // Clamp velocities to prevent numerical explosion
+      const maxVelocity = 50;
+      for (const node of nodes) {
+        if (node.vx !== undefined) node.vx = Math.max(-maxVelocity, Math.min(maxVelocity, node.vx));
+        if (node.vy !== undefined) node.vy = Math.max(-maxVelocity, Math.min(maxVelocity, node.vy));
+      }
+
       if (tickCount > 40 && !coolingDown) {
         const velocities = nodes
           .map((d) => Math.sqrt((d.vx ?? 0) ** 2 + (d.vy ?? 0) ** 2))
@@ -318,17 +334,25 @@ export function TopicsView({
         const p95Index = Math.floor(nodes.length * 0.05);
         const topVelocity = velocities[p95Index] ?? velocities[0] ?? 0;
 
-        if (topVelocity < 0.5) {
+        // Relax threshold: 2.0 instead of 0.5 - nodes settle faster visually than velocity suggests
+        if (topVelocity < 2.0) {
           coolingDown = true;
           simulation.force("collision", d3.forceCollide<ForceNode>().radius(20));
           simulation.alphaTarget(0).alpha(0.3);
         }
       }
 
+      // Additional fit when cooling starts (for refinement)
+      if (!hasFittedInitially && coolingDown && tickCount > 150) {
+        hasFittedInitially = true;
+        renderer.fitToNodes(0.1, true);
+      }
+
       renderer.tick();
     });
 
     return () => {
+      clearTimeout(autoFitTimeout);
       simulation.stop();
       d3.select(svg)
         .on("mousemove.hover", null)

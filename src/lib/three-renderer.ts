@@ -34,6 +34,8 @@ export interface ThreeRenderer {
   getNodes: () => SimNode[];
   /** Get current zoom/camera info */
   getTransform: () => { k: number; x: number; y: number };
+  /** Fit view to show all nodes with optional padding */
+  fitToNodes: (padding?: number) => void;
   /** Clean up */
   destroy: () => void;
 }
@@ -211,11 +213,12 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
   });
 
   // Camera setup for 2D view (top-down)
-  // Wait a tick for the graph to initialize
+  // Start zoomed out enough to see a large graph, then fit will adjust
   setTimeout(() => {
     const camera = graph.camera();
     if (camera) {
-      camera.position.set(0, 0, 500);
+      // Start at z=1500 (zoomed out) - fit will adjust once layout settles
+      camera.position.set(0, 0, 1500);
       camera.lookAt(0, 0, 0);
     }
   }, 100);
@@ -331,8 +334,92 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
 
   container.addEventListener("wheel", handleWheel, { passive: false });
 
-  // Zoom end callback for drag operations
+  // Track if we've done initial fit
+  let hasFittedInitially = false;
+
+  // Fit to nodes helper (defined here so onEngineStop can use it)
+  function fitToNodesInternal(padding = 0.2) {
+    const camera = graph.camera();
+    if (!camera || currentNodes.length === 0) return;
+
+    // Get node positions from 3d-force-graph (they have x, y after simulation)
+    const graphData = graph.graphData();
+    const nodes = graphData.nodes as Array<{ x?: number; y?: number }>;
+    if (nodes.length === 0) return;
+
+    // Compute bounding box
+    const xs = nodes.map(n => n.x ?? 0);
+    const ys = nodes.map(n => n.y ?? 0);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+
+    const graphWidth = (maxX - minX) || 1;
+    const graphHeight = (maxY - minY) || 1;
+    const graphCenterX = (minX + maxX) / 2;
+    const graphCenterY = (minY + maxY) / 2;
+
+    // Calculate camera Z to fit the graph with padding
+    const rect = container.getBoundingClientRect();
+    const fov = (camera as THREE.PerspectiveCamera).fov * Math.PI / 180;
+    const aspect = rect.width / rect.height;
+
+    // Calculate Z needed to fit graph (accounting for padding)
+    const paddedWidth = graphWidth * (1 + padding);
+    const paddedHeight = graphHeight * (1 + padding);
+
+    // Z needed to see the full height
+    const zForHeight = paddedHeight / (2 * Math.tan(fov / 2));
+    // Z needed to see the full width
+    const zForWidth = paddedWidth / (2 * Math.tan(fov / 2) * aspect);
+
+    // Use the larger Z (more zoomed out) to fit both dimensions
+    const newZ = Math.max(zForHeight, zForWidth, 50); // Min zoom of 50
+
+    // Smoothly animate camera to new position
+    const startX = camera.position.x;
+    const startY = camera.position.y;
+    const startZ = camera.position.z;
+    const duration = 500; // ms
+    const startTime = performance.now();
+
+    function animateCamera() {
+      const elapsed = performance.now() - startTime;
+      const t = Math.min(elapsed / duration, 1);
+      // Ease out cubic for smooth deceleration
+      const eased = 1 - Math.pow(1 - t, 3);
+
+      camera.position.x = startX + (graphCenterX - startX) * eased;
+      camera.position.y = startY + (graphCenterY - startY) * eased;
+      camera.position.z = startZ + (newZ - startZ) * eased;
+
+      if (t < 1) {
+        requestAnimationFrame(animateCamera);
+      }
+    }
+    animateCamera();
+
+    // Notify zoom change
+    if (callbacks.onZoomEnd) {
+      const k = 500 / newZ;
+      callbacks.onZoomEnd({ k, x: graphCenterX, y: graphCenterY });
+    }
+  }
+
+  // Early fit after ~1.5 seconds so user sees the graph quickly
+  const earlyFitTimeout = setTimeout(() => {
+    if (!hasFittedInitially) {
+      hasFittedInitially = true;
+      fitToNodesInternal(0.1);
+    }
+  }, 1500);
+
+  // Final fit when simulation fully settles
   graph.onEngineStop(() => {
+    fitToNodesInternal(0.1);
+    hasFittedInitially = true; // Ensure it's set even if early fit didn't run
+
     if (callbacks.onZoomEnd) {
       const camera = graph.camera();
       const k = camera ? 500 / camera.position.z : 1;
@@ -342,6 +429,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
 
   // Store cleanup function
   const cleanup = () => {
+    if (earlyFitTimeout) clearTimeout(earlyFitTimeout);
     if (zoomEndTimeout) clearTimeout(zoomEndTimeout);
     container.removeEventListener("wheel", handleWheel);
     container.removeEventListener("mousedown", handleMouseDown);
@@ -419,6 +507,10 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       const camera = graph.camera();
       const k = camera ? 500 / camera.position.z : 1;
       return { k, x: 0, y: 0 };
+    },
+
+    fitToNodes(padding = 0.2) {
+      fitToNodesInternal(padding);
     },
 
     destroy() {
