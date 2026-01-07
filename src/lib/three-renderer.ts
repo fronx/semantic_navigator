@@ -7,6 +7,7 @@
  */
 
 import * as THREE from "three";
+import { forceCollide } from "d3-force";
 import { communityColorScale } from "@/lib/hull-renderer";
 import { computeEdgeCurveDirections, type SimNode, type SimLink, type ImmediateParams } from "@/lib/map-renderer";
 import { computeArcPoints } from "@/lib/edge-curves";
@@ -48,6 +49,22 @@ interface ThreeRendererOptions {
 }
 
 // ============================================================================
+// Constants
+// ============================================================================
+
+/** Base radius for keyword dots (before dotScale is applied) */
+const BASE_DOT_RADIUS = 4;
+
+/** Scale factor applied to dots for better visibility */
+const DOT_SCALE_FACTOR = 2.5;
+
+/** Extra padding added to collision radius beyond the visual dot size */
+const COLLISION_PADDING = 1;
+
+/** Number of segments for circle geometry (higher = smoother circles) */
+const CIRCLE_SEGMENTS = 64;
+
+// ============================================================================
 // Helpers
 // ============================================================================
 
@@ -60,7 +77,7 @@ function getNodeColor(node: SimNode): string {
 
 function getNodeRadius(_node: SimNode, dotScale: number): number {
   // Keywords only for now
-  return 4 * dotScale;
+  return BASE_DOT_RADIUS * dotScale;
 }
 
 // ============================================================================
@@ -102,9 +119,8 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     // Use custom node objects with MeshBasicMaterial for vibrant, flat colors (no lighting)
     .nodeThreeObject((node: object) => {
       const n = node as SimNode;
-      const radius = getNodeRadius(n, immediateParams.current.dotScale) * 2.5;
-      // Use 32 segments for smooth circles even when zoomed in
-      const geometry = new THREE.CircleGeometry(radius, 64);
+      const radius = getNodeRadius(n, immediateParams.current.dotScale) * DOT_SCALE_FACTOR;
+      const geometry = new THREE.CircleGeometry(radius, CIRCLE_SEGMENTS);
       const color = new THREE.Color(getNodeColor(n));
 
       // Calculate opacity based on highlight state
@@ -202,6 +218,11 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
 
   // Apply initial curve configuration
   configureCurveRendering();
+
+  // Add collision force to prevent overlapping dots
+  // Radius derived from visual dot size constants
+  const collisionRadius = BASE_DOT_RADIUS * DOT_SCALE_FACTOR + COLLISION_PADDING;
+  graph.d3Force("collision", forceCollide(collisionRadius));
 
   // Set initial data
   graph
