@@ -60,6 +60,7 @@ export interface MapRenderer {
  * Pass as a ref so updates are reflected immediately.
  */
 export type CurveMethod = "outward" | "angular" | "hybrid";
+export type CurveType = "bezier" | "arc";
 
 export interface ImmediateParams {
   dotScale: number;
@@ -67,6 +68,7 @@ export interface ImmediateParams {
   hullOpacity: number;
   edgeCurve: number; // 0 = straight, 0.3 = max curve
   curveMethod: CurveMethod;
+  curveType: CurveType; // "bezier" = 3d-force-graph default, "arc" = circular arc (matches D3)
   /** Color mixing ratio: 0 = pure cluster color, 1 = pure node color */
   colorMixRatio: number;
 }
@@ -198,7 +200,7 @@ function getNodeColor(
  *
  * Returns a Map from link to direction (-1 or 1).
  */
-function computeEdgeCurveDirections(
+export function computeEdgeCurveDirections(
   nodes: SimNode[],
   links: SimLink[],
   method: CurveMethod

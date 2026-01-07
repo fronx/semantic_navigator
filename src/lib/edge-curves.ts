@@ -83,6 +83,96 @@ export interface CurveDirectionResult {
   stats: CurveDirectionStats;
 }
 
+export interface Point2D {
+  x: number;
+  y: number;
+}
+
+/**
+ * Compute points along a circular arc between two endpoints.
+ * Uses the same sagitta-based math as the D3/SVG renderer.
+ *
+ * @param source - Start point
+ * @param target - End point
+ * @param curveIntensity - How curved (0 = straight, 0.25 = typical)
+ * @param direction - Which side to bow: 1 = left of source->target, -1 = right
+ * @param segments - Number of line segments (more = smoother)
+ * @returns Array of points from source to target along the arc
+ */
+export function computeArcPoints(
+  source: Point2D,
+  target: Point2D,
+  curveIntensity: number,
+  direction: number,
+  segments: number = 16
+): Point2D[] {
+  const { x: x1, y: y1 } = source;
+  const { x: x2, y: y2 } = target;
+
+  // Straight line case
+  if (curveIntensity === 0) {
+    return [{ x: x1, y: y1 }, { x: x2, y: y2 }];
+  }
+
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const chordLength = Math.sqrt(dx * dx + dy * dy);
+
+  if (chordLength === 0) {
+    return [{ x: x1, y: y1 }];
+  }
+
+  // Sagitta (arc height)
+  const sagitta = chordLength * curveIntensity * direction;
+  const absSagitta = Math.abs(sagitta);
+
+  // Very small curves -> straight line
+  if (absSagitta < 0.1) {
+    return [{ x: x1, y: y1 }, { x: x2, y: y2 }];
+  }
+
+  // Radius from chord length L and sagitta h: r = (L²/4 + h²) / (2h)
+  const radius = (chordLength * chordLength / 4 + absSagitta * absSagitta) / (2 * absSagitta);
+
+  // Chord midpoint
+  const mx = (x1 + x2) / 2;
+  const my = (y1 + y2) / 2;
+
+  // Unit perpendicular to chord (pointing "left" of source->target)
+  const perpX = -dy / chordLength;
+  const perpY = dx / chordLength;
+
+  // Arc center is offset from midpoint by (radius - sagitta) in perpendicular direction
+  // When sagitta > 0: center is on the opposite side of the bulge
+  const centerOffset = radius - absSagitta;
+  const sign = sagitta > 0 ? -1 : 1;
+  const cx = mx + sign * centerOffset * perpX;
+  const cy = my + sign * centerOffset * perpY;
+
+  // Compute start and end angles from center
+  const startAngle = Math.atan2(y1 - cy, x1 - cx);
+  const endAngle = Math.atan2(y2 - cy, x2 - cx);
+
+  // Determine sweep direction (always minor arc)
+  let angleDiff = endAngle - startAngle;
+  // Normalize to [-PI, PI]
+  while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+  while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+
+  // Sample points along the arc
+  const points: Point2D[] = [];
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    const angle = startAngle + t * angleDiff;
+    points.push({
+      x: cx + radius * Math.cos(angle),
+      y: cy + radius * Math.sin(angle),
+    });
+  }
+
+  return points;
+}
+
 /**
  * @returns Object with directions map and stats about decision paths
  */
