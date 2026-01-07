@@ -92,6 +92,7 @@ Semantic Navigator is a knowledge base tool that imports markdown files, atomize
 - `src/components/VaultBrowser.tsx` - File picker for importing markdown files
 - `src/components/NodeViewer.tsx` - Display node content and children
 - `src/components/MapView.tsx` - D3 force-directed graph of articles and keywords
+- `src/components/TopicsView.tsx` - **Main visualization view** for keyword-only graphs. Supports both D3/SVG and Three.js/WebGL renderers via `rendererType` prop. Note: This is the primary view we're actively developing (not MapView).
 - `src/components/ImportProgress.tsx` - SSE-based import progress display
 
 ### Database

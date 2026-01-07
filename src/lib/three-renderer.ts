@@ -496,7 +496,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
   const earlyFitTimeout = setTimeout(() => {
     if (!hasFittedInitially) {
       hasFittedInitially = true;
-      fitToNodesInternal(0.1);
+      fitToNodesInternal(0.25);
     }
   }, 1500);
 
@@ -504,7 +504,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
   graph.onEngineStop(() => {
     if (!hasFittedInitially) {
       hasFittedInitially = true;
-      fitToNodesInternal(0.1);
+      fitToNodesInternal(0.25);
     }
 
     if (callbacks.onZoomEnd) {

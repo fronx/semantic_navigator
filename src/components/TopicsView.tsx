@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as d3 from "d3";
 import {
   createRenderer,
@@ -73,12 +73,21 @@ export function TopicsView({
   const containerRef = useRef<HTMLDivElement>(null);
   const threeRendererRef = useRef<ThreeRenderer | null>(null);
 
+  // State for click-to-filter: when set, only show nodes in this set
+  const [filteredNodeIds, setFilteredNodeIds] = useState<Set<string> | null>(null);
+
+  // Position map for preserving node positions across filter transitions
+  const positionMapRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+
   // Stable callbacks - won't trigger effect re-runs when parent re-renders
   const handleZoomChange = useStableCallback(onZoomChange);
   const handleKeywordClick = useStableCallback(onKeywordClick);
 
   // Stable refs for values accessed in event handlers without triggering re-renders
   const hoverConfigRef = useLatest(hoverConfig);
+
+  // Track current highlighted IDs for click-to-filter
+  const highlightedIdsRef = useRef<Set<string>>(new Set());
 
   // Client-side Louvain clustering
   // baseClusters is stable (only changes when nodes/edges/resolution change)
@@ -102,6 +111,56 @@ export function TopicsView({
     loadPCATransform().then(setPcaTransform);
   }, []);
 
+  // Compute active nodes/edges based on filter state (memoized to prevent effect loops)
+  const activeNodes = useMemo(
+    () => filteredNodeIds
+      ? keywordNodes.filter((n) => filteredNodeIds.has(n.id))
+      : keywordNodes,
+    [keywordNodes, filteredNodeIds]
+  );
+
+  const activeEdges = useMemo(
+    () => filteredNodeIds
+      ? edges.filter((e) => filteredNodeIds.has(e.source) && filteredNodeIds.has(e.target))
+      : edges,
+    [edges, filteredNodeIds]
+  );
+
+  // Click handler for drill-down filtering (shared logic for both renderers)
+  const handleFilterClick = useStableCallback(() => {
+    const highlighted = highlightedIdsRef.current;
+    if (highlighted.size === 0) {
+      // No highlighted nodes - reset filter if one exists
+      if (filteredNodeIds !== null) {
+        setFilteredNodeIds(null);
+      }
+      return;
+    }
+
+    // Capture current positions before filter (for both D3 and Three.js)
+    const newPositionMap = new Map<string, { x: number; y: number }>();
+
+    if (rendererType === "d3" && simulationNodesRef.current.length > 0) {
+      for (const node of simulationNodesRef.current) {
+        const simNode = node as SimNode;
+        if (simNode.x !== undefined && simNode.y !== undefined) {
+          newPositionMap.set(node.id, { x: simNode.x, y: simNode.y });
+        }
+      }
+    } else if (rendererType === "three" && threeRendererRef.current) {
+      for (const node of threeRendererRef.current.getNodes()) {
+        if (node.x !== undefined && node.y !== undefined) {
+          newPositionMap.set(node.id, { x: node.x, y: node.y });
+        }
+      }
+    }
+
+    positionMapRef.current = newPositionMap;
+
+    // Apply filter - IDs are already in "kw:label" format for both renderers
+    setFilteredNodeIds(highlighted);
+  });
+
   // Main D3 rendering effect
   useEffect(() => {
     if (rendererType !== "d3") return;
@@ -114,17 +173,25 @@ export function TopicsView({
     // Convert to format expected by renderer
     // Cluster data is added via refs (not dependencies) to avoid relayout
     // Actual cluster assignments are applied by the cluster update effect
-    const mapNodes = keywordNodes.map((n) => ({
-      id: n.id,
-      type: "keyword" as const,
-      label: n.label,
-      communityId: undefined as number | undefined,
-      embedding: n.embedding,
-      communityMembers: undefined as string[] | undefined,
-      hullLabel: undefined as string | undefined,
-    }));
+    // Use activeNodes/activeEdges for filtered view
+    const mapNodes = activeNodes.map((n) => {
+      // Apply preserved positions if available (for smooth filter transitions)
+      const savedPos = positionMapRef.current.get(n.id);
+      return {
+        id: n.id,
+        type: "keyword" as const,
+        label: n.label,
+        communityId: undefined as number | undefined,
+        embedding: n.embedding,
+        communityMembers: undefined as string[] | undefined,
+        hullLabel: undefined as string | undefined,
+        // Set initial position from saved positions
+        x: savedPos?.x,
+        y: savedPos?.y,
+      };
+    });
 
-    const mapEdges = edges.map((e) => ({
+    const mapEdges = activeEdges.map((e) => ({
       source: e.source,
       target: e.target,
       similarity: e.similarity,
@@ -227,7 +294,7 @@ export function TopicsView({
     const autoFitTimeout = setTimeout(() => {
       if (!hasFittedInitially) {
         hasFittedInitially = true;
-        renderer.fitToNodes(0.1, true);
+        renderer.fitToNodes(0.25, true);
       }
     }, 2000);
 
@@ -300,13 +367,19 @@ export function TopicsView({
         }
 
         if (spatialIds.size === 0) {
+          highlightedIdsRef.current = new Set();
           applyHighlight(null);
         } else {
+          highlightedIdsRef.current = highlightedIds;
           applyHighlight(highlightedIds);
         }
       })
       .on("mouseleave.hover", () => {
+        highlightedIdsRef.current = new Set();
         applyHighlight(new Set());
+      })
+      .on("click.filter", () => {
+        handleFilterClick();
       });
 
     // Start simulation
@@ -345,7 +418,7 @@ export function TopicsView({
       // Additional fit when cooling starts (for refinement)
       if (!hasFittedInitially && coolingDown && tickCount > 150) {
         hasFittedInitially = true;
-        renderer.fitToNodes(0.1, true);
+        renderer.fitToNodes(0.25, true);
       }
 
       renderer.tick();
@@ -356,13 +429,14 @@ export function TopicsView({
       simulation.stop();
       d3.select(svg)
         .on("mousemove.hover", null)
-        .on("mouseleave.hover", null);
+        .on("mouseleave.hover", null)
+        .on("click.filter", null);
       renderer.destroy();
       rendererRef.current = null;
     };
     // Stable callbacks (handleZoomChange, handleKeywordClick) and refs (hoverConfigRef)
     // don't need to be in deps - they never change identity
-  }, [keywordNodes, edges, knnStrength, contrast, hoverConfig.screenRadiusFraction, pcaTransform, rendererType]);
+  }, [activeNodes, activeEdges, knnStrength, contrast, hoverConfig.screenRadiusFraction, pcaTransform, rendererType, filteredNodeIds]);
 
   // Three.js rendering effect
   // Note: nodeToCluster is NOT in deps - cluster updates are handled separately
@@ -375,15 +449,23 @@ export function TopicsView({
 
     // Convert to format expected by renderer
     // Don't set communityId here - it's updated by the cluster effect
-    const mapNodes: SimNode[] = keywordNodes.map((n) => ({
-      id: `kw:${n.label}`,
-      type: "keyword" as const,
-      label: n.label,
-      communityId: undefined,
-      embedding: n.embedding,
-    }));
+    // Use activeNodes/activeEdges for filtered view
+    const mapNodes: SimNode[] = activeNodes.map((n) => {
+      // Apply preserved positions if available (for smooth filter transitions)
+      const savedPos = positionMapRef.current.get(`kw:${n.label}`);
+      return {
+        id: `kw:${n.label}`,
+        type: "keyword" as const,
+        label: n.label,
+        communityId: undefined,
+        embedding: n.embedding,
+        // Set initial position from saved positions
+        x: savedPos?.x,
+        y: savedPos?.y,
+      };
+    });
 
-    const mapLinks: SimLink[] = edges.map((e) => ({
+    const mapLinks: SimLink[] = activeEdges.map((e) => ({
       source: e.source,
       target: e.target,
       similarity: e.similarity,
@@ -403,12 +485,13 @@ export function TopicsView({
 
     // Build lookups for hover highlighting (same as D3 renderer)
     const screenRadiusFraction = hoverConfig.screenRadiusFraction ?? DEFAULT_HOVER_CONFIG.screenRadiusFraction!;
-    const adjacency = buildAdjacencyMap(edges);
-    const embeddings = buildEmbeddingMap(keywordNodes, (n) => `kw:${n.label}`);
+    const adjacency = buildAdjacencyMap(activeEdges);
+    const embeddings = buildEmbeddingMap(activeNodes, (n) => `kw:${n.label}`);
 
-    // Hover event handlers (stored for cleanup)
+    // Event handlers (stored for cleanup)
     let handleMouseMove: ((event: MouseEvent) => void) | null = null;
     let handleMouseLeave: (() => void) | null = null;
+    let handleClick: (() => void) | null = null;
 
     // Defer initialization to next frame to ensure container is fully laid out
     const frameId = requestAnimationFrame(() => {
@@ -456,19 +539,27 @@ export function TopicsView({
           });
 
           if (result.spatialIds.size === 0) {
+            highlightedIdsRef.current = new Set();
             threeRenderer.applyHighlight(null, baseDim);
           } else {
+            highlightedIdsRef.current = result.highlightedIds;
             threeRenderer.applyHighlight(result.highlightedIds, baseDim);
           }
         };
 
         handleMouseLeave = () => {
+          highlightedIdsRef.current = new Set();
           const { baseDim } = hoverConfigRef.current;
           threeRenderer.applyHighlight(new Set(), baseDim);
         };
 
+        handleClick = () => {
+          handleFilterClick();
+        };
+
         container.addEventListener("mousemove", handleMouseMove);
         container.addEventListener("mouseleave", handleMouseLeave);
+        container.addEventListener("click", handleClick);
       })();
     });
 
@@ -477,12 +568,13 @@ export function TopicsView({
       cancelAnimationFrame(frameId);
       if (handleMouseMove) container.removeEventListener("mousemove", handleMouseMove);
       if (handleMouseLeave) container.removeEventListener("mouseleave", handleMouseLeave);
+      if (handleClick) container.removeEventListener("click", handleClick);
       if (threeRendererRef.current) {
         threeRendererRef.current.destroy();
         threeRendererRef.current = null;
       }
     };
-  }, [keywordNodes, edges, rendererType, handleKeywordClick, handleZoomChange, colorMixRatio, hoverConfig.screenRadiusFraction]);
+  }, [activeNodes, activeEdges, rendererType, handleKeywordClick, handleZoomChange, colorMixRatio, hoverConfig.screenRadiusFraction, filteredNodeIds]);
 
   // Update cluster assignments when clustering changes (without restarting simulation)
   // This runs when nodeToCluster, baseClusters, or labels change
