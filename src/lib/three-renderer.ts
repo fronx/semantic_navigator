@@ -6,7 +6,6 @@
  * since 3d-force-graph requires browser APIs (window, WebGL).
  */
 
-import * as d3 from "d3";
 import * as THREE from "three";
 import { communityColorScale } from "@/lib/hull-renderer";
 import { computeEdgeCurveDirections, type SimNode, type SimLink, type ImmediateParams } from "@/lib/map-renderer";
@@ -100,19 +99,29 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     .numDimensions(2) // 2D layout
     .nodeId("id")
     .nodeLabel((node: object) => (node as SimNode).label)
-    .nodeColor((node: object) => {
+    // Use custom node objects with MeshBasicMaterial for vibrant, flat colors (no lighting)
+    .nodeThreeObject((node: object) => {
       const n = node as SimNode;
+      const radius = getNodeRadius(n, immediateParams.current.dotScale) * 2.5;
+      // Use 32 segments for smooth circles even when zoomed in
+      const geometry = new THREE.CircleGeometry(radius, 64);
+      const color = new THREE.Color(getNodeColor(n));
+
+      // Calculate opacity based on highlight state
+      let opacity = 1;
       if (currentHighlight === null) {
-        // Dim everything
-        return d3.color(getNodeColor(n))!.copy({ opacity: 1 - currentBaseDim }).formatRgb();
+        opacity = 1 - currentBaseDim;
+      } else if (currentHighlight.size > 0) {
+        opacity = currentHighlight.has(n.id) ? 1 : 0.15;
       }
-      if (currentHighlight.size === 0) {
-        // Full opacity
-        return getNodeColor(n);
-      }
-      // Highlight selected
-      const opacity = currentHighlight.has(n.id) ? 1 : 0.15;
-      return d3.color(getNodeColor(n))!.copy({ opacity }).formatRgb();
+
+      const material = new THREE.MeshBasicMaterial({
+        color,
+        transparent: opacity < 1,
+        opacity,
+      });
+
+      return new THREE.Mesh(geometry, material);
     })
     .nodeVal((node: object) => getNodeRadius(node as SimNode, immediateParams.current.dotScale))
     .linkSource("source")
@@ -415,10 +424,12 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     }
   }, 1500);
 
-  // Final fit when simulation fully settles
+  // Final fit when simulation fully settles (only once)
   graph.onEngineStop(() => {
-    fitToNodesInternal(0.1);
-    hasFittedInitially = true; // Ensure it's set even if early fit didn't run
+    if (!hasFittedInitially) {
+      hasFittedInitially = true;
+      fitToNodesInternal(0.1);
+    }
 
     if (callbacks.onZoomEnd) {
       const camera = graph.camera();
@@ -488,15 +499,15 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
         const clusterId = nodeToCluster.get(node.id);
         node.communityId = clusterId;
       }
-      // Force re-render of node colors
-      graph.nodeColor(graph.nodeColor());
+      // Force re-render of custom node objects
+      graph.nodeThreeObject(graph.nodeThreeObject());
     },
 
     applyHighlight(highlightedIds: Set<string> | null, baseDim: number) {
       currentHighlight = highlightedIds;
       currentBaseDim = baseDim;
-      // Force re-render of node colors
-      graph.nodeColor(graph.nodeColor());
+      // Force re-render of custom node objects
+      graph.nodeThreeObject(graph.nodeThreeObject());
     },
 
     getNodes() {
