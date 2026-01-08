@@ -117,6 +117,9 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
   // Create the graph instance with orbit controls (supports disabling rotation)
   const graph = new ForceGraph3D(container, { controlType: "orbit" });
 
+  // Track the canvas element this renderer creates (for cleanup without affecting other renderers)
+  const ownCanvas = container.querySelector("canvas");
+
   // Track current data
   let currentNodes = initialNodes;
   let currentLinks = initialLinks;
@@ -386,6 +389,11 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
   let isPanning = false;
   let lastMouseX = 0;
   let lastMouseY = 0;
+  // Track drag vs click - if mouse moves more than threshold, it's a drag
+  let startMouseX = 0;
+  let startMouseY = 0;
+  let wasDrag = false;
+  const DRAG_THRESHOLD = 5; // pixels
 
   const handleMouseDown = (event: MouseEvent) => {
     // Only pan on left click, and not if dragging a node
@@ -393,11 +401,21 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     isPanning = true;
     lastMouseX = event.clientX;
     lastMouseY = event.clientY;
+    startMouseX = event.clientX;
+    startMouseY = event.clientY;
+    wasDrag = false;
     container.style.cursor = "grabbing";
   };
 
   const handleMouseMove = (event: MouseEvent) => {
     if (!isPanning) return;
+
+    // Check if movement exceeds drag threshold
+    const dx = Math.abs(event.clientX - startMouseX);
+    const dy = Math.abs(event.clientY - startMouseY);
+    if (dx > DRAG_THRESHOLD || dy > DRAG_THRESHOLD) {
+      wasDrag = true;
+    }
 
     const camera = graph.camera();
     if (!camera) return;
@@ -435,10 +453,18 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     }
   };
 
+  // Suppress click events that were actually drags
+  const handleClick = (event: MouseEvent) => {
+    if (wasDrag) {
+      event.stopPropagation();
+    }
+  };
+
   container.addEventListener("mousedown", handleMouseDown);
   container.addEventListener("mousemove", handleMouseMove);
   container.addEventListener("mouseup", handleMouseUp);
   container.addEventListener("mouseleave", handleMouseUp);
+  container.addEventListener("click", handleClick, true); // capture phase
 
   // Custom zoom-to-cursor handling
   // No custom easing - let the OS/browser handle trackpad momentum
@@ -597,6 +623,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     container.removeEventListener("mousemove", handleMouseMove);
     container.removeEventListener("mouseup", handleMouseUp);
     container.removeEventListener("mouseleave", handleMouseUp);
+    container.removeEventListener("click", handleClick, true);
   };
 
   return {
@@ -775,9 +802,9 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (graph as any)._destructor?.();
-      // Clear container
-      while (container.firstChild) {
-        container.removeChild(container.firstChild);
+      // Only remove our own canvas, not other renderers' canvases
+      if (ownCanvas && ownCanvas.parentNode === container) {
+        container.removeChild(ownCanvas);
       }
     },
   };
