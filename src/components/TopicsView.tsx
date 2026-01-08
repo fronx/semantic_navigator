@@ -25,6 +25,18 @@ import { useClusterLabels } from "@/hooks/useClusterLabels";
 import { useLatest, useStableCallback } from "@/hooks/useStableRef";
 import type { KeywordNode, SimilarityEdge } from "@/lib/graph-queries";
 import { loadPCATransform, computeNeighborAveragedColors, type PCATransform } from "@/lib/semantic-colors";
+import {
+  createConvergenceState,
+  processSimulationTick,
+  DEFAULT_CONVERGENCE_CONFIG,
+} from "@/lib/simulation-convergence";
+import {
+  createAutoFitState,
+  markUserInteraction,
+  markInitialFitDone,
+  shouldFitDuringSimulation,
+  shouldFitAfterCooling,
+} from "@/lib/auto-fit";
 
 // ============================================================================
 // Types
@@ -285,23 +297,38 @@ export function TopicsView({
     // Apply per-edge opacity based on similarity with contrast
     renderer.linkSelection.attr("stroke-opacity", computeEdgeOpacity);
 
-    // Track simulation settling
-    let tickCount = 0;
-    let coolingDown = false;
-    let hasFittedInitially = false;
+    // Track simulation settling using shared convergence logic
+    const convergenceState = createConvergenceState();
+    const autoFitState = createAutoFitState();
 
-    // Auto-fit after 2 seconds (give simulation time to settle)
+    // Track user interaction (pan/zoom) to stop auto-fitting
+    let userPanning = false;
+    d3.select(svg)
+      .on("mousedown.autofit", () => {
+        userPanning = true;
+      })
+      .on("mouseup.autofit", () => {
+        if (userPanning) {
+          markUserInteraction(autoFitState);
+        }
+        userPanning = false;
+      })
+      .on("wheel.autofit", () => {
+        markUserInteraction(autoFitState);
+      });
+
+    // Auto-fit after 1.5 seconds (give simulation time to settle)
     const autoFitTimeout = setTimeout(() => {
-      if (!hasFittedInitially) {
-        hasFittedInitially = true;
+      if (!autoFitState.hasFittedInitially) {
+        markInitialFitDone(autoFitState);
         renderer.fitToNodes(0.25, true);
       }
-    }, 2000);
+    }, 1500);
 
     // Add drag behavior - resets cooling when user drags
     addDragBehavior(renderer.nodeSelection, simulation, () => {
-      coolingDown = false;
-      tickCount = 0;
+      convergenceState.coolingDown = false;
+      convergenceState.tickCount = 0;
       simulation.force("collision", null);
     });
 
@@ -390,34 +417,28 @@ export function TopicsView({
       .restart();
 
     simulation.on("tick", () => {
-      tickCount++;
+      // Process tick with shared convergence logic (clamps velocities, checks for convergence)
+      const { coolingJustStarted } = processSimulationTick(
+        nodes,
+        convergenceState,
+        DEFAULT_CONVERGENCE_CONFIG
+      );
 
-      // Clamp velocities to prevent numerical explosion
-      const maxVelocity = 50;
-      for (const node of nodes) {
-        if (node.vx !== undefined) node.vx = Math.max(-maxVelocity, Math.min(maxVelocity, node.vx));
-        if (node.vy !== undefined) node.vy = Math.max(-maxVelocity, Math.min(maxVelocity, node.vy));
+      if (coolingJustStarted) {
+        // Add collision force for refinement phase
+        simulation.force("collision", d3.forceCollide<ForceNode>().radius(20));
+        // Let simulation naturally decay
+        simulation.alphaTarget(0).alpha(0.3);
       }
 
-      if (tickCount > 40 && !coolingDown) {
-        const velocities = nodes
-          .map((d) => Math.sqrt((d.vx ?? 0) ** 2 + (d.vy ?? 0) ** 2))
-          .sort((a, b) => b - a);
-
-        const p95Index = Math.floor(nodes.length * 0.05);
-        const topVelocity = velocities[p95Index] ?? velocities[0] ?? 0;
-
-        // Relax threshold: 2.0 instead of 0.5 - nodes settle faster visually than velocity suggests
-        if (topVelocity < 2.0) {
-          coolingDown = true;
-          simulation.force("collision", d3.forceCollide<ForceNode>().radius(20));
-          simulation.alphaTarget(0).alpha(0.3);
-        }
+      // Periodic fit as graph grows during simulation
+      if (shouldFitDuringSimulation(autoFitState, convergenceState)) {
+        renderer.fitToNodes(0.25, true);
       }
 
       // Additional fit when cooling starts (for refinement)
-      if (!hasFittedInitially && coolingDown && tickCount > 150) {
-        hasFittedInitially = true;
+      if (shouldFitAfterCooling(autoFitState, convergenceState)) {
+        markInitialFitDone(autoFitState);
         renderer.fitToNodes(0.25, true);
       }
 
@@ -430,7 +451,10 @@ export function TopicsView({
       d3.select(svg)
         .on("mousemove.hover", null)
         .on("mouseleave.hover", null)
-        .on("click.filter", null);
+        .on("click.filter", null)
+        .on("mousedown.autofit", null)
+        .on("mouseup.autofit", null)
+        .on("wheel.autofit", null);
       renderer.destroy();
       rendererRef.current = null;
     };

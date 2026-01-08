@@ -11,6 +11,18 @@ import { forceCollide } from "d3-force";
 import { communityColorScale } from "@/lib/hull-renderer";
 import { computeEdgeCurveDirections, type SimNode, type SimLink, type ImmediateParams } from "@/lib/map-renderer";
 import { computeArcPoints } from "@/lib/edge-curves";
+import {
+  createConvergenceState,
+  processSimulationTick,
+  DEFAULT_CONVERGENCE_CONFIG,
+} from "@/lib/simulation-convergence";
+import {
+  createAutoFitState,
+  markUserInteraction,
+  shouldFitDuringSimulation,
+  shouldFitAfterCooling,
+  markInitialFitDone,
+} from "@/lib/auto-fit";
 
 // ============================================================================
 // Types
@@ -285,16 +297,67 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
   // Apply initial curve configuration
   configureCurveRendering();
 
-  // Add collision force to prevent overlapping dots
-  // Radius derived from visual dot size constants
+  // Convergence state (shared logic with D3 renderer)
+  const convergenceState = createConvergenceState();
+
+  // Auto-fit state (shared logic with D3 renderer)
+  const autoFitState = createAutoFitState();
+
+  // Add collision force - initially null, added when cooling starts (like D3 renderer)
+  // This lets nodes spread out first, then avoid overlap during refinement
   const collisionRadius = BASE_DOT_RADIUS * DOT_SCALE_FACTOR + COLLISION_PADDING;
-  graph.d3Force("collision", forceCollide(collisionRadius));
+
+  // Configure simulation to match D3 renderer behavior
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const graphAny = graph as any;
+
+  // Use very slow alpha decay initially to keep simulation running longer
+  // D3 renderer uses alphaTarget(0.3) which we can't set directly, so we use
+  // a very slow decay and periodically reheat until convergence is detected
+  graphAny
+    .d3AlphaDecay(0.002)     // Very slow decay to keep simulation running
+    .d3VelocityDecay(0.5)    // Same as D3 renderer
+    .warmupTicks(0)          // Don't pre-compute - show from the start
+    .cooldownTicks(Infinity) // Let convergence logic decide when to stop
+    .onEngineTick(() => {
+      // Get nodes with velocity data
+      const graphData = graph.graphData();
+      const nodes = graphData.nodes as Array<{ vx?: number; vy?: number }>;
+
+      // Process tick with shared convergence logic
+      const { coolingJustStarted } = processSimulationTick(
+        nodes,
+        convergenceState,
+        DEFAULT_CONVERGENCE_CONFIG
+      );
+
+      // Keep simulation hot while not cooling (reheat periodically)
+      if (!convergenceState.coolingDown && convergenceState.tickCount % 50 === 0) {
+        graphAny.d3ReheatSimulation();
+      }
+
+      // Periodically fit as graph grows during simulation
+      if (shouldFitDuringSimulation(autoFitState, convergenceState)) {
+        setTimeout(() => fitToNodesInternal(0.25), 0);
+      }
+
+      if (coolingJustStarted) {
+        // Add collision force for refinement phase
+        graph.d3Force("collision", forceCollide(collisionRadius));
+        // Speed up decay for cooling phase
+        graphAny.d3AlphaDecay(0.02);
+      }
+
+      // Fit when cooling starts (matches D3 renderer timing)
+      if (shouldFitAfterCooling(autoFitState, convergenceState)) {
+        markInitialFitDone(autoFitState);
+        // Defer fit to avoid calling during tick
+        setTimeout(() => fitToNodesInternal(0.25), 0);
+      }
+    });
 
   // Set initial data
   graph
-    // Animate the force-directed layout (like D3 renderer)
-    .warmupTicks(0) // Don't pre-compute - show from the start
-    .cooldownTicks(300) // Let simulation run for ~300 ticks
     // Cast to any to bridge D3's SimulationNodeDatum (fx: number | null)
     // with 3d-force-graph's NodeObject (fx?: number | undefined)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -359,6 +422,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     if (isPanning) {
       isPanning = false;
       container.style.cursor = "grab";
+      markUserInteraction(autoFitState); // User has panned, stop auto-fitting
 
       // Notify zoom/pan change
       if (callbacks.onZoomEnd) {
@@ -397,7 +461,8 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     // Get current camera position
     const oldZ = camera.position.z;
     const zoomSensitivity = camera.position.z * 0.003;
-    const newZ = Math.max(50, Math.min(2000, oldZ + event.deltaY * zoomSensitivity));
+    // Allow zooming out far enough to see large graphs at 50% screen height
+    const newZ = Math.max(50, Math.min(20000, oldZ + event.deltaY * zoomSensitivity));
 
     if (Math.abs(newZ - oldZ) < 0.01) return;
 
@@ -417,6 +482,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     camera.position.x = graphX - ndcX * (newWidth / 2);
     camera.position.y = graphY - ndcY * (newHeight / 2);
     camera.position.z = newZ;
+    markUserInteraction(autoFitState); // User has zoomed, stop auto-fitting
 
     // Debounce callback to avoid React re-renders during zoom
     if (zoomEndTimeout) clearTimeout(zoomEndTimeout);
@@ -429,9 +495,6 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
   };
 
   container.addEventListener("wheel", handleWheel, { passive: false });
-
-  // Track if we've done initial fit
-  let hasFittedInitially = false;
 
   // Fit to nodes helper (defined here so onEngineStop can use it)
   function fitToNodesInternal(padding = 0.2) {
@@ -505,16 +568,16 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
 
   // Early fit after ~1.5 seconds so user sees the graph quickly
   const earlyFitTimeout = setTimeout(() => {
-    if (!hasFittedInitially) {
-      hasFittedInitially = true;
+    if (!autoFitState.hasFittedInitially) {
+      markInitialFitDone(autoFitState);
       fitToNodesInternal(0.25);
     }
   }, 1500);
 
   // Final fit when simulation fully settles (only once)
   graph.onEngineStop(() => {
-    if (!hasFittedInitially) {
-      hasFittedInitially = true;
+    if (!autoFitState.hasFittedInitially) {
+      markInitialFitDone(autoFitState);
       fitToNodesInternal(0.25);
     }
 
