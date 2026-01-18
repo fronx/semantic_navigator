@@ -15,11 +15,9 @@ import {
 import { createForceSimulation, type ForceLink, type ForceNode } from "@/lib/map-layout";
 import { forceBoundary } from "@/lib/d3-forces";
 import { applyContrast } from "@/lib/math-utils";
-import { type HoverHighlightConfig } from "@/hooks/useGraphHoverHighlight";
 import { createHoverController } from "@/lib/topics-hover-controller";
 import { convertToD3Nodes } from "@/lib/topics-graph-nodes";
-import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
-import type { PCATransform } from "@/lib/semantic-colors";
+import type { KeywordNode, SimilarityEdge } from "@/lib/graph-queries";
 import {
   createConvergenceState,
   processSimulationTick,
@@ -32,37 +30,16 @@ import {
   shouldFitDuringSimulation,
   shouldFitAfterCooling,
 } from "@/lib/auto-fit";
+import type { BaseRendererOptions } from "@/lib/renderer-types";
 
 // ============================================================================
 // Types
 // ============================================================================
 
-export interface UseD3TopicsRendererOptions {
-  /** Whether this renderer is currently active */
-  enabled: boolean;
+export interface UseD3TopicsRendererOptions extends BaseRendererOptions {
   svgRef: React.RefObject<SVGSVGElement | null>;
-  activeNodes: KeywordNode[];
-  activeEdges: SimilarityEdge[];
-  /** Ref to project nodes - using ref avoids re-creating graph on position updates */
-  projectNodesRef: React.RefObject<ProjectNode[]>;
   knnStrength: number;
   contrast: number;
-  colorMixRatio: number;
-  hoverConfig: HoverHighlightConfig;
-  pcaTransform: PCATransform | null;
-  getSavedPosition: (id: string) => { x: number; y: number } | undefined;
-  // Stable callbacks
-  onKeywordClick?: (keyword: string) => void;
-  onProjectClick?: (projectId: string) => void;
-  onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
-  onZoomChange?: (zoomScale: number) => void;
-  onFilterClick: () => void;
-  // Cursor tracking refs (from useProjectCreation)
-  isHoveringRef: React.MutableRefObject<boolean>;
-  cursorWorldPosRef: React.MutableRefObject<{ x: number; y: number } | null>;
-  cursorScreenPosRef: React.MutableRefObject<{ x: number; y: number } | null>;
-  // Ref for suppressing click-to-filter after project interactions
-  projectInteractionRef: React.MutableRefObject<boolean>;
 }
 
 export interface UseD3TopicsRendererResult {

@@ -10,12 +10,15 @@ import { useD3TopicsRenderer } from "@/hooks/useD3TopicsRenderer";
 import { useThreeTopicsRenderer } from "@/hooks/useThreeTopicsRenderer";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 import { loadPCATransform, type PCATransform } from "@/lib/semantic-colors";
+import type { BaseRendererOptions } from "@/lib/renderer-types";
 
 // ============================================================================
 // Types
 // ============================================================================
 
 export type RendererType = "d3" | "three";
+
+export type { BaseRendererOptions };
 
 export interface TopicsViewProps {
   nodes: KeywordNode[];
@@ -129,15 +132,12 @@ export function TopicsView({
     applyFilter(highlightedIds);
   });
 
-  // D3 renderer hook
-  const d3RendererResult = useD3TopicsRenderer({
-    enabled: rendererType === "d3",
-    svgRef,
+  // Shared renderer options
+  const baseRendererOptions: BaseRendererOptions = {
+    enabled: false, // overridden per-renderer
     activeNodes,
     activeEdges,
     projectNodesRef,
-    knnStrength,
-    contrast,
     colorMixRatio,
     hoverConfig,
     pcaTransform,
@@ -151,28 +151,22 @@ export function TopicsView({
     cursorWorldPosRef,
     cursorScreenPosRef,
     projectInteractionRef,
+  };
+
+  // D3 renderer hook
+  const d3RendererResult = useD3TopicsRenderer({
+    ...baseRendererOptions,
+    enabled: rendererType === "d3",
+    svgRef,
+    knnStrength,
+    contrast,
   });
 
   // Three.js renderer hook
   const threeRendererResult = useThreeTopicsRenderer({
+    ...baseRendererOptions,
     enabled: rendererType === "three",
     containerRef,
-    activeNodes,
-    activeEdges,
-    projectNodesRef,
-    colorMixRatio,
-    hoverConfig,
-    pcaTransform,
-    getSavedPosition,
-    onKeywordClick: handleKeywordClick,
-    onProjectClick: handleProjectClick,
-    onProjectDrag: handleProjectDrag,
-    onZoomChange: handleZoomChange,
-    onFilterClick: handleFilterClick,
-    isHoveringRef,
-    cursorWorldPosRef,
-    cursorScreenPosRef,
-    projectInteractionRef,
   });
 
   // Update position getter refs

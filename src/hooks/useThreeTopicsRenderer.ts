@@ -5,40 +5,17 @@
 
 import { useEffect, useRef } from "react";
 import { createThreeRenderer, type ThreeRenderer } from "@/lib/three-renderer";
-import type { HoverHighlightConfig } from "@/hooks/useGraphHoverHighlight";
 import { convertToThreeNodes } from "@/lib/topics-graph-nodes";
-import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
-import { computeNeighborAveragedColors, type PCATransform } from "@/lib/semantic-colors";
+import { computeNeighborAveragedColors } from "@/lib/semantic-colors";
 import { createHoverController } from "@/lib/topics-hover-controller";
+import type { BaseRendererOptions } from "@/lib/renderer-types";
 
 // ============================================================================
 // Types
 // ============================================================================
 
-export interface UseThreeTopicsRendererOptions {
-  /** Whether this renderer is currently active */
-  enabled: boolean;
+export interface UseThreeTopicsRendererOptions extends BaseRendererOptions {
   containerRef: React.RefObject<HTMLDivElement | null>;
-  activeNodes: KeywordNode[];
-  activeEdges: SimilarityEdge[];
-  /** Ref to project nodes - using ref avoids re-creating graph on position updates */
-  projectNodesRef: React.RefObject<ProjectNode[]>;
-  colorMixRatio: number;
-  hoverConfig: HoverHighlightConfig;
-  pcaTransform: PCATransform | null;
-  getSavedPosition: (id: string) => { x: number; y: number } | undefined;
-  // Stable callbacks
-  onKeywordClick?: (keyword: string) => void;
-  onProjectClick?: (projectId: string) => void;
-  onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
-  onZoomChange?: (zoomScale: number) => void;
-  onFilterClick: () => void;
-  // Cursor tracking refs (from useProjectCreation)
-  isHoveringRef: React.MutableRefObject<boolean>;
-  cursorWorldPosRef: React.MutableRefObject<{ x: number; y: number } | null>;
-  cursorScreenPosRef: React.MutableRefObject<{ x: number; y: number } | null>;
-  // Ref for suppressing click-to-filter after project interactions
-  projectInteractionRef: React.MutableRefObject<boolean>;
 }
 
 export interface UseThreeTopicsRendererResult {
