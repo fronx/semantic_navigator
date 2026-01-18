@@ -12,17 +12,16 @@ import { createThreeRenderer, type ThreeRenderer } from "@/lib/three-renderer";
 import { createForceSimulation, type ForceLink, type ForceNode } from "@/lib/map-layout";
 import { forceBoundary } from "@/lib/d3-forces";
 import { applyContrast } from "@/lib/math-utils";
-import {
-  spatialSemanticFilter,
-  buildAdjacencyMap,
-  buildEmbeddingMap,
-} from "@/lib/spatial-semantic";
+import { buildAdjacencyMap, buildEmbeddingMap } from "@/lib/spatial-semantic";
+import { computeHoverHighlight } from "@/lib/hover-highlight";
 import {
   DEFAULT_HOVER_CONFIG,
   type HoverHighlightConfig,
 } from "@/hooks/useGraphHoverHighlight";
 import { useClusterLabels } from "@/hooks/useClusterLabels";
 import { useLatest, useStableCallback } from "@/hooks/useStableRef";
+import { useTopicsFilter } from "@/hooks/useTopicsFilter";
+import { useProjectCreation } from "@/hooks/useProjectCreation";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 import { loadPCATransform, computeNeighborAveragedColors, type PCATransform } from "@/lib/semantic-colors";
 import {
@@ -100,22 +99,29 @@ export function TopicsView({
   const containerRef = useRef<HTMLDivElement>(null);
   const threeRendererRef = useRef<ThreeRenderer | null>(null);
 
-  // State for click-to-filter: when set, only show nodes in this set
-  const [filteredNodeIds, setFilteredNodeIds] = useState<Set<string> | null>(null);
+  // Filter state management (click-to-filter, external filter, position preservation)
+  const {
+    effectiveFilter,
+    activeNodes,
+    activeEdges,
+    capturePositions,
+    getSavedPosition,
+    applyFilter,
+  } = useTopicsFilter({
+    keywordNodes,
+    edges,
+    externalFilter,
+  });
 
-  // Position map for preserving node positions across filter transitions
-  const positionMapRef = useRef<Map<string, { x: number; y: number }>>(new Map());
-
-  // Cursor tracking for project creation
-  const isHoveringRef = useRef(false);
-  const cursorWorldPosRef = useRef<{ x: number; y: number } | null>(null);
-  const cursorScreenPosRef = useRef<{ x: number; y: number } | null>(null);
+  // Cursor tracking for project creation (press 'N' to create)
+  const { isHoveringRef, cursorWorldPosRef, cursorScreenPosRef } = useProjectCreation({
+    onCreateProject,
+  });
 
   // Stable callbacks - won't trigger effect re-runs when parent re-renders
   const handleZoomChange = useStableCallback(onZoomChange);
   const handleKeywordClick = useStableCallback(onKeywordClick);
   const handleProjectClick = useStableCallback(onProjectClick);
-  const handleCreateProject = useStableCallback(onCreateProject);
   const handleProjectDrag = useStableCallback(onProjectDrag);
 
   // Stable refs for values accessed in event handlers without triggering re-renders
@@ -159,85 +165,28 @@ export function TopicsView({
     loadPCATransform().then(setPcaTransform);
   }, []);
 
-  // Keyboard handler for project creation (press 'N' to create at cursor)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Only trigger on 'N' key when hovering and not typing in an input
-      if (e.key !== "n" && e.key !== "N") return;
-      if (!isHoveringRef.current) return;
-      if (!cursorWorldPosRef.current || !cursorScreenPosRef.current) return;
-
-      // Don't trigger if user is typing in an input field
-      const target = e.target as HTMLElement;
-      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) {
-        return;
-      }
-
-      e.preventDefault();
-      handleCreateProject(cursorWorldPosRef.current, cursorScreenPosRef.current);
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleCreateProject]);
-
-  // Combine external filter (from project selection) with internal filter (from click-to-drill-down)
-  const effectiveFilter = useMemo(() => {
-    if (!externalFilter && !filteredNodeIds) return null;
-    if (!externalFilter) return filteredNodeIds;
-    if (!filteredNodeIds) return externalFilter;
-    // Intersection: show only nodes in both filters
-    return new Set([...filteredNodeIds].filter((id) => externalFilter.has(id)));
-  }, [externalFilter, filteredNodeIds]);
-
-  // Compute active nodes/edges based on filter state (memoized to prevent effect loops)
-  const activeNodes = useMemo(
-    () => effectiveFilter
-      ? keywordNodes.filter((n) => effectiveFilter.has(n.id))
-      : keywordNodes,
-    [keywordNodes, effectiveFilter]
-  );
-
-  const activeEdges = useMemo(
-    () => effectiveFilter
-      ? edges.filter((e) => effectiveFilter.has(e.source) && effectiveFilter.has(e.target))
-      : edges,
-    [edges, effectiveFilter]
-  );
-
   // Click handler for drill-down filtering (shared logic for both renderers)
   const handleFilterClick = useStableCallback(() => {
     const highlighted = highlightedIdsRef.current;
-    if (highlighted.size === 0) {
-      // No highlighted nodes - reset filter if one exists
-      if (filteredNodeIds !== null) {
-        setFilteredNodeIds(null);
-      }
-      return;
-    }
 
     // Capture current positions before filter (for both D3 and Three.js)
-    const newPositionMap = new Map<string, { x: number; y: number }>();
-
-    if (rendererType === "d3" && simulationNodesRef.current.length > 0) {
-      for (const node of simulationNodesRef.current) {
-        const simNode = node as SimNode;
-        if (simNode.x !== undefined && simNode.y !== undefined) {
-          newPositionMap.set(node.id, { x: simNode.x, y: simNode.y });
+    const getPosition = (id: string) => {
+      if (rendererType === "d3" && simulationNodesRef.current.length > 0) {
+        const node = simulationNodesRef.current.find((n) => n.id === id) as SimNode | undefined;
+        if (node?.x !== undefined && node?.y !== undefined) {
+          return { x: node.x, y: node.y };
+        }
+      } else if (rendererType === "three" && threeRendererRef.current) {
+        const node = threeRendererRef.current.getNodes().find((n) => n.id === id);
+        if (node?.x !== undefined && node?.y !== undefined) {
+          return { x: node.x, y: node.y };
         }
       }
-    } else if (rendererType === "three" && threeRendererRef.current) {
-      for (const node of threeRendererRef.current.getNodes()) {
-        if (node.x !== undefined && node.y !== undefined) {
-          newPositionMap.set(node.id, { x: node.x, y: node.y });
-        }
-      }
-    }
+      return undefined;
+    };
 
-    positionMapRef.current = newPositionMap;
-
-    // Apply filter - IDs are already in "kw:label" format for both renderers
-    setFilteredNodeIds(highlighted);
+    capturePositions(getPosition);
+    applyFilter(highlighted);
   });
 
   // Main D3 rendering effect
@@ -255,7 +204,7 @@ export function TopicsView({
     // Use activeNodes/activeEdges for filtered view
     const keywordMapNodes = activeNodes.map((n) => {
       // Apply preserved positions if available (for smooth filter transitions)
-      const savedPos = positionMapRef.current.get(n.id);
+      const savedPos = getSavedPosition(n.id);
       return {
         id: n.id,
         type: "keyword" as const,
@@ -501,7 +450,7 @@ export function TopicsView({
           return;
         }
 
-        const result = spatialSemanticFilter({
+        const { keywordHighlightedIds, isEmptySpace, debug } = computeHoverHighlight({
           nodes,
           screenCenter: { x: screenX, y: screenY },
           screenRadius: height * screenRadiusFraction,
@@ -510,7 +459,6 @@ export function TopicsView({
           embeddings,
           adjacency,
         });
-        const { highlightedIds, spatialIds, debug } = result;
 
         // Log debug info occasionally
         if (debug && Math.random() < 0.02) {
@@ -518,18 +466,13 @@ export function TopicsView({
             spatial: debug.spatialCount,
             simPass: debug.similarityPassCount,
             neighbors: debug.neighborAddCount,
-            total: highlightedIds.size,
+            total: keywordHighlightedIds.size,
             simRange: `${debug.minSimilarity.toFixed(2)}-${debug.maxSimilarity.toFixed(2)}`,
             threshold: similarityThreshold,
           });
         }
 
-        // Exclude project nodes from hover highlighting
-        const keywordHighlightedIds = new Set(
-          [...highlightedIds].filter((id) => !id.startsWith("proj:"))
-        );
-
-        if (spatialIds.size === 0) {
+        if (isEmptySpace) {
           highlightedIdsRef.current = new Set();
           applyHighlight(null);
         } else {
@@ -621,7 +564,7 @@ export function TopicsView({
     // Use activeNodes/activeEdges for filtered view
     const keywordMapNodes: SimNode[] = activeNodes.map((n) => {
       // Apply preserved positions if available (for smooth filter transitions)
-      const savedPos = positionMapRef.current.get(`kw:${n.label}`);
+      const savedPos = getSavedPosition(`kw:${n.label}`);
       return {
         id: `kw:${n.label}`,
         type: "keyword" as const,
@@ -751,7 +694,7 @@ export function TopicsView({
           }
 
           const rendererNodes = threeRenderer.getNodes();
-          const result = spatialSemanticFilter({
+          const { keywordHighlightedIds, isEmptySpace } = computeHoverHighlight({
             nodes: rendererNodes,
             screenCenter: { x: screenX, y: screenY },
             screenRadius: height * screenRadiusFraction,
@@ -759,15 +702,10 @@ export function TopicsView({
             similarityThreshold,
             embeddings,
             adjacency,
-            screenToWorld: (screen) => threeRenderer.screenToWorld(screen),
+            screenToWorld: (screen: { x: number; y: number }) => threeRenderer.screenToWorld(screen),
           });
 
-          // Exclude project nodes from hover highlighting
-          const keywordHighlightedIds = new Set(
-            [...result.highlightedIds].filter((id) => !id.startsWith("proj:"))
-          );
-
-          if (result.spatialIds.size === 0) {
+          if (isEmptySpace) {
             highlightedIdsRef.current = new Set();
             threeRenderer.applyHighlight(null, baseDim);
           } else {
