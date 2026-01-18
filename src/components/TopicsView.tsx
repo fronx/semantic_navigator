@@ -202,6 +202,11 @@ export function TopicsView({
 
     // Handle Three.js renderer
     if (rendererType === "three" && threeRendererResult.threeRendererRef.current) {
+      const hubToCluster = new Map<string, { clusterId: number; hub: string }>();
+      for (const [clusterId, cluster] of baseClusters) {
+        hubToCluster.set(cluster.hub, { clusterId, hub: cluster.hub });
+      }
+
       const threeNodeToCluster = new Map<string, number>();
       for (const node of keywordNodes) {
         const clusterId = nodeToCluster.get(node.id);
@@ -210,6 +215,24 @@ export function TopicsView({
         }
       }
       threeRendererResult.threeRendererRef.current.updateClusters(threeNodeToCluster);
+
+      // Update hullLabel and communityMembers on Three.js nodes (for label rendering)
+      const threeNodes = threeRendererResult.threeRendererRef.current.getNodes();
+      for (const node of threeNodes) {
+        if (node.type !== "keyword") continue;
+        const clusterInfo = hubToCluster.get(node.label);
+        if (clusterInfo) {
+          const cluster = baseClusters.get(clusterInfo.clusterId);
+          node.communityMembers = cluster ? [node.label] : undefined;
+          node.hullLabel = labels[clusterInfo.clusterId] || clusterInfo.hub;
+        } else {
+          node.communityMembers = undefined;
+          node.hullLabel = undefined;
+        }
+      }
+
+      // Update cluster labels after setting hullLabel
+      threeRendererResult.threeRendererRef.current.updateClusterLabels();
     }
   }, [nodeToCluster, baseClusters, labels, rendererType, keywordNodes, d3RendererResult.simulationNodesRef, d3RendererResult.rendererRef, threeRendererResult.threeRendererRef]);
 

@@ -23,6 +23,7 @@ import {
   shouldFitAfterCooling,
   markInitialFitDone,
 } from "@/lib/auto-fit";
+import { computeClusterLabels } from "@/lib/cluster-labels";
 
 // ============================================================================
 // Types
@@ -48,6 +49,8 @@ export interface ThreeRenderer {
   updateVisuals: () => void;
   /** Update cluster assignments on nodes (triggers color refresh) */
   updateClusters: (nodeToCluster: Map<string, number>) => void;
+  /** Update cluster labels (recomputes from current node positions and properties) */
+  updateClusterLabels: () => void;
   /** Update node colors from precomputed map */
   updateColors: (nodeColors: Map<string, string>) => void;
   /** Apply highlight styling to nodes */
@@ -137,6 +140,15 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
 
   // Track the canvas element this renderer creates (for cleanup without affecting other renderers)
   const ownCanvas = container.querySelector("canvas");
+
+  // Create HTML overlay for cluster labels (positioned on top of WebGL canvas)
+  const labelOverlay = document.createElement("div");
+  labelOverlay.style.cssText = "position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:hidden;";
+  container.style.position = "relative"; // Ensure container is positioning context
+  container.appendChild(labelOverlay);
+
+  // Cache for label DOM elements (keyed by communityId)
+  const labelCache = new Map<number, HTMLDivElement>();
 
   // Track current data
   let currentNodes = initialNodes;
@@ -384,6 +396,9 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
         // Defer fit to avoid calling during tick
         setTimeout(() => fitToNodesInternal(0.25), 0);
       }
+
+      // Update cluster labels on each tick (positions change during simulation)
+      updateClusterLabelsInternal();
     });
 
   // Set initial data
@@ -509,6 +524,9 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     // Move camera (invert because dragging "grabs" the canvas)
     camera.position.x -= deltaX / pixelsPerUnit;
     camera.position.y += deltaY / pixelsPerUnit; // Y is inverted in screen coords
+
+    // Update cluster labels during pan
+    updateClusterLabelsInternal();
   };
 
   const handleMouseUp = () => {
@@ -588,6 +606,9 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     camera.position.y = graphY - ndcY * (newHeight / 2);
     camera.position.z = newZ;
     markUserInteraction(autoFitState); // User has zoomed, stop auto-fitting
+
+    // Update cluster labels during zoom
+    updateClusterLabelsInternal();
 
     // Debounce callback to avoid React re-renders during zoom
     if (zoomEndTimeout) clearTimeout(zoomEndTimeout);
@@ -705,6 +726,94 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     container.removeEventListener("click", handleClick, true);
   };
 
+  // Helper to convert world coordinates to screen coordinates
+  function worldToScreen(world: { x: number; y: number }): { x: number; y: number } | null {
+    const camera = graph.camera();
+    if (!camera) return null;
+
+    const rect = container.getBoundingClientRect();
+    const fov = (camera as THREE.PerspectiveCamera).fov * Math.PI / 180;
+
+    // Calculate visible area at z=0
+    const visibleHeight = 2 * camera.position.z * Math.tan(fov / 2);
+    const visibleWidth = visibleHeight * (rect.width / rect.height);
+
+    // Convert world to NDC
+    const ndcX = (world.x - camera.position.x) / (visibleWidth / 2);
+    const ndcY = (world.y - camera.position.y) / (visibleHeight / 2);
+
+    // Convert NDC to screen coordinates
+    return {
+      x: ((ndcX + 1) / 2) * rect.width,
+      y: ((1 - ndcY) / 2) * rect.height, // Flip Y (screen Y down, world Y up)
+    };
+  }
+
+  // Helper to update cluster label DOM elements
+  function updateClusterLabelsInternal() {
+    const camera = graph.camera();
+    if (!camera) return;
+
+    // Compute labels from current node positions
+    const labelData = computeClusterLabels({
+      nodes: currentNodes,
+      getColor: (communityId) => communityColorScale(String(communityId)),
+    });
+
+    const rect = container.getBoundingClientRect();
+    const fontSize = 18;
+
+    // Track which communities we've seen (for cleanup)
+    const seenCommunities = new Set<number>();
+
+    for (const data of labelData) {
+      seenCommunities.add(data.communityId);
+
+      // Convert centroid to screen coordinates
+      const screenPos = worldToScreen({ x: data.centroid[0], y: data.centroid[1] });
+      if (!screenPos) continue;
+
+      // Skip if off-screen (with some padding)
+      if (screenPos.x < -100 || screenPos.x > rect.width + 100 ||
+          screenPos.y < -100 || screenPos.y > rect.height + 100) {
+        // Hide existing label if off-screen
+        const existing = labelCache.get(data.communityId);
+        if (existing) existing.style.display = "none";
+        continue;
+      }
+
+      // Get or create label element
+      let labelEl = labelCache.get(data.communityId);
+      if (!labelEl) {
+        labelEl = document.createElement("div");
+        labelEl.style.cssText = "position:absolute;text-align:center;font-weight:600;white-space:pre-wrap;transform:translate(-50%,-50%);";
+        labelOverlay.appendChild(labelEl);
+        labelCache.set(data.communityId, labelEl);
+      }
+
+      // Update label content and position
+      labelEl.style.display = "block";
+      labelEl.style.left = `${screenPos.x}px`;
+      labelEl.style.top = `${screenPos.y}px`;
+      labelEl.style.fontSize = `${fontSize}px`;
+      labelEl.style.color = data.color;
+      labelEl.style.opacity = String(Math.max(0.2, data.visibilityRatio) * 0.7);
+
+      // Split label into words for multi-line display
+      if (labelEl.textContent !== data.label) {
+        labelEl.textContent = data.label.split(/\s+/).join("\n");
+      }
+    }
+
+    // Remove labels for communities that no longer exist
+    for (const [communityId, labelEl] of labelCache) {
+      if (!seenCommunities.has(communityId)) {
+        labelEl.remove();
+        labelCache.delete(communityId);
+      }
+    }
+  }
+
   return {
     isHoveringProject() {
       return hoveredNode?.type === "project";
@@ -784,6 +893,10 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
           mesh.material.needsUpdate = true;
         }
       }
+    },
+
+    updateClusterLabels() {
+      updateClusterLabelsInternal();
     },
 
     updateColors(nodeColors: Map<string, string>) {
@@ -882,6 +995,15 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
         line.material.dispose();
       }
       linkCache.clear();
+
+      // Remove label overlay and clear cache
+      for (const labelEl of labelCache.values()) {
+        labelEl.remove();
+      }
+      labelCache.clear();
+      if (labelOverlay.parentNode === container) {
+        container.removeChild(labelOverlay);
+      }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (graph as any)._destructor?.();
