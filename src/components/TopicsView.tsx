@@ -63,6 +63,8 @@ export interface TopicsViewProps {
   onZoomChange?: (zoomScale: number) => void;
   /** Which renderer to use: "d3" (SVG) or "three" (WebGL) */
   rendererType?: RendererType;
+  /** External filter from project selection - keywords in this set are shown */
+  externalFilter?: Set<string> | null;
 }
 
 // ============================================================================
@@ -80,6 +82,7 @@ export function TopicsView({
   onKeywordClick,
   onZoomChange,
   rendererType = "d3",
+  externalFilter,
 }: TopicsViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -123,19 +126,28 @@ export function TopicsView({
     loadPCATransform().then(setPcaTransform);
   }, []);
 
+  // Combine external filter (from project selection) with internal filter (from click-to-drill-down)
+  const effectiveFilter = useMemo(() => {
+    if (!externalFilter && !filteredNodeIds) return null;
+    if (!externalFilter) return filteredNodeIds;
+    if (!filteredNodeIds) return externalFilter;
+    // Intersection: show only nodes in both filters
+    return new Set([...filteredNodeIds].filter((id) => externalFilter.has(id)));
+  }, [externalFilter, filteredNodeIds]);
+
   // Compute active nodes/edges based on filter state (memoized to prevent effect loops)
   const activeNodes = useMemo(
-    () => filteredNodeIds
-      ? keywordNodes.filter((n) => filteredNodeIds.has(n.id))
+    () => effectiveFilter
+      ? keywordNodes.filter((n) => effectiveFilter.has(n.id))
       : keywordNodes,
-    [keywordNodes, filteredNodeIds]
+    [keywordNodes, effectiveFilter]
   );
 
   const activeEdges = useMemo(
-    () => filteredNodeIds
-      ? edges.filter((e) => filteredNodeIds.has(e.source) && filteredNodeIds.has(e.target))
+    () => effectiveFilter
+      ? edges.filter((e) => effectiveFilter.has(e.source) && effectiveFilter.has(e.target))
       : edges,
-    [edges, filteredNodeIds]
+    [edges, effectiveFilter]
   );
 
   // Click handler for drill-down filtering (shared logic for both renderers)
@@ -460,7 +472,7 @@ export function TopicsView({
     };
     // Stable callbacks (handleZoomChange, handleKeywordClick) and refs (hoverConfigRef)
     // don't need to be in deps - they never change identity
-  }, [activeNodes, activeEdges, knnStrength, contrast, hoverConfig.screenRadiusFraction, pcaTransform, rendererType, filteredNodeIds]);
+  }, [activeNodes, activeEdges, knnStrength, contrast, hoverConfig.screenRadiusFraction, pcaTransform, rendererType, effectiveFilter]);
 
   // Three.js rendering effect
   // Note: nodeToCluster is NOT in deps - cluster updates are handled separately
@@ -604,7 +616,7 @@ export function TopicsView({
         threeRendererRef.current = null;
       }
     };
-  }, [activeNodes, activeEdges, rendererType, handleKeywordClick, handleZoomChange, colorMixRatio, hoverConfig.screenRadiusFraction, filteredNodeIds, pcaTransform]);
+  }, [activeNodes, activeEdges, rendererType, handleKeywordClick, handleZoomChange, colorMixRatio, hoverConfig.screenRadiusFraction, effectiveFilter, pcaTransform]);
 
   // Update cluster assignments when clustering changes (without restarting simulation)
   // This runs when nodeToCluster, baseClusters, or labels change

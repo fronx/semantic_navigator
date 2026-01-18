@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { TopicsView, type RendererType } from "@/components/TopicsView";
+import { ProjectSelector, type Project } from "@/components/ProjectSelector";
 import type { KeywordNode, SimilarityEdge } from "@/lib/graph-queries";
 
 /** Debounce a value - returns the value after it stops changing for `delay` ms */
@@ -97,6 +98,38 @@ export default function TopicsPage() {
   // Renderer selection (persisted)
   const [rendererType, setRendererType, rendererReady] = useLocalStorageState<RendererType>("topics-rendererType", "d3");
 
+  // Project filtering
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [projectKeywords, setProjectKeywords] = useState<string[] | null>(null);
+  const [projectLoading, setProjectLoading] = useState(false);
+
+  // Fetch project neighborhood when project selected
+  useEffect(() => {
+    if (!selectedProject) {
+      setProjectKeywords(null);
+      return;
+    }
+
+    setProjectLoading(true);
+    fetch(`/api/projects/${selectedProject.id}/neighborhood?hops=2`)
+      .then((r) => r.json())
+      .then((data) => {
+        // keywordLabels come from the API as raw labels
+        setProjectKeywords(data.keywordLabels || []);
+      })
+      .catch((err) => {
+        console.error("Failed to fetch project neighborhood:", err);
+        setProjectKeywords([]);
+      })
+      .finally(() => setProjectLoading(false));
+  }, [selectedProject]);
+
+  // Convert keyword labels to filter set (format matches TopicsView: node.id = "kw:label")
+  const projectFilter = useMemo(() => {
+    if (!projectKeywords) return null;
+    return new Set(projectKeywords.map((label) => `kw:${label}`));
+  }, [projectKeywords]);
+
   // Wait for all persisted settings to load before rendering
   const settingsReady = knnReady && contrastReady && zoomReady && clusterSensReady &&
                         hoverSimReady && baseDimReady && colorMixReady && rendererReady;
@@ -171,8 +204,22 @@ export default function TopicsPage() {
     <div className="h-screen flex flex-col bg-zinc-50 dark:bg-zinc-950">
       <header className="flex-shrink-0 border-b bg-white dark:bg-zinc-900 dark:border-zinc-800">
         <div className="px-3 py-1.5 flex items-center gap-3">
+          <ProjectSelector
+            selectedProject={selectedProject}
+            onSelect={setSelectedProject}
+          />
+
           <h1 className="text-sm font-medium text-zinc-600 dark:text-zinc-400">
-            Topics ({data.nodes.length} keywords, {data.edges.length} edges)
+            {projectFilter ? (
+              <>
+                {projectFilter.size} keywords
+                {projectLoading && <span className="ml-1 text-zinc-400">(loading...)</span>}
+              </>
+            ) : (
+              <>
+                Topics ({data.nodes.length} keywords, {data.edges.length} edges)
+              </>
+            )}
             {isStale && (
               <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">(offline - cached data)</span>
             )}
@@ -306,6 +353,7 @@ export default function TopicsPage() {
           }}
           onZoomChange={setZoomScale}
           rendererType={rendererType}
+          externalFilter={projectFilter}
         />
       </main>
     </div>

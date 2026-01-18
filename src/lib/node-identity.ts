@@ -9,6 +9,7 @@ import { Node, NodeType } from "./types";
 export const nodeIdentityKeys: Record<NodeType, readonly (keyof Node)[]> = {
   article: ["source_path"],
   chunk: ["source_path", "content_hash"],  // Content-based identity within article
+  project: ["title"],  // Projects identified by unique title
 } as const;
 
 type IdentityValues = Partial<Record<keyof Node, string>>;
@@ -45,7 +46,7 @@ export async function findExistingNode(
  * Generate a unique identity key string for grouping nodes.
  * Used by deduplication to group nodes that should be the same.
  */
-export function getIdentityKey(node: Pick<Node, "node_type" | "source_path" | "content_hash">): string {
+export function getIdentityKey(node: Pick<Node, "node_type" | "source_path" | "content_hash" | "title">): string {
   const keys = nodeIdentityKeys[node.node_type];
   const values = keys.map(k => node[k as keyof typeof node]);
   return values.join("::");
@@ -56,7 +57,7 @@ export function getIdentityKey(node: Pick<Node, "node_type" | "source_path" | "c
  * Returns a map from identity key to list of nodes with that identity.
  * Nodes are sorted by created_at ascending (oldest first).
  */
-export function groupByIdentity<T extends Pick<Node, "node_type" | "source_path" | "content_hash">>(
+export function groupByIdentity<T extends Pick<Node, "node_type" | "source_path" | "content_hash" | "title">>(
   nodes: T[]
 ): Map<string, T[]> {
   const groups = new Map<string, T[]>();

@@ -232,8 +232,10 @@ export type Database = {
           heading_context: string[] | null
           id: string
           node_type: string
-          source_path: string
+          provenance: string | null
+          source_path: string | null
           summary: string | null
+          title: string | null
           updated_at: string | null
         }
         Insert: {
@@ -247,8 +249,10 @@ export type Database = {
           heading_context?: string[] | null
           id?: string
           node_type: string
-          source_path: string
+          provenance?: string | null
+          source_path?: string | null
           summary?: string | null
+          title?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -262,11 +266,52 @@ export type Database = {
           heading_context?: string[] | null
           id?: string
           node_type?: string
-          source_path?: string
+          provenance?: string | null
+          source_path?: string | null
           summary?: string | null
+          title?: string | null
           updated_at?: string | null
         }
         Relationships: []
+      }
+      project_associations: {
+        Row: {
+          association_type: string
+          created_at: string | null
+          id: string
+          project_id: string
+          target_id: string
+        }
+        Insert: {
+          association_type: string
+          created_at?: string | null
+          id?: string
+          project_id: string
+          target_id: string
+        }
+        Update: {
+          association_type?: string
+          created_at?: string | null
+          id?: string
+          project_id?: string
+          target_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_associations_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_associations_target_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "nodes"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       summary_cache: {
         Row: {
@@ -373,6 +418,22 @@ export type Database = {
           similar_keyword_id: string
           similar_keyword_text: string
           similarity: number
+        }[]
+      }
+      get_keyword_cooccurrence: {
+        Args: { max_edges?: number; min_shared?: number }
+        Returns: {
+          keyword1: string
+          keyword2: string
+          shared_articles: number
+        }[]
+      }
+      get_project_neighborhood: {
+        Args: { p_hops?: number; p_project_id: string }
+        Returns: {
+          hop_distance: number
+          keyword_id: string
+          keyword_label: string
         }[]
       }
       get_similar_keyword_pairs: {

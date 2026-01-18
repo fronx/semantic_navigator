@@ -3,9 +3,14 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import { parseMarkdown } from "./parser";
 import { generateEmbeddingsBatched, truncateEmbedding } from "./embeddings";
 import { generateArticleSummary, reduceKeywordsForArticle } from "./summarization";
-import { NodeType } from "./types";
+import { NodeType, AssociationType } from "./types";
 import { findExistingNode } from "./node-identity";
 import { chunkText, Chunk } from "./chunker";
+
+interface SavedAssociation {
+  project_id: string;
+  association_type: AssociationType;
+}
 
 function hash(content: string): string {
   return createHash("sha256").update(content).digest("hex").slice(0, 16);
@@ -21,10 +26,26 @@ export interface ChunkIngestionOptions {
 }
 
 // Delete an article and all its descendants (handles old section→paragraph hierarchy too)
+// Returns saved project associations so they can be restored after reimport
 async function deleteArticleWithChunks(
   supabase: SupabaseClient,
   articleId: string
-): Promise<void> {
+): Promise<SavedAssociation[]> {
+  // Save project associations before deletion (so they can be restored)
+  const { data: associations } = await supabase
+    .from("project_associations")
+    .select("project_id, association_type")
+    .eq("target_id", articleId);
+
+  const savedAssociations: SavedAssociation[] = (associations || []).map((a) => ({
+    project_id: a.project_id,
+    association_type: a.association_type as AssociationType,
+  }));
+
+  if (savedAssociations.length > 0) {
+    console.log(`[Reimport] Saving ${savedAssociations.length} project associations for restoration`);
+  }
+
   // Recursively get all descendant node IDs
   const allNodeIds: string[] = [articleId];
   const toProcess = [articleId];
@@ -55,10 +76,34 @@ async function deleteArticleWithChunks(
   await supabase.from("backlink_edges").delete().in("source_id", allNodeIds);
   await supabase.from("backlink_edges").delete().in("target_id", allNodeIds);
 
+  // Note: project_associations for this target will be cascade-deleted via FK
+  // We saved them above so they can be restored
+
   // Delete all nodes
   await supabase.from("nodes").delete().in("id", allNodeIds);
 
   console.log(`[Reimport] Deleted ${allNodeIds.length} nodes (article + descendants)`);
+
+  return savedAssociations;
+}
+
+// Restore project associations after article reimport
+async function restoreProjectAssociations(
+  supabase: SupabaseClient,
+  newArticleId: string,
+  associations: SavedAssociation[]
+): Promise<void> {
+  if (associations.length === 0) return;
+
+  for (const assoc of associations) {
+    await supabase.from("project_associations").insert({
+      project_id: assoc.project_id,
+      target_id: newArticleId,
+      association_type: assoc.association_type,
+    });
+  }
+
+  console.log(`[Reimport] Restored ${associations.length} project associations`);
 }
 
 export async function ingestArticleWithChunks(
@@ -77,9 +122,12 @@ export async function ingestArticleWithChunks(
     source_path: sourcePath,
   });
 
+  // Track associations to restore after reimport
+  let savedAssociations: SavedAssociation[] = [];
+
   if (existingArticle && options?.forceReimport) {
     console.log(`[Reimport] Deleting existing article: "${parsed.title}"`);
-    await deleteArticleWithChunks(supabase, existingArticle.id);
+    savedAssociations = await deleteArticleWithChunks(supabase, existingArticle.id);
   } else if (existingArticle) {
     if (existingArticle.content_hash === articleContentHash) {
       console.log(`[Skip] Article already exists: "${parsed.title}"`);
@@ -283,6 +331,9 @@ export async function ingestArticleWithChunks(
       );
     }
   }
+
+  // Restore project associations if this was a reimport
+  await restoreProjectAssociations(supabase, articleNode.id, savedAssociations);
 
   return articleNode.id;
 }

@@ -35,7 +35,9 @@ async function main() {
     process.exit(1);
   }
 
-  const articlePaths = existingArticles?.map((a) => a.source_path) || [];
+  const articlePaths = existingArticles
+    ?.map((a) => a.source_path)
+    .filter((p): p is string => p !== null) || [];
   console.log(`Found ${articlePaths.length} articles to reimport`);
 
   if (articlePaths.length === 0) {

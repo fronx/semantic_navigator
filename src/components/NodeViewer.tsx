@@ -13,7 +13,7 @@ interface NodeData {
 interface NodeViewModel {
   id: string;
   nodeType: string;
-  sourcePath: string;
+  sourcePath: string | null;
   headerLevel: number | null;
   displayText: string;
   preview: string;

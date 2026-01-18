@@ -1,19 +1,31 @@
-export type NodeType = "article" | "chunk";
+export type NodeType = "article" | "chunk" | "project";
+export type Provenance = "user" | "import";
+export type AssociationType = "contains" | "references";
 
 export interface Node {
   id: string;
-  content: string | null;  // only populated for chunk nodes
+  content: string | null;  // populated for chunks and projects (markdown body)
   summary: string | null;
   content_hash: string;
   embedding: number[] | null;
   node_type: NodeType;
-  source_path: string;
+  source_path: string | null;  // null for user-created nodes (projects)
+  title: string | null;  // display name for projects
+  provenance: Provenance | null;  // 'user' for manually created, 'import' for vault imports
   header_level: number | null;
   chunk_type: string | null;  // semantic classification for chunks (e.g., "problem statement")
   heading_context: string[] | null;  // heading path for chunks (e.g., ["Introduction", "Background"])
   dirty: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface ProjectAssociation {
+  id: string;
+  project_id: string;
+  target_id: string;
+  association_type: AssociationType;
+  created_at: string;
 }
 
 export interface ContainmentEdge {

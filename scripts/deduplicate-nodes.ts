@@ -7,8 +7,9 @@ const supabase = createServerClient();
 interface NodeRow {
   id: string;
   node_type: NodeType;
-  source_path: string;
+  source_path: string | null;
   content_hash: string;
+  title: string | null;
   created_at: string;
 }
 
@@ -16,18 +17,19 @@ async function deduplicateNodeType(nodeType: NodeType) {
   const identityKeys = nodeIdentityKeys[nodeType];
   console.log(`\n--- Deduplicating ${nodeType}s (identity: ${identityKeys.join(', ')}) ---`);
 
-  const { data: nodes } = await supabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: nodes } = await (supabase as any)
     .from('nodes')
-    .select('id, node_type, source_path, content_hash, created_at')
+    .select('id, node_type, source_path, content_hash, title, created_at')
     .eq('node_type', nodeType)
-    .order('created_at', { ascending: true });
+    .order('created_at', { ascending: true }) as { data: NodeRow[] | null };
 
   if (!nodes || nodes.length === 0) {
     console.log(`No ${nodeType}s found`);
     return;
   }
 
-  const groups = groupByIdentity(nodes as NodeRow[]);
+  const groups = groupByIdentity(nodes);
 
   let keptCount = 0;
   let deletedCount = 0;
