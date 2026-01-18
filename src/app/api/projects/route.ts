@@ -26,7 +26,7 @@ export async function GET() {
 
 // POST /api/projects - Create a new project
 export async function POST(request: NextRequest) {
-  const { title, content } = await request.json();
+  const { title, content, position_x, position_y } = await request.json();
 
   if (!title || typeof title !== "string" || title.trim().length === 0) {
     return NextResponse.json({ error: "Title is required" }, { status: 400 });
@@ -64,6 +64,8 @@ export async function POST(request: NextRequest) {
       source_path: null,
       provenance: "user",
       dirty: false,
+      position_x: typeof position_x === "number" ? position_x : null,
+      position_y: typeof position_y === "number" ? position_y : null,
     })
     .select()
     .single();

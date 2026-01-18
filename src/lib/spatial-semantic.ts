@@ -86,6 +86,24 @@ export function findNodesInRadius<T extends SpatialNode>(
 }
 
 /**
+ * Check if a world position is over any node of a specific type.
+ * Used for hit detection (e.g., checking if cursor is over a project node).
+ */
+export function isPositionOverNodeType<T extends SpatialNode & { type?: string }>(
+  worldPos: { x: number; y: number },
+  nodes: T[],
+  nodeType: string,
+  hitRadius: number
+): boolean {
+  return nodes.some((n) => {
+    if (n.type !== nodeType) return false;
+    const dx = (n.x ?? 0) - worldPos.x;
+    const dy = (n.y ?? 0) - worldPos.y;
+    return Math.sqrt(dx * dx + dy * dy) < hitRadius;
+  });
+}
+
+/**
  * Convert screen coordinates to graph coordinates using D3 zoom transform.
  */
 export function screenToGraph(

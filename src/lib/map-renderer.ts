@@ -28,11 +28,19 @@ export interface SimLink extends d3.SimulationLinkDatum<SimNode> {
 export interface RendererCallbacks {
   onNodeExpand?: (graphNodeId: string, dbNodeId: string) => void;
   onKeywordClick?: (keyword: string) => void;
+  /** Called when a project node is clicked */
+  onProjectClick?: (projectId: string) => void;
+  /** Called when a project node is dragged to a new position */
+  onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
   /** Called when zoom gesture ends (for semantic zoom) */
   onZoomEnd?: (transform: { k: number; x: number; y: number }, viewport: { width: number; height: number }) => void;
+  /** Called when a project node interaction starts (click or drag) - used to suppress click-to-filter */
+  onProjectInteractionStart?: () => void;
 }
 
 export interface MapRenderer {
+  /** Check if currently hovering over a project node */
+  isHoveringProject: () => boolean;
   /** Update node/link positions (call on each tick) */
   tick: () => void;
   /** Update all visual attributes without relayout (reads from immediateParams ref) */
@@ -91,8 +99,12 @@ interface RendererOptions {
 // Scale article radius by content size (sqrt for good visual spread)
 const sizeScale = d3.scaleSqrt().domain([400, 2000]).range([25, 80]).clamp(true);
 
+// Project node color - distinct purple/violet
+const PROJECT_COLOR = "#8b5cf6";
+
 function getNodeRadius(d: SimNode, dotScale: number): number {
   if (d.type === "keyword") return 18 * dotScale;
+  if (d.type === "project") return 28 * dotScale; // Larger than keywords
   if (d.type === "chunk") return sizeScale((d.size || 150) * 0.5) * dotScale;
   return sizeScale(d.size || 400) * dotScale; // article
 }
@@ -102,7 +114,7 @@ function getNodeRadius(d: SimNode, dotScale: number): number {
  * Compute blended colors for articles/chunks based on connected keyword communities.
  */
 function computeBlendedColors(
-  nodes: SimNode[],
+  _nodes: SimNode[],
   links: SimLink[]
 ): Map<string, string> {
   // Build adjacency: article/chunk -> connected keywords
@@ -168,6 +180,11 @@ function getNodeColor(
   clusterColors?: Map<number, ClusterColorInfo>,
   colorMixRatio: number = 0
 ): string {
+  // Projects have a distinct purple color
+  if (d.type === "project") {
+    return PROJECT_COLOR;
+  }
+
   if (d.type === "article" || d.type === "chunk") {
     return blendedColors.get(d.id) || (d.type === "article" ? colors.node.article : colors.node.chunk);
   }
@@ -397,6 +414,9 @@ export function createRenderer(options: RendererOptions): MapRenderer {
   let communitiesMap = groupNodesByCommunity(currentNodes);
   let clusterColors = computeClusterColors(communitiesMap, pcaTransform);
 
+  // Track if hovering a project node (to suppress neighborhood highlighting)
+  let hoveringProjectNode = false;
+
   // Draw layers (order matters: hulls -> labels -> edges -> nodes)
   const hullRenderer = createHullRenderer({ parent: g, communitiesMap, visualScale, opacity: immediateParams.current.hullOpacity, pcaTransform });
   const hullLabelGroup = g.append("g").attr("class", "hull-labels");
@@ -421,8 +441,10 @@ export function createRenderer(options: RendererOptions): MapRenderer {
       .append("circle")
       .attr("r", (d) => getNodeRadius(d, immediateParams.current.dotScale) * visualScale)
       .attr("fill", (d) => getNodeColor(d, colors, pcaTransform, clusterColors, immediateParams.current.colorMixRatio))
-      .attr("stroke", "#fff")
-      .attr("stroke-width", 1.5 * visualScale);
+      .attr("stroke", (d) => d.type === "project" ? "#fff" : "#fff")
+      .attr("stroke-width", (d) => (d.type === "project" ? 3 : 1.5) * visualScale)
+      // Projects have a subtle glow effect via CSS filter
+      .attr("filter", (d) => d.type === "project" ? "drop-shadow(0 0 4px rgba(139, 92, 246, 0.5))" : null);
 
     // Hover tooltips for articles/chunks
     selection
@@ -465,6 +487,30 @@ export function createRenderer(options: RendererOptions): MapRenderer {
         .on("click", (event, d) => {
           event.stopPropagation();
           callbacks.onKeywordClick!(d.label);
+        });
+    }
+
+    // Project node tooltips and click handlers
+    selection
+      .filter((d) => d.type === "project")
+      .on("mouseenter", (_, d) => {
+        hoveringProjectNode = true;
+        const offset = getNodeRadius(d, immediateParams.current.dotScale) * visualScale * 0.7;
+        tooltip.show(d.label, d.x! + offset + 8, d.y! + offset + 16);
+      })
+      .on("mouseleave", () => {
+        hoveringProjectNode = false;
+        tooltip.hide();
+      });
+
+    if (callbacks.onProjectClick) {
+      selection
+        .filter((d) => d.type === "project")
+        .style("cursor", "pointer")
+        .on("click", (event, d) => {
+          event.stopPropagation();
+          callbacks.onProjectInteractionStart?.();
+          callbacks.onProjectClick!(d.id);
         });
     }
   }
@@ -716,6 +762,7 @@ export function createRenderer(options: RendererOptions): MapRenderer {
   }
 
   return {
+    isHoveringProject: () => hoveringProjectNode,
     tick,
     updateVisuals,
     updateData,
@@ -741,14 +788,22 @@ export function createRenderer(options: RendererOptions): MapRenderer {
 export function addDragBehavior(
   nodeSelection: d3.Selection<SVGGElement, SimNode, SVGGElement, unknown>,
   simulation: d3.Simulation<SimNode, SimLink>,
-  onDragStart?: () => void
+  onDragStart?: () => void,
+  onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void,
+  onProjectInteractionStart?: () => void
 ): void {
   nodeSelection.call(
     d3.drag<SVGGElement, SimNode>()
       .on("start", (event, d) => {
         if (!event.active) {
           onDragStart?.();
-          simulation.alphaTarget(0.3).restart();
+          // Don't reheat simulation for project drags (they're fixed anyway)
+          if (d.type !== "project") {
+            simulation.alphaTarget(0.3).restart();
+          } else {
+            // Notify that a project interaction started (to suppress click-to-filter)
+            onProjectInteractionStart?.();
+          }
         }
         d.fx = d.x;
         d.fy = d.y;
@@ -758,9 +813,24 @@ export function addDragBehavior(
         d.fy = event.y;
       })
       .on("end", (event, d) => {
-        if (!event.active) simulation.alphaTarget(0);
-        d.fx = null;
-        d.fy = null;
+        if (!event.active && d.type !== "project") {
+          simulation.alphaTarget(0);
+        }
+
+        // For projects, keep them fixed and persist position
+        if (d.type === "project") {
+          // Keep fx/fy set to maintain fixed position
+          d.fx = event.x;
+          d.fy = event.y;
+          // Persist to database
+          if (onProjectDrag) {
+            onProjectDrag(d.id, { x: event.x, y: event.y });
+          }
+        } else {
+          // Release regular nodes back to the simulation
+          d.fx = null;
+          d.fy = null;
+        }
       })
   );
 }

@@ -30,10 +30,18 @@ import {
 
 export interface ThreeRendererCallbacks {
   onKeywordClick?: (keyword: string) => void;
+  /** Called when a project node is clicked */
+  onProjectClick?: (projectId: string) => void;
+  /** Called when a project node is dragged to a new position */
+  onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
   onZoomEnd?: (transform: { k: number; x: number; y: number }) => void;
+  /** Called when a project node interaction starts (click or drag) - used to suppress click-to-filter */
+  onProjectInteractionStart?: () => void;
 }
 
 export interface ThreeRenderer {
+  /** Check if currently hovering over a project node (uses 3d-force-graph's internal hit detection) */
+  isHoveringProject: () => boolean;
   /** Update the graph with new data */
   updateData: (nodes: SimNode[], links: SimLink[]) => void;
   /** Update visual parameters without relayout (reads from immediateParams ref) */
@@ -86,7 +94,14 @@ const CIRCLE_SEGMENTS = 64;
 // Helpers
 // ============================================================================
 
+// Project node color - distinct purple/violet (same as D3 renderer)
+const PROJECT_COLOR = "#8b5cf6";
+
 function getNodeColor(node: SimNode, nodeColors?: Map<string, string>): string {
+  // Projects have a distinct purple color
+  if (node.type === "project") {
+    return PROJECT_COLOR;
+  }
   // Use precomputed embedding-based color if available
   if (nodeColors) {
     const color = nodeColors.get(node.id);
@@ -99,8 +114,11 @@ function getNodeColor(node: SimNode, nodeColors?: Map<string, string>): string {
   return "#9ca3af"; // grey-400 for unclustered
 }
 
-function getNodeRadius(_node: SimNode, dotScale: number): number {
-  // Keywords only for now
+function getNodeRadius(node: SimNode, dotScale: number): number {
+  // Projects are larger than keywords
+  if (node.type === "project") {
+    return 7 * dotScale; // Larger base radius for projects
+  }
   return BASE_DOT_RADIUS * dotScale;
 }
 
@@ -126,6 +144,15 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
   let currentHighlight: Set<string> | null = null;
   let currentBaseDim = 0.3;
   let currentNodeColors: Map<string, string> | undefined = initialNodeColors;
+
+  // Fix project nodes in place (exclude from force simulation)
+  // Setting fx/fy anchors the node at that position
+  for (const node of currentNodes) {
+    if (node.type === "project") {
+      node.fx = node.x;
+      node.fy = node.y;
+    }
+  }
 
   // Cache for node meshes to avoid recreating on every update
   const nodeCache = new Map<string, THREE.Mesh<THREE.CircleGeometry, THREE.MeshBasicMaterial>>();
@@ -371,7 +398,41 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     const n = node as SimNode;
     if (n.type === "keyword" && callbacks.onKeywordClick) {
       callbacks.onKeywordClick(n.label);
+    } else if (n.type === "project") {
+      callbacks.onProjectInteractionStart?.();
+      callbacks.onProjectClick?.(n.id);
     }
+  });
+
+  // Track when dragging a project node starts (to suppress pan and click-to-filter)
+  graph.onNodeDrag((node: object) => {
+    const n = node as SimNode;
+    if (n.type === "project") {
+      isDraggingProjectNode = true;
+      callbacks.onProjectInteractionStart?.();
+    }
+  });
+
+  // Drag end handler - persist project positions
+  graph.onNodeDragEnd((node: object) => {
+    const n = node as SimNode;
+    if (n.type === "project") {
+      isDraggingProjectNode = false;
+      projectWasDragged = true; // Suppress the click event that follows
+      if (callbacks.onProjectDrag && n.x !== undefined && n.y !== undefined) {
+        // Keep project fixed at new position
+        n.fx = n.x;
+        n.fy = n.y;
+        // Persist to database
+        callbacks.onProjectDrag(n.id, { x: n.x, y: n.y });
+      }
+    }
+  });
+
+  // Track hovered node (for suppressing neighborhood highlighting when over project)
+  let hoveredNode: SimNode | null = null;
+  graph.onNodeHover((node: object | null) => {
+    hoveredNode = node as SimNode | null;
   });
 
   // Camera setup for 2D view (top-down)
@@ -395,9 +456,23 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
   let wasDrag = false;
   const DRAG_THRESHOLD = 5; // pixels
 
+  // Track if we're dragging a project node (to suppress pan and click-to-filter)
+  let isDraggingProjectNode = false;
+  // Track if a project drag just ended (to suppress click that fires after drag)
+  let projectWasDragged = false;
+
   const handleMouseDown = (event: MouseEvent) => {
-    // Only pan on left click, and not if dragging a node
+    // Only pan on left click
     if (event.button !== 0) return;
+    // Don't pan if already dragging a project node
+    if (isDraggingProjectNode) return;
+
+    // If hovering over a project node, let 3d-force-graph handle it
+    // (this uses 3d-force-graph's own hit detection, which is more reliable)
+    if (hoveredNode?.type === "project") {
+      return;
+    }
+
     isPanning = true;
     lastMouseX = event.clientX;
     lastMouseY = event.clientY;
@@ -453,11 +528,15 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     }
   };
 
-  // Suppress click events that were actually drags
+  // Suppress click events that were actually drags (canvas pans or project node drags)
   const handleClick = (event: MouseEvent) => {
-    if (wasDrag) {
+    if (wasDrag || projectWasDragged) {
       event.stopPropagation();
     }
+    // Reset for next interaction - prevents stale state from affecting
+    // subsequent clicks (e.g., project node click after canvas pan)
+    wasDrag = false;
+    projectWasDragged = false;
   };
 
   container.addEventListener("mousedown", handleMouseDown);
@@ -627,6 +706,10 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
   };
 
   return {
+    isHoveringProject() {
+      return hoveredNode?.type === "project";
+    },
+
     updateData(nodes: SimNode[], links: SimLink[]) {
       // Dispose old cached objects before replacing data
       for (const mesh of nodeCache.values()) {

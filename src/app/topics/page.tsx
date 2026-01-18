@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { TopicsView, type RendererType } from "@/components/TopicsView";
 import { ProjectSelector, type Project } from "@/components/ProjectSelector";
-import type { KeywordNode, SimilarityEdge } from "@/lib/graph-queries";
+import { ProjectSidebar, type Project as SidebarProject } from "@/components/ProjectSidebar";
+import { InlineTitleInput } from "@/components/InlineTitleInput";
+import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 
 /** Debounce a value - returns the value after it stops changing for `delay` ms */
 function useDebouncedValue<T>(value: T, delay: number): T {
@@ -103,6 +105,17 @@ export default function TopicsPage() {
   const [projectKeywords, setProjectKeywords] = useState<string[] | null>(null);
   const [projectLoading, setProjectLoading] = useState(false);
 
+  // Project nodes for graph display
+  const [graphProjects, setGraphProjects] = useState<ProjectNode[]>([]);
+
+  // Project creation and editing
+  const [creatingAt, setCreatingAt] = useState<{
+    worldPos: { x: number; y: number };
+    screenPos: { x: number; y: number };
+  } | null>(null);
+  const [editingProject, setEditingProject] = useState<SidebarProject | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
+
   // Fetch project neighborhood when project selected
   useEffect(() => {
     if (!selectedProject) {
@@ -130,6 +143,130 @@ export default function TopicsPage() {
     return new Set(projectKeywords.map((label) => `kw:${label}`));
   }, [projectKeywords]);
 
+  // Handle project creation request from TopicsView (N key press)
+  const handleCreateProject = useCallback((worldPos: { x: number; y: number }, screenPos: { x: number; y: number }) => {
+    setCreatingAt({ worldPos, screenPos });
+  }, []);
+
+  // Create project via API
+  const handleConfirmCreate = useCallback(async (title: string) => {
+    if (!creatingAt) return;
+
+    try {
+      const res = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          position_x: creatingAt.worldPos.x,
+          position_y: creatingAt.worldPos.y,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        console.error("Failed to create project:", data.error);
+        return;
+      }
+
+      const project = await res.json();
+
+      // Add new project to graph
+      setGraphProjects((prev) => [
+        ...prev,
+        {
+          id: project.id,
+          title: project.title,
+          content: project.content,
+          position_x: project.position_x,
+          position_y: project.position_y,
+          embedding: project.embedding_256,
+        },
+      ]);
+
+      // Open sidebar to edit the new project
+      setEditingProject(project);
+    } catch (err) {
+      console.error("Failed to create project:", err);
+    } finally {
+      setCreatingAt(null);
+    }
+  }, [creatingAt]);
+
+  // Cancel project creation
+  const handleCancelCreate = useCallback(() => {
+    setCreatingAt(null);
+  }, []);
+
+  // Update project via API
+  const handleUpdateProject = useCallback(async (id: string, updates: { title?: string; content?: string }) => {
+    setIsUpdating(true);
+    try {
+      const res = await fetch(`/api/projects/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        console.error("Failed to update project:", data.error);
+        return;
+      }
+
+      const updated = await res.json();
+      setEditingProject(updated);
+    } catch (err) {
+      console.error("Failed to update project:", err);
+    } finally {
+      setIsUpdating(false);
+    }
+  }, []);
+
+  // Close sidebar
+  const handleCloseSidebar = useCallback(() => {
+    setEditingProject(null);
+  }, []);
+
+  // Handle project node click (open sidebar)
+  const handleProjectClick = useCallback(async (projectId: string) => {
+    // Strip "proj:" prefix if present
+    const id = projectId.startsWith("proj:") ? projectId.slice(5) : projectId;
+
+    try {
+      const res = await fetch(`/api/projects/${id}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setEditingProject(data.project);
+    } catch (err) {
+      console.error("Failed to fetch project:", err);
+    }
+  }, []);
+
+  // Handle project node drag (update position)
+  const handleProjectDrag = useCallback(async (projectId: string, position: { x: number; y: number }) => {
+    // Strip "proj:" prefix if present
+    const id = projectId.startsWith("proj:") ? projectId.slice(5) : projectId;
+
+    // Update local state immediately for responsiveness
+    setGraphProjects((prev) =>
+      prev.map((p) =>
+        p.id === id ? { ...p, position_x: position.x, position_y: position.y } : p
+      )
+    );
+
+    // Persist to database
+    try {
+      await fetch(`/api/projects/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ position_x: position.x, position_y: position.y }),
+      });
+    } catch (err) {
+      console.error("Failed to update project position:", err);
+    }
+  }, []);
+
   // Wait for all persisted settings to load before rendering
   const settingsReady = knnReady && contrastReady && zoomReady && clusterSensReady &&
                         hoverSimReady && baseDimReady && colorMixReady && rendererReady;
@@ -146,16 +283,37 @@ export default function TopicsPage() {
       setIsStale(false);
 
       try {
-        const res = await fetch("/api/topics");
-        const data = await res.json();
+        // Fetch topics and projects in parallel
+        const [topicsRes, projectsRes] = await Promise.all([
+          fetch("/api/topics"),
+          fetch("/api/projects"),
+        ]);
 
-        if (data.error) {
-          throw new Error(data.error);
+        const topicsData = await topicsRes.json();
+        const projectsData = await projectsRes.json();
+
+        if (topicsData.error) {
+          throw new Error(topicsData.error);
         }
 
         // Cache successful response
-        localStorage.setItem(CACHE_KEY, JSON.stringify(data));
-        setData(data);
+        localStorage.setItem(CACHE_KEY, JSON.stringify(topicsData));
+        setData(topicsData);
+
+        // Transform projects into ProjectNode format
+        if (Array.isArray(projectsData)) {
+          setGraphProjects(
+            projectsData.map((p: { id: string; title: string; content: string | null; position_x: number | null; position_y: number | null; embedding_256?: number[] }) => ({
+              id: p.id,
+              title: p.title,
+              content: p.content,
+              position_x: p.position_x,
+              position_y: p.position_y,
+              embedding: p.embedding_256,
+            }))
+          );
+        }
+
         setError(null);
       } catch (err) {
         // Try to load from cache
@@ -336,24 +494,47 @@ export default function TopicsPage() {
         </div>
       </header>
 
-      <main className="flex-1 relative overflow-hidden bg-white dark:bg-zinc-900">
-        <TopicsView
-          nodes={data.nodes}
-          edges={data.edges}
-          knnStrength={knnStrength}
-          contrast={contrast}
-          clusterResolution={debouncedClusterResolution}
-          colorMixRatio={colorMixRatio}
-          hoverConfig={{
-            similarityThreshold: hoverSimilarity,
-            baseDim,
-          }}
-          onKeywordClick={(keyword) => {
-            console.log("Clicked keyword:", keyword);
-          }}
-          onZoomChange={setZoomScale}
-          rendererType={rendererType}
-          externalFilter={projectFilter}
+      <main className="flex-1 relative overflow-hidden bg-white dark:bg-zinc-900 flex">
+        <div className="flex-1 relative min-w-0 overflow-hidden">
+          <TopicsView
+            nodes={data.nodes}
+            edges={data.edges}
+            projectNodes={graphProjects}
+            knnStrength={knnStrength}
+            contrast={contrast}
+            clusterResolution={debouncedClusterResolution}
+            colorMixRatio={colorMixRatio}
+            hoverConfig={{
+              similarityThreshold: hoverSimilarity,
+              baseDim,
+            }}
+            onKeywordClick={(keyword) => {
+              console.log("Clicked keyword:", keyword);
+            }}
+            onProjectClick={handleProjectClick}
+            onZoomChange={setZoomScale}
+            rendererType={rendererType}
+            externalFilter={projectFilter}
+            onCreateProject={handleCreateProject}
+            onProjectDrag={handleProjectDrag}
+          />
+
+          {/* Inline title input for project creation */}
+          {creatingAt && (
+            <InlineTitleInput
+              screenPosition={creatingAt.screenPos}
+              onConfirm={handleConfirmCreate}
+              onCancel={handleCancelCreate}
+            />
+          )}
+        </div>
+
+        {/* Project sidebar */}
+        <ProjectSidebar
+          project={editingProject}
+          onClose={handleCloseSidebar}
+          onUpdate={handleUpdateProject}
+          isUpdating={isUpdating}
         />
       </main>
     </div>

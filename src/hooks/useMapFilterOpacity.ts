@@ -4,7 +4,7 @@ import type { ArticleSimilarityMap, KeywordSimilarityMap } from "./useMapSearch"
 
 interface SimNode extends d3.SimulationNodeDatum {
   id: string;
-  type: "keyword" | "article" | "chunk";
+  type: "keyword" | "article" | "chunk" | "project";
   label: string;
 }
 

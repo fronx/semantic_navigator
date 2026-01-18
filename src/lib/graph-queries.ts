@@ -20,6 +20,18 @@ export interface KeywordNode {
   embedding?: number[];
 }
 
+/** Project node for user-created organizational nodes in the graph */
+export interface ProjectNode {
+  id: string;
+  title: string;
+  content: string | null;
+  /** Graph position (world coordinates) */
+  position_x: number | null;
+  position_y: number | null;
+  /** 256-dim embedding for semantic operations */
+  embedding?: number[];
+}
+
 export interface SimilarityEdge {
   source: string;
   target: string;

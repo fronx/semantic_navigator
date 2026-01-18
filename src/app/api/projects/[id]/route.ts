@@ -76,7 +76,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const { title, content } = await request.json();
+  const { title, content, position_x, position_y } = await request.json();
 
   if (!title || typeof title !== "string" || title.trim().length === 0) {
     return NextResponse.json({ error: "Title is required" }, { status: 400 });
@@ -116,20 +116,68 @@ export async function PUT(
   const embeddingText = `${title}\n\n${content || ""}`.trim();
   const [embedding] = await generateEmbeddingsBatched([embeddingText]);
 
+  // Build update object
+  const updates: Record<string, unknown> = {
+    title: title.trim(),
+    content: content || null,
+    content_hash: hash(embeddingText),
+    embedding: JSON.stringify(embedding),
+  };
+
+  // Include position if provided
+  if (typeof position_x === "number") {
+    updates.position_x = position_x;
+  }
+  if (typeof position_y === "number") {
+    updates.position_y = position_y;
+  }
+
   const { data: project, error } = await supabase
     .from("nodes")
-    .update({
-      title: title.trim(),
-      content: content || null,
-      content_hash: hash(embeddingText),
-      embedding: JSON.stringify(embedding),
-    })
+    .update(updates)
     .eq("id", id)
     .select()
     .single();
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json(project);
+}
+
+// PATCH /api/projects/[id] - Update position only (for drag operations)
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const { position_x, position_y } = await request.json();
+
+  if (typeof position_x !== "number" || typeof position_y !== "number") {
+    return NextResponse.json(
+      { error: "position_x and position_y are required" },
+      { status: 400 }
+    );
+  }
+
+  const supabase = createServerClient();
+
+  const { data: project, error } = await supabase
+    .from("nodes")
+    // Cast needed until Supabase types are regenerated with position columns
+    .update({ position_x, position_y } as Record<string, unknown>)
+    .eq("id", id)
+    .eq("node_type", "project")
+    .select("id, position_x, position_y")
+    .single();
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  if (!project) {
+    return NextResponse.json({ error: "Project not found" }, { status: 404 });
   }
 
   return NextResponse.json(project);

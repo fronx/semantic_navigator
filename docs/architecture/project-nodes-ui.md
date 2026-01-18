@@ -105,19 +105,20 @@ Project chunks are stored as:
 
 ## Implementation Phases
 
-### Phase 1: Basic Creation
-- [ ] `N` key handler in TopicsView
-- [ ] Inline title input at cursor position
-- [ ] Create project via API
-- [ ] Project node appears in graph (distinct visual)
-- [ ] Project excluded from force simulation
+### Phase 1: Basic Creation ✅
+- [x] `N` key handler in TopicsView
+- [x] Inline title input at cursor position (`InlineTitleInput` component)
+- [x] Create project via API with initial position
+- [x] Project node appears in graph with distinct visual style
+- [x] Project excluded from force simulation (fixed via `fx`/`fy`)
+- [x] Position persistence to database
 
-### Phase 2: Sidebar Panel
-- [ ] ProjectSidebar component
-- [ ] Inline-editable title field
-- [ ] Inline-editable description field
-- [ ] Auto-save on edit completion
-- [ ] Open sidebar on project click/creation
+### Phase 2: Sidebar Panel ✅
+- [x] `ProjectSidebar` component
+- [x] Inline-editable title field (using `react-contenteditable`)
+- [x] Inline-editable description field
+- [x] Auto-save on blur
+- [x] Open sidebar on project click or creation
 
 ### Phase 3: Content Processing
 - [ ] Adapt ingestion pipeline for project content
@@ -138,20 +139,39 @@ Project chunks are stored as:
 
 ## Technical Notes
 
-### Libraries to Consider
-- Inline editing: `react-contenteditable` or similar
-- Alternatively: controlled input with click-to-edit state
+### Libraries Used
+- Inline editing: `react-contenteditable`
 
-### API Endpoints Used
-- `POST /api/projects` - Create project
-- `PUT /api/projects/[id]` - Update title/content
-- `GET /api/projects/[id]` - Fetch project details
-- New: Endpoint for similar nodes query
+### API Endpoints
+- `GET /api/projects` - List all projects
+- `POST /api/projects` - Create project (accepts `position_x`, `position_y`)
+- `GET /api/projects/[id]` - Fetch project with associations
+- `PUT /api/projects/[id]` - Update title/content/position
+- `PATCH /api/projects/[id]` - Update position only (for drag operations)
+- `DELETE /api/projects/[id]` - Delete project
 
 ### Position Persistence
-Options for storing project node positions:
-1. Add `position_x`, `position_y` columns to nodes table
-2. Separate `node_positions` table
-3. Local storage (session-only, not shared)
+Decision: **Option 1** - Added `position_x`, `position_y` columns to nodes table.
 
-Decision: TBD based on whether positions should sync across devices/sessions.
+Migration: `024_project_positions.sql`
+
+Positions are persisted via:
+- `PATCH /api/projects/[id]` called on drag end
+- Initial position passed at creation time
+
+### Visual Styling
+
+**D3 Renderer** (`map-renderer.ts`):
+- Radius: 28px (vs 18px for keywords)
+- Color: Purple (#8b5cf6)
+- Border: 3px white stroke
+- Glow effect via CSS drop-shadow filter
+
+**Three.js Renderer** (`three-renderer.ts`):
+- Radius: 7px base (vs 4px for keywords)
+- Color: Purple (#8b5cf6)
+
+### Key Components
+- `InlineTitleInput.tsx` - Floating input at cursor position for project creation
+- `ProjectSidebar.tsx` - Right sidebar for editing project details
+- `TopicsView.tsx` - Extended with `projectNodes`, `onProjectClick`, `onProjectDrag` props

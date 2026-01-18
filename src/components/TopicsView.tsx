@@ -23,7 +23,7 @@ import {
 } from "@/hooks/useGraphHoverHighlight";
 import { useClusterLabels } from "@/hooks/useClusterLabels";
 import { useLatest, useStableCallback } from "@/hooks/useStableRef";
-import type { KeywordNode, SimilarityEdge } from "@/lib/graph-queries";
+import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 import { loadPCATransform, computeNeighborAveragedColors, type PCATransform } from "@/lib/semantic-colors";
 import {
   createConvergenceState,
@@ -47,6 +47,8 @@ export type RendererType = "d3" | "three";
 export interface TopicsViewProps {
   nodes: KeywordNode[];
   edges: SimilarityEdge[];
+  /** Project nodes to display in the graph */
+  projectNodes?: ProjectNode[];
   /** k-NN edge strength multiplier */
   knnStrength: number;
   /** Contrast exponent for similarity-based layout */
@@ -59,12 +61,18 @@ export interface TopicsViewProps {
   hoverConfig: HoverHighlightConfig;
   /** Callback when a keyword is clicked */
   onKeywordClick?: (keyword: string) => void;
+  /** Callback when a project node is clicked */
+  onProjectClick?: (projectId: string) => void;
   /** Callback when zoom level changes */
   onZoomChange?: (zoomScale: number) => void;
   /** Which renderer to use: "d3" (SVG) or "three" (WebGL) */
   rendererType?: RendererType;
   /** External filter from project selection - keywords in this set are shown */
   externalFilter?: Set<string> | null;
+  /** Callback when user presses 'N' to create a project at cursor position */
+  onCreateProject?: (worldPos: { x: number; y: number }, screenPos: { x: number; y: number }) => void;
+  /** Callback when a project node is dragged to a new position */
+  onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
 }
 
 // ============================================================================
@@ -74,15 +82,19 @@ export interface TopicsViewProps {
 export function TopicsView({
   nodes: keywordNodes,
   edges,
+  projectNodes = [],
   knnStrength,
   contrast,
   clusterResolution,
   colorMixRatio,
   hoverConfig,
   onKeywordClick,
+  onProjectClick,
   onZoomChange,
   rendererType = "d3",
   externalFilter,
+  onCreateProject,
+  onProjectDrag,
 }: TopicsViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -94,15 +106,26 @@ export function TopicsView({
   // Position map for preserving node positions across filter transitions
   const positionMapRef = useRef<Map<string, { x: number; y: number }>>(new Map());
 
+  // Cursor tracking for project creation
+  const isHoveringRef = useRef(false);
+  const cursorWorldPosRef = useRef<{ x: number; y: number } | null>(null);
+  const cursorScreenPosRef = useRef<{ x: number; y: number } | null>(null);
+
   // Stable callbacks - won't trigger effect re-runs when parent re-renders
   const handleZoomChange = useStableCallback(onZoomChange);
   const handleKeywordClick = useStableCallback(onKeywordClick);
+  const handleProjectClick = useStableCallback(onProjectClick);
+  const handleCreateProject = useStableCallback(onCreateProject);
+  const handleProjectDrag = useStableCallback(onProjectDrag);
 
   // Stable refs for values accessed in event handlers without triggering re-renders
   const hoverConfigRef = useLatest(hoverConfig);
 
   // Track current highlighted IDs for click-to-filter
   const highlightedIdsRef = useRef<Set<string>>(new Set());
+
+  // Track if a project interaction just happened (to suppress click-to-filter)
+  const projectInteractionRef = useRef(false);
 
   // Client-side Louvain clustering
   // baseClusters is stable (only changes when nodes/edges/resolution change)
@@ -118,6 +141,16 @@ export function TopicsView({
   // Store immediateParams for live updates without relayout
   const immediateParamsRef = useRef<{ current: { colorMixRatio: number } } | null>(null);
 
+  // Stable project identity - only changes when projects are added/removed, not when positions change
+  // This prevents re-renders when dragging project nodes
+  const projectIds = useMemo(
+    () => projectNodes.map((p) => p.id).sort().join(","),
+    [projectNodes]
+  );
+
+  // Store projectNodes in a ref for position updates without triggering effect
+  const projectNodesRef = useLatest(projectNodes);
+
   // PCA transform for stable semantic colors
   const [pcaTransform, setPcaTransform] = useState<PCATransform | null>(null);
 
@@ -125,6 +158,28 @@ export function TopicsView({
   useEffect(() => {
     loadPCATransform().then(setPcaTransform);
   }, []);
+
+  // Keyboard handler for project creation (press 'N' to create at cursor)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only trigger on 'N' key when hovering and not typing in an input
+      if (e.key !== "n" && e.key !== "N") return;
+      if (!isHoveringRef.current) return;
+      if (!cursorWorldPosRef.current || !cursorScreenPosRef.current) return;
+
+      // Don't trigger if user is typing in an input field
+      const target = e.target as HTMLElement;
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) {
+        return;
+      }
+
+      e.preventDefault();
+      handleCreateProject(cursorWorldPosRef.current, cursorScreenPosRef.current);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleCreateProject]);
 
   // Combine external filter (from project selection) with internal filter (from click-to-drill-down)
   const effectiveFilter = useMemo(() => {
@@ -198,7 +253,7 @@ export function TopicsView({
     // Cluster data is added via refs (not dependencies) to avoid relayout
     // Actual cluster assignments are applied by the cluster update effect
     // Use activeNodes/activeEdges for filtered view
-    const mapNodes = activeNodes.map((n) => {
+    const keywordMapNodes = activeNodes.map((n) => {
       // Apply preserved positions if available (for smooth filter transitions)
       const savedPos = positionMapRef.current.get(n.id);
       return {
@@ -214,6 +269,23 @@ export function TopicsView({
         y: savedPos?.y,
       };
     });
+
+    // Add project nodes with their persisted positions
+    // Use ref to avoid re-renders when only positions change
+    const projectMapNodes = projectNodesRef.current.map((p) => ({
+      id: `proj:${p.id}`,
+      type: "project" as const,
+      label: p.title,
+      communityId: undefined as number | undefined,
+      embedding: p.embedding,
+      communityMembers: undefined as string[] | undefined,
+      hullLabel: undefined as string | undefined,
+      // Use database position, or center of viewport if none
+      x: p.position_x ?? width / 2,
+      y: p.position_y ?? height / 2,
+    }));
+
+    const mapNodes = [...keywordMapNodes, ...projectMapNodes];
 
     const mapEdges = activeEdges.map((e) => ({
       source: e.source,
@@ -265,6 +337,15 @@ export function TopicsView({
     // Disable collision initially - let nodes glide through each other
     simulation.force("collision", null);
 
+    // Fix project nodes in place (exclude from force simulation)
+    // Setting fx/fy anchors the node at that position
+    for (const node of nodes) {
+      if ((node as SimNode).type === "project") {
+        node.fx = node.x;
+        node.fy = node.y;
+      }
+    }
+
     // Visual params
     const immediateParams = {
       current: {
@@ -281,6 +362,11 @@ export function TopicsView({
     // Store for live updates
     immediateParamsRef.current = immediateParams;
 
+    // Callback to suppress click-to-filter after project interactions
+    const handleProjectInteractionStart = () => {
+      projectInteractionRef.current = true;
+    };
+
     const renderer = createRenderer({
       svg,
       nodes: nodes as SimNode[],
@@ -289,9 +375,12 @@ export function TopicsView({
       fit: false,
       callbacks: {
         onKeywordClick: handleKeywordClick,
+        onProjectClick: handleProjectClick,
+        onProjectDrag: handleProjectDrag,
         onZoomEnd: (transform) => {
           handleZoomChange(transform.k);
         },
+        onProjectInteractionStart: handleProjectInteractionStart,
       },
       pcaTransform: pcaTransform ?? undefined,
     });
@@ -338,11 +427,17 @@ export function TopicsView({
     }, 1500);
 
     // Add drag behavior - resets cooling when user drags
-    addDragBehavior(renderer.nodeSelection, simulation, () => {
-      convergenceState.coolingDown = false;
-      convergenceState.tickCount = 0;
-      simulation.force("collision", null);
-    });
+    addDragBehavior(
+      renderer.nodeSelection,
+      simulation,
+      () => {
+        convergenceState.coolingDown = false;
+        convergenceState.tickCount = 0;
+        simulation.force("collision", null);
+      },
+      handleProjectDrag,
+      handleProjectInteractionStart
+    );
 
     // ========================================================================
     // Hover highlighting
@@ -378,15 +473,39 @@ export function TopicsView({
     }
 
     d3.select(svg)
+      .on("mouseenter.project", () => {
+        isHoveringRef.current = true;
+      })
+      .on("mouseleave.project", () => {
+        isHoveringRef.current = false;
+        cursorWorldPosRef.current = null;
+        cursorScreenPosRef.current = null;
+      })
       .on("mousemove.hover", (event: MouseEvent) => {
         const [screenX, screenY] = d3.pointer(event, svg);
         const { similarityThreshold } = hoverConfigRef.current;
+
+        // Track cursor position for project creation
+        const transform = renderer.getTransform();
+        cursorScreenPosRef.current = { x: screenX, y: screenY };
+        const worldX = (screenX - transform.x) / transform.k;
+        const worldY = (screenY - transform.y) / transform.k;
+        cursorWorldPosRef.current = { x: worldX, y: worldY };
+
+        // Check if cursor is over a project node - skip hover highlighting if so
+        // Use renderer's hover tracking (set by mouseenter/mouseleave on project nodes)
+        if (renderer.isHoveringProject()) {
+          // Don't highlight anything when over a project node
+          highlightedIdsRef.current = new Set();
+          applyHighlight(new Set());
+          return;
+        }
 
         const result = spatialSemanticFilter({
           nodes,
           screenCenter: { x: screenX, y: screenY },
           screenRadius: height * screenRadiusFraction,
-          transform: renderer.getTransform(),
+          transform,
           similarityThreshold,
           embeddings,
           adjacency,
@@ -405,12 +524,17 @@ export function TopicsView({
           });
         }
 
+        // Exclude project nodes from hover highlighting
+        const keywordHighlightedIds = new Set(
+          [...highlightedIds].filter((id) => !id.startsWith("proj:"))
+        );
+
         if (spatialIds.size === 0) {
           highlightedIdsRef.current = new Set();
           applyHighlight(null);
         } else {
-          highlightedIdsRef.current = highlightedIds;
-          applyHighlight(highlightedIds);
+          highlightedIdsRef.current = keywordHighlightedIds;
+          applyHighlight(keywordHighlightedIds);
         }
       })
       .on("mouseleave.hover", () => {
@@ -418,6 +542,11 @@ export function TopicsView({
         applyHighlight(new Set());
       })
       .on("click.filter", () => {
+        // Skip click-to-filter if a project interaction just happened
+        if (projectInteractionRef.current) {
+          projectInteractionRef.current = false;
+          return;
+        }
         handleFilterClick();
       });
 
@@ -461,6 +590,8 @@ export function TopicsView({
       clearTimeout(autoFitTimeout);
       simulation.stop();
       d3.select(svg)
+        .on("mouseenter.project", null)
+        .on("mouseleave.project", null)
         .on("mousemove.hover", null)
         .on("mouseleave.hover", null)
         .on("click.filter", null)
@@ -472,7 +603,9 @@ export function TopicsView({
     };
     // Stable callbacks (handleZoomChange, handleKeywordClick) and refs (hoverConfigRef)
     // don't need to be in deps - they never change identity
-  }, [activeNodes, activeEdges, knnStrength, contrast, hoverConfig.screenRadiusFraction, pcaTransform, rendererType, effectiveFilter]);
+  // Note: projectIds (not projectNodes) is used to only re-render when projects are added/removed,
+  // not when positions change (e.g., during drag). projectNodesRef.current is used inside for positions.
+  }, [activeNodes, activeEdges, projectIds, knnStrength, contrast, hoverConfig.screenRadiusFraction, pcaTransform, rendererType, effectiveFilter]);
 
   // Three.js rendering effect
   // Note: nodeToCluster is NOT in deps - cluster updates are handled separately
@@ -486,7 +619,7 @@ export function TopicsView({
     // Convert to format expected by renderer
     // Don't set communityId here - it's updated by the cluster effect
     // Use activeNodes/activeEdges for filtered view
-    const mapNodes: SimNode[] = activeNodes.map((n) => {
+    const keywordMapNodes: SimNode[] = activeNodes.map((n) => {
       // Apply preserved positions if available (for smooth filter transitions)
       const savedPos = positionMapRef.current.get(`kw:${n.label}`);
       return {
@@ -500,6 +633,23 @@ export function TopicsView({
         y: savedPos?.y,
       };
     });
+
+    // Add project nodes with their persisted positions
+    // Use ref to avoid re-renders when only positions change
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+    const projectMapNodes: SimNode[] = projectNodesRef.current.map((p) => ({
+      id: `proj:${p.id}`,
+      type: "project" as const,
+      label: p.title,
+      communityId: undefined,
+      embedding: p.embedding,
+      // Use database position, or center of viewport if none
+      x: p.position_x ?? width / 2,
+      y: p.position_y ?? height / 2,
+    }));
+
+    const mapNodes: SimNode[] = [...keywordMapNodes, ...projectMapNodes];
 
     const mapLinks: SimLink[] = activeEdges.map((e) => ({
       source: e.source,
@@ -525,6 +675,7 @@ export function TopicsView({
     const embeddings = buildEmbeddingMap(activeNodes, (n) => `kw:${n.label}`);
 
     // Event handlers (stored for cleanup)
+    let handleMouseEnter: (() => void) | null = null;
     let handleMouseMove: ((event: MouseEvent) => void) | null = null;
     let handleMouseLeave: (() => void) | null = null;
     let handleClick: (() => void) | null = null;
@@ -547,8 +698,13 @@ export function TopicsView({
           nodeColors,
           callbacks: {
             onKeywordClick: handleKeywordClick,
+            onProjectClick: handleProjectClick,
+            onProjectDrag: handleProjectDrag,
             onZoomEnd: (transform) => {
               handleZoomChange(transform.k);
+            },
+            onProjectInteractionStart: () => {
+              projectInteractionRef.current = true;
             },
           },
         });
@@ -560,8 +716,19 @@ export function TopicsView({
 
         threeRendererRef.current = threeRenderer;
 
-        // Set up hover highlighting
+        // Set up hover highlighting and cursor tracking
         const height = container.clientHeight;
+
+        // Track hover state for project creation
+        handleMouseEnter = () => {
+          isHoveringRef.current = true;
+        };
+
+        const handleMouseLeaveProject = () => {
+          isHoveringRef.current = false;
+          cursorWorldPosRef.current = null;
+          cursorScreenPosRef.current = null;
+        };
 
         handleMouseMove = (event: MouseEvent) => {
           const rect = container.getBoundingClientRect();
@@ -569,8 +736,23 @@ export function TopicsView({
           const screenY = event.clientY - rect.top;
           const { similarityThreshold, baseDim } = hoverConfigRef.current;
 
+          // Track cursor position for project creation
+          cursorScreenPosRef.current = { x: screenX, y: screenY };
+          const worldPos = threeRenderer.screenToWorld({ x: screenX, y: screenY });
+          cursorWorldPosRef.current = worldPos;
+
+          // Check if cursor is over a project node - skip hover highlighting if so
+          // Use renderer's built-in hover detection (matches tooltip behavior)
+          if (threeRenderer.isHoveringProject()) {
+            // Don't highlight anything when over a project node
+            highlightedIdsRef.current = new Set();
+            threeRenderer.applyHighlight(new Set(), baseDim);
+            return;
+          }
+
+          const rendererNodes = threeRenderer.getNodes();
           const result = spatialSemanticFilter({
-            nodes: threeRenderer.getNodes(),
+            nodes: rendererNodes,
             screenCenter: { x: screenX, y: screenY },
             screenRadius: height * screenRadiusFraction,
             transform: threeRenderer.getTransform(),
@@ -580,12 +762,17 @@ export function TopicsView({
             screenToWorld: (screen) => threeRenderer.screenToWorld(screen),
           });
 
+          // Exclude project nodes from hover highlighting
+          const keywordHighlightedIds = new Set(
+            [...result.highlightedIds].filter((id) => !id.startsWith("proj:"))
+          );
+
           if (result.spatialIds.size === 0) {
             highlightedIdsRef.current = new Set();
             threeRenderer.applyHighlight(null, baseDim);
           } else {
-            highlightedIdsRef.current = result.highlightedIds;
-            threeRenderer.applyHighlight(result.highlightedIds, baseDim);
+            highlightedIdsRef.current = keywordHighlightedIds;
+            threeRenderer.applyHighlight(keywordHighlightedIds, baseDim);
           }
         };
 
@@ -593,12 +780,20 @@ export function TopicsView({
           highlightedIdsRef.current = new Set();
           const { baseDim } = hoverConfigRef.current;
           threeRenderer.applyHighlight(new Set(), baseDim);
+          // Also clear project creation state
+          handleMouseLeaveProject();
         };
 
         handleClick = () => {
+          // Skip click-to-filter if a project interaction just happened
+          if (projectInteractionRef.current) {
+            projectInteractionRef.current = false;
+            return;
+          }
           handleFilterClick();
         };
 
+        container.addEventListener("mouseenter", handleMouseEnter);
         container.addEventListener("mousemove", handleMouseMove);
         container.addEventListener("mouseleave", handleMouseLeave);
         container.addEventListener("click", handleClick);
@@ -608,6 +803,7 @@ export function TopicsView({
     return () => {
       cancelled = true;
       cancelAnimationFrame(frameId);
+      if (handleMouseEnter) container.removeEventListener("mouseenter", handleMouseEnter);
       if (handleMouseMove) container.removeEventListener("mousemove", handleMouseMove);
       if (handleMouseLeave) container.removeEventListener("mouseleave", handleMouseLeave);
       if (handleClick) container.removeEventListener("click", handleClick);
@@ -616,7 +812,9 @@ export function TopicsView({
         threeRendererRef.current = null;
       }
     };
-  }, [activeNodes, activeEdges, rendererType, handleKeywordClick, handleZoomChange, colorMixRatio, hoverConfig.screenRadiusFraction, effectiveFilter, pcaTransform]);
+  // Note: projectIds (not projectNodes) is used to only re-render when projects are added/removed,
+  // not when positions change (e.g., during drag). projectNodesRef.current is used inside for positions.
+  }, [activeNodes, activeEdges, projectIds, rendererType, handleKeywordClick, handleZoomChange, colorMixRatio, hoverConfig.screenRadiusFraction, effectiveFilter, pcaTransform]);
 
   // Update cluster assignments when clustering changes (without restarting simulation)
   // This runs when nodeToCluster, baseClusters, or labels change

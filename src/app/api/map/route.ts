@@ -64,7 +64,7 @@ function addBipartiteCommunityColors(
 
 export interface MapNode {
   id: string;
-  type: "keyword" | "article" | "chunk";
+  type: "keyword" | "article" | "chunk" | "project";
   label: string;
   size?: number; // Content size (summary length) for scaling node radius
   // Community info for hub keywords (when clustered=true)
