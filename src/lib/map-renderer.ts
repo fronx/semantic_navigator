@@ -59,6 +59,16 @@ export interface MapRenderer {
   getTransform: () => { k: number; x: number; y: number };
   /** Get viewport dimensions */
   getViewport: () => { width: number; height: number };
+  /** Convert screen coordinates to world coordinates */
+  screenToWorld: (screen: { x: number; y: number }) => { x: number; y: number };
+  /** Get current simulation nodes */
+  getNodes: () => SimNode[];
+  /** Apply highlight styling to nodes (for hover highlighting) */
+  applyHighlight: (
+    highlightedIds: Set<string> | null,
+    baseDim: number,
+    computeEdgeOpacity?: (d: SimLink) => number
+  ) => void;
   /** Clean up */
   destroy: () => void;
 }
@@ -776,6 +786,44 @@ export function createRenderer(options: RendererOptions): MapRenderer {
       return { k: transform.k, x: transform.x, y: transform.y };
     },
     getViewport: () => ({ width, height }),
+    screenToWorld: (screen: { x: number; y: number }) => {
+      const transform = d3.zoomTransform(svgElement);
+      return {
+        x: (screen.x - transform.x) / transform.k,
+        y: (screen.y - transform.y) / transform.k,
+      };
+    },
+    getNodes: () => currentNodes,
+    applyHighlight: (
+      highlightedIds: Set<string> | null,
+      baseDim: number,
+      computeEdgeOpacity?: (d: SimLink) => number
+    ) => {
+      // Default edge opacity function if not provided
+      const edgeOpacityFn = computeEdgeOpacity ?? (() => 0.6);
+
+      if (highlightedIds === null) {
+        // Dim everything slightly (nothing nearby)
+        const dim = 1 - baseDim;
+        nodeSelection.select("circle").attr("opacity", dim);
+        linkSelection.attr("stroke-opacity", (d) => edgeOpacityFn(d) * dim);
+      } else if (highlightedIds.size === 0) {
+        // Restore full opacity (hover ended)
+        nodeSelection.select("circle").attr("opacity", 1);
+        linkSelection.attr("stroke-opacity", edgeOpacityFn);
+      } else {
+        // Highlight selected, dim others
+        nodeSelection.select("circle").attr("opacity", (d) =>
+          highlightedIds.has(d.id) ? 1 : 0.15
+        );
+        linkSelection.attr("stroke-opacity", (d) => {
+          const sourceId = typeof d.source === "string" ? d.source : d.source.id;
+          const targetId = typeof d.target === "string" ? d.target : d.target.id;
+          const bothHighlighted = highlightedIds.has(sourceId) && highlightedIds.has(targetId);
+          return bothHighlighted ? edgeOpacityFn(d) : 0.05;
+        });
+      }
+    },
     destroy: () => {
       svg.selectAll("*").remove();
     },

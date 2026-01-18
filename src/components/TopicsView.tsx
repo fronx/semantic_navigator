@@ -99,6 +99,11 @@ export function TopicsView({
   // Track if a project interaction just happened (to suppress click-to-filter)
   const projectInteractionRef = useRef(false);
 
+  // Stable ref for projectNodes - avoids re-creating graph on position updates
+  // This is shared between both renderers to avoid duplicating the ref pattern
+  const projectNodesRef = useRef(projectNodes);
+  projectNodesRef.current = projectNodes;
+
   // Client-side Louvain clustering
   const { nodeToCluster, baseClusters, labels } = useClusterLabels(keywordNodes, edges, clusterResolution);
 
@@ -130,7 +135,7 @@ export function TopicsView({
     svgRef,
     activeNodes,
     activeEdges,
-    projectNodes,
+    projectNodesRef,
     knnStrength,
     contrast,
     colorMixRatio,
@@ -154,7 +159,7 @@ export function TopicsView({
     containerRef,
     activeNodes,
     activeEdges,
-    projectNodes,
+    projectNodesRef,
     colorMixRatio,
     hoverConfig,
     pcaTransform,

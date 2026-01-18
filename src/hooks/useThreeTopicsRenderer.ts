@@ -5,12 +5,11 @@
 
 import { useEffect, useRef } from "react";
 import { createThreeRenderer, type ThreeRenderer } from "@/lib/three-renderer";
-import { buildAdjacencyMap, buildEmbeddingMap } from "@/lib/spatial-semantic";
-import { computeHoverHighlight } from "@/lib/hover-highlight";
-import { DEFAULT_HOVER_CONFIG, type HoverHighlightConfig } from "@/hooks/useGraphHoverHighlight";
+import type { HoverHighlightConfig } from "@/hooks/useGraphHoverHighlight";
 import { convertToThreeNodes } from "@/lib/topics-graph-nodes";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 import { computeNeighborAveragedColors, type PCATransform } from "@/lib/semantic-colors";
+import { createHoverController } from "@/lib/topics-hover-controller";
 
 // ============================================================================
 // Types
@@ -22,7 +21,8 @@ export interface UseThreeTopicsRendererOptions {
   containerRef: React.RefObject<HTMLDivElement | null>;
   activeNodes: KeywordNode[];
   activeEdges: SimilarityEdge[];
-  projectNodes: ProjectNode[];
+  /** Ref to project nodes - using ref avoids re-creating graph on position updates */
+  projectNodesRef: React.RefObject<ProjectNode[]>;
   colorMixRatio: number;
   hoverConfig: HoverHighlightConfig;
   pcaTransform: PCATransform | null;
@@ -62,7 +62,7 @@ export function useThreeTopicsRenderer(
     containerRef,
     activeNodes,
     activeEdges,
-    projectNodes,
+    projectNodesRef,
     colorMixRatio,
     hoverConfig,
     pcaTransform,
@@ -98,10 +98,11 @@ export function useThreeTopicsRenderer(
     const height = container.clientHeight;
 
     // Convert nodes/edges using shared utility
+    // Use ref for projectNodes to avoid re-creating graph on position updates
     const { mapNodes, mapLinks } = convertToThreeNodes({
       keywordNodes: activeNodes,
       edges: activeEdges,
-      projectNodes,
+      projectNodes: projectNodesRef.current,
       width,
       height,
       getSavedPosition,
@@ -118,11 +119,6 @@ export function useThreeTopicsRenderer(
         colorMixRatio,
       },
     };
-
-    // Build lookups for hover highlighting
-    const screenRadiusFraction = hoverConfig.screenRadiusFraction ?? DEFAULT_HOVER_CONFIG.screenRadiusFraction!;
-    const adjacency = buildAdjacencyMap(activeEdges);
-    const embeddings = buildEmbeddingMap(activeNodes, (n) => `kw:${n.label}`);
 
     // Event handlers (stored for cleanup)
     let handleMouseEnter: (() => void) | null = null;
@@ -164,74 +160,34 @@ export function useThreeTopicsRenderer(
 
         threeRendererRef.current = threeRenderer;
 
-        // Set up hover highlighting and cursor tracking
-        const containerHeight = container.clientHeight;
+        // Create hover controller - ThreeRenderer implements RendererAdapter
+        const hoverController = createHoverController({
+          activeNodes,
+          activeEdges,
+          hoverConfigRef,
+          containerHeight: container.clientHeight,
+          isHoveringRef,
+          cursorWorldPosRef,
+          cursorScreenPosRef,
+          projectInteractionRef,
+          highlightedIdsRef,
+          onFilterClick,
+          renderer: threeRenderer,
+        });
 
-        // Track hover state for project creation
-        handleMouseEnter = () => {
-          isHoveringRef.current = true;
-        };
-
-        const handleMouseLeaveProject = () => {
-          isHoveringRef.current = false;
-          cursorWorldPosRef.current = null;
-          cursorScreenPosRef.current = null;
-        };
+        // Wire up DOM event listeners to hover controller
+        handleMouseEnter = () => hoverController.handleMouseEnter();
 
         handleMouseMove = (event: MouseEvent) => {
           const rect = container.getBoundingClientRect();
           const screenX = event.clientX - rect.left;
           const screenY = event.clientY - rect.top;
-          const { similarityThreshold, baseDim } = hoverConfigRef.current;
-
-          // Track cursor position for project creation
-          cursorScreenPosRef.current = { x: screenX, y: screenY };
-          const worldPos = threeRenderer.screenToWorld({ x: screenX, y: screenY });
-          cursorWorldPosRef.current = worldPos;
-
-          // Check if cursor is over a project node - skip hover highlighting if so
-          if (threeRenderer.isHoveringProject()) {
-            highlightedIdsRef.current = new Set();
-            threeRenderer.applyHighlight(new Set(), baseDim);
-            return;
-          }
-
-          const rendererNodes = threeRenderer.getNodes();
-          const { keywordHighlightedIds, isEmptySpace } = computeHoverHighlight({
-            nodes: rendererNodes,
-            screenCenter: { x: screenX, y: screenY },
-            screenRadius: containerHeight * screenRadiusFraction,
-            transform: threeRenderer.getTransform(),
-            similarityThreshold,
-            embeddings,
-            adjacency,
-            screenToWorld: (screen: { x: number; y: number }) => threeRenderer.screenToWorld(screen),
-          });
-
-          if (isEmptySpace) {
-            highlightedIdsRef.current = new Set();
-            threeRenderer.applyHighlight(null, baseDim);
-          } else {
-            highlightedIdsRef.current = keywordHighlightedIds;
-            threeRenderer.applyHighlight(keywordHighlightedIds, baseDim);
-          }
+          hoverController.handleMouseMove(screenX, screenY);
         };
 
-        handleMouseLeave = () => {
-          highlightedIdsRef.current = new Set();
-          const { baseDim } = hoverConfigRef.current;
-          threeRenderer.applyHighlight(new Set(), baseDim);
-          // Also clear project creation state
-          handleMouseLeaveProject();
-        };
+        handleMouseLeave = () => hoverController.handleMouseLeave();
 
-        handleClick = () => {
-          if (projectInteractionRef.current) {
-            projectInteractionRef.current = false;
-            return;
-          }
-          onFilterClick();
-        };
+        handleClick = () => hoverController.handleClick();
 
         container.addEventListener("mouseenter", handleMouseEnter);
         container.addEventListener("mousemove", handleMouseMove);
@@ -252,7 +208,9 @@ export function useThreeTopicsRenderer(
         threeRendererRef.current = null;
       }
     };
-  }, [enabled, activeNodes, activeEdges, projectNodes, colorMixRatio, hoverConfig.screenRadiusFraction, pcaTransform, getSavedPosition, onKeywordClick, onProjectClick, onProjectDrag, onZoomChange, onFilterClick, isHoveringRef, cursorWorldPosRef, cursorScreenPosRef, projectInteractionRef, containerRef]);
+  // Note: projectNodes excluded from deps - we use projectNodesRef to avoid re-creating
+  // the graph when project positions are updated via drag.
+  }, [enabled, activeNodes, activeEdges, colorMixRatio, hoverConfig.screenRadiusFraction, pcaTransform, getSavedPosition, onKeywordClick, onProjectClick, onProjectDrag, onZoomChange, onFilterClick, isHoveringRef, cursorWorldPosRef, cursorScreenPosRef, projectInteractionRef, containerRef]);
 
   // Get position for a node ID (for click-to-filter position capture)
   const getNodePosition = (id: string): { x: number; y: number } | undefined => {

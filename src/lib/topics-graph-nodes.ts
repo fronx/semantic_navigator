@@ -22,19 +22,42 @@ export interface GraphNodeConversionResult {
 }
 
 /**
- * Convert keyword nodes to simulation-ready format for D3 renderer.
- * D3 uses the raw KeywordNode.id for node IDs.
+ * Keyword ID format:
+ * - 'raw': Use KeywordNode.id directly (D3 renderer)
+ * - 'prefixed': Use "kw:" + label (Three.js renderer)
  */
-export function convertToD3Nodes(
-  options: GraphNodeConversionOptions
-): GraphNodeConversionResult {
-  const { keywordNodes, edges, projectNodes, width, height, getSavedPosition } = options;
+export type KeywordIdFormat = "raw" | "prefixed";
 
-  // Convert keyword nodes - D3 uses raw n.id
+interface ConvertToSimNodesOptions extends GraphNodeConversionOptions {
+  keywordIdFormat: KeywordIdFormat;
+  /** Whether to include isKNN on edges (D3 uses it for link force strength) */
+  includeKNN?: boolean;
+}
+
+/**
+ * Convert keyword/project nodes to simulation-ready format.
+ * Unified function used by both D3 and Three.js renderers.
+ */
+export function convertToSimNodes(
+  options: ConvertToSimNodesOptions
+): GraphNodeConversionResult {
+  const {
+    keywordNodes,
+    edges,
+    projectNodes,
+    width,
+    height,
+    getSavedPosition,
+    keywordIdFormat,
+    includeKNN = false,
+  } = options;
+
+  // Convert keyword nodes with format-specific ID
   const keywordMapNodes: SimNode[] = keywordNodes.map((n) => {
-    const savedPos = getSavedPosition?.(n.id);
+    const id = keywordIdFormat === "prefixed" ? `kw:${n.label}` : n.id;
+    const savedPos = getSavedPosition?.(id);
     return {
-      id: n.id,
+      id,
       type: "keyword" as const,
       label: n.label,
       communityId: undefined,
@@ -61,15 +84,29 @@ export function convertToD3Nodes(
 
   const mapNodes = [...keywordMapNodes, ...projectMapNodes];
 
-  // Convert edges - include isKNN for D3's link force strength
+  // Convert edges
   const mapLinks: SimLink[] = edges.map((e) => ({
     source: e.source,
     target: e.target,
     similarity: e.similarity,
-    isKNN: e.isKNN,
+    ...(includeKNN ? { isKNN: e.isKNN } : {}),
   }));
 
   return { mapNodes, mapLinks };
+}
+
+/**
+ * Convert keyword nodes to simulation-ready format for D3 renderer.
+ * D3 uses the raw KeywordNode.id for node IDs.
+ */
+export function convertToD3Nodes(
+  options: GraphNodeConversionOptions
+): GraphNodeConversionResult {
+  return convertToSimNodes({
+    ...options,
+    keywordIdFormat: "raw",
+    includeKNN: true,
+  });
 }
 
 /**
@@ -79,42 +116,9 @@ export function convertToD3Nodes(
 export function convertToThreeNodes(
   options: GraphNodeConversionOptions
 ): GraphNodeConversionResult {
-  const { keywordNodes, edges, projectNodes, width, height, getSavedPosition } = options;
-
-  // Convert keyword nodes - Three.js uses "kw:" prefix
-  const keywordMapNodes: SimNode[] = keywordNodes.map((n) => {
-    const id = `kw:${n.label}`;
-    const savedPos = getSavedPosition?.(id);
-    return {
-      id,
-      type: "keyword" as const,
-      label: n.label,
-      communityId: undefined,
-      embedding: n.embedding,
-      x: savedPos?.x,
-      y: savedPos?.y,
-    };
+  return convertToSimNodes({
+    ...options,
+    keywordIdFormat: "prefixed",
+    includeKNN: false,
   });
-
-  // Convert project nodes with their persisted positions
-  const projectMapNodes: SimNode[] = projectNodes.map((p) => ({
-    id: `proj:${p.id}`,
-    type: "project" as const,
-    label: p.title,
-    communityId: undefined,
-    embedding: p.embedding,
-    x: p.position_x ?? width / 2,
-    y: p.position_y ?? height / 2,
-  }));
-
-  const mapNodes = [...keywordMapNodes, ...projectMapNodes];
-
-  // Convert edges - Three.js doesn't use isKNN (has its own link force)
-  const mapLinks: SimLink[] = edges.map((e) => ({
-    source: e.source,
-    target: e.target,
-    similarity: e.similarity,
-  }));
-
-  return { mapNodes, mapLinks };
 }

@@ -89,6 +89,18 @@ Semantic Navigator is a knowledge base tool that imports markdown files, atomize
 - `src/hooks/useThreeTopicsRenderer.ts` - Three.js/WebGL graph rendering logic for TopicsView
 - `src/hooks/useTopicsFilter.ts` - Click-to-filter and external filter logic
 
+### Renderer Architecture (D3 + Three.js)
+
+The TopicsView supports two renderers that share application logic:
+
+- **Shared logic** lives in `src/lib/`:
+  - `topics-hover-controller.ts` - Hover highlighting, cursor tracking, click handling
+  - `topics-graph-nodes.ts` - Node/edge conversion with `convertToSimNodes()`
+- **Renderer-specific code** stays in hooks and renderer files
+- **Adapter pattern**: Renderers implement `RendererAdapter` interface for the hover controller
+
+**Code smell**: If you need to make the same fix in both `useD3TopicsRenderer` and `useThreeTopicsRenderer`, that's duplicated logic that should be extracted to a shared module.
+
 ### API Routes
 
 - `POST /api/search` - Vector similarity search

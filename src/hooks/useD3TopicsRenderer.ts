@@ -15,9 +15,8 @@ import {
 import { createForceSimulation, type ForceLink, type ForceNode } from "@/lib/map-layout";
 import { forceBoundary } from "@/lib/d3-forces";
 import { applyContrast } from "@/lib/math-utils";
-import { buildAdjacencyMap, buildEmbeddingMap } from "@/lib/spatial-semantic";
-import { computeHoverHighlight } from "@/lib/hover-highlight";
-import { DEFAULT_HOVER_CONFIG, type HoverHighlightConfig } from "@/hooks/useGraphHoverHighlight";
+import { type HoverHighlightConfig } from "@/hooks/useGraphHoverHighlight";
+import { createHoverController } from "@/lib/topics-hover-controller";
 import { convertToD3Nodes } from "@/lib/topics-graph-nodes";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 import type { PCATransform } from "@/lib/semantic-colors";
@@ -44,7 +43,8 @@ export interface UseD3TopicsRendererOptions {
   svgRef: React.RefObject<SVGSVGElement | null>;
   activeNodes: KeywordNode[];
   activeEdges: SimilarityEdge[];
-  projectNodes: ProjectNode[];
+  /** Ref to project nodes - using ref avoids re-creating graph on position updates */
+  projectNodesRef: React.RefObject<ProjectNode[]>;
   knnStrength: number;
   contrast: number;
   colorMixRatio: number;
@@ -90,7 +90,7 @@ export function useD3TopicsRenderer(
     svgRef,
     activeNodes,
     activeEdges,
-    projectNodes,
+    projectNodesRef,
     knnStrength,
     contrast,
     colorMixRatio,
@@ -128,10 +128,11 @@ export function useD3TopicsRenderer(
     const height = svg.clientHeight;
 
     // Convert nodes using shared utility
+    // Use ref for projectNodes to avoid re-creating graph on position updates
     const { mapNodes } = convertToD3Nodes({
       keywordNodes: activeNodes,
       edges: activeEdges,
-      projectNodes,
+      projectNodes: projectNodesRef.current,
       width,
       height,
       getSavedPosition,
@@ -266,104 +267,37 @@ export function useD3TopicsRenderer(
     );
 
     // ========================================================================
-    // Hover highlighting
+    // Hover highlighting (using shared hover controller)
     // ========================================================================
-    const screenRadiusFraction = hoverConfig.screenRadiusFraction ?? DEFAULT_HOVER_CONFIG.screenRadiusFraction!;
-    const adjacency = buildAdjacencyMap(activeEdges);
-    const embeddings = buildEmbeddingMap(activeNodes, (n) => `kw:${n.label}`);
-
-    function applyHighlight(highlightedIds: Set<string> | null) {
-      const { baseDim } = hoverConfigRef.current;
-
-      if (highlightedIds === null) {
-        // Dim everything slightly (nothing nearby)
-        const dim = 1 - baseDim;
-        renderer.nodeSelection.select("circle").attr("opacity", dim);
-        renderer.linkSelection.attr("stroke-opacity", (d) => computeEdgeOpacity(d) * dim);
-      } else if (highlightedIds.size === 0) {
-        // Restore full opacity (hover ended)
-        renderer.nodeSelection.select("circle").attr("opacity", 1);
-        renderer.linkSelection.attr("stroke-opacity", computeEdgeOpacity);
-      } else {
-        // Highlight selected, dim others
-        renderer.nodeSelection.select("circle").attr("opacity", (d) =>
-          highlightedIds.has(d.id) ? 1 : 0.15
-        );
-        renderer.linkSelection.attr("stroke-opacity", (d) => {
-          const sourceId = typeof d.source === "string" ? d.source : d.source.id;
-          const targetId = typeof d.target === "string" ? d.target : d.target.id;
-          const bothHighlighted = highlightedIds.has(sourceId) && highlightedIds.has(targetId);
-          return bothHighlighted ? computeEdgeOpacity(d) : 0.05;
-        });
-      }
-    }
+    const hoverController = createHoverController({
+      activeNodes,
+      activeEdges,
+      hoverConfigRef,
+      containerHeight: height,
+      isHoveringRef,
+      cursorWorldPosRef,
+      cursorScreenPosRef,
+      projectInteractionRef,
+      highlightedIdsRef,
+      onFilterClick,
+      renderer: {
+        getTransform: () => renderer.getTransform(),
+        screenToWorld: (screen) => renderer.screenToWorld(screen),
+        isHoveringProject: () => renderer.isHoveringProject(),
+        getNodes: () => renderer.getNodes(),
+        // Wrap applyHighlight to pass contrast-based edge opacity function
+        applyHighlight: (ids, baseDim) => renderer.applyHighlight(ids, baseDim, computeEdgeOpacity),
+      },
+    });
 
     d3.select(svg)
-      .on("mouseenter.project", () => { isHoveringRef.current = true; })
-      .on("mouseleave.project", () => {
-        isHoveringRef.current = false;
-        cursorWorldPosRef.current = null;
-        cursorScreenPosRef.current = null;
-      })
+      .on("mouseenter.project", () => hoverController.handleMouseEnter())
       .on("mousemove.hover", (event: MouseEvent) => {
         const [screenX, screenY] = d3.pointer(event, svg);
-        const { similarityThreshold } = hoverConfigRef.current;
-
-        // Track cursor position for project creation
-        const transform = renderer.getTransform();
-        cursorScreenPosRef.current = { x: screenX, y: screenY };
-        const worldX = (screenX - transform.x) / transform.k;
-        const worldY = (screenY - transform.y) / transform.k;
-        cursorWorldPosRef.current = { x: worldX, y: worldY };
-
-        // Check if cursor is over a project node - skip hover highlighting if so
-        if (renderer.isHoveringProject()) {
-          highlightedIdsRef.current = new Set();
-          applyHighlight(new Set());
-          return;
-        }
-
-        const { keywordHighlightedIds, isEmptySpace, debug } = computeHoverHighlight({
-          nodes,
-          screenCenter: { x: screenX, y: screenY },
-          screenRadius: height * screenRadiusFraction,
-          transform,
-          similarityThreshold,
-          embeddings,
-          adjacency,
-        });
-
-        // Log debug info occasionally
-        if (debug && Math.random() < 0.02) {
-          console.log("[hover]", {
-            spatial: debug.spatialCount,
-            simPass: debug.similarityPassCount,
-            neighbors: debug.neighborAddCount,
-            total: keywordHighlightedIds.size,
-            simRange: `${debug.minSimilarity.toFixed(2)}-${debug.maxSimilarity.toFixed(2)}`,
-            threshold: similarityThreshold,
-          });
-        }
-
-        if (isEmptySpace) {
-          highlightedIdsRef.current = new Set();
-          applyHighlight(null);
-        } else {
-          highlightedIdsRef.current = keywordHighlightedIds;
-          applyHighlight(keywordHighlightedIds);
-        }
+        hoverController.handleMouseMove(screenX, screenY);
       })
-      .on("mouseleave.hover", () => {
-        highlightedIdsRef.current = new Set();
-        applyHighlight(new Set());
-      })
-      .on("click.filter", () => {
-        if (projectInteractionRef.current) {
-          projectInteractionRef.current = false;
-          return;
-        }
-        onFilterClick();
-      });
+      .on("mouseleave.hover", () => hoverController.handleMouseLeave())
+      .on("click.filter", () => hoverController.handleClick());
 
     // Start simulation
     simulation
@@ -401,7 +335,6 @@ export function useD3TopicsRenderer(
       simulation.stop();
       d3.select(svg)
         .on("mouseenter.project", null)
-        .on("mouseleave.project", null)
         .on("mousemove.hover", null)
         .on("mouseleave.hover", null)
         .on("click.filter", null)
@@ -411,7 +344,10 @@ export function useD3TopicsRenderer(
       renderer.destroy();
       rendererRef.current = null;
     };
-  }, [enabled, activeNodes, activeEdges, projectNodes, knnStrength, contrast, colorMixRatio, hoverConfig.screenRadiusFraction, pcaTransform, getSavedPosition, onKeywordClick, onProjectClick, onProjectDrag, onZoomChange, onFilterClick, isHoveringRef, cursorWorldPosRef, cursorScreenPosRef, projectInteractionRef, svgRef]);
+  // Note: projectNodes excluded from deps - we use projectNodesRef to avoid re-creating
+  // the graph when project positions are updated via drag. New projects are added when
+  // activeNodes changes (which triggers a full re-render anyway).
+  }, [enabled, activeNodes, activeEdges, knnStrength, contrast, colorMixRatio, hoverConfig.screenRadiusFraction, pcaTransform, getSavedPosition, onKeywordClick, onProjectClick, onProjectDrag, onZoomChange, onFilterClick, isHoveringRef, cursorWorldPosRef, cursorScreenPosRef, projectInteractionRef, svgRef]);
 
   // Get position for a node ID (for click-to-filter position capture)
   const getNodePosition = (id: string): { x: number; y: number } | undefined => {
