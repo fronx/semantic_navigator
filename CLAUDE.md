@@ -10,6 +10,7 @@ npm run build        # Build for production
 npm run lint         # Run ESLint
 npm test             # Run vitest tests
 npm test -- --run    # Run tests once (no watch mode)
+npm test -- src/lib/__tests__/parser.test.ts --run  # Run specific test file
 npx tsc --noEmit     # Type check without emitting
 npx supabase db push # Apply database migrations
 ```
@@ -76,7 +77,17 @@ Semantic Navigator is a knowledge base tool that imports markdown files, atomize
 - `src/lib/ingestion.ts` - Orchestrates node creation, embeddings, and summarization
 - `src/lib/summarization.ts` - Claude API calls for summaries and keyword extraction
 - `src/lib/embeddings.ts` - OpenAI embedding generation
+- `src/lib/graph-queries.ts` - Reusable database queries for graph data (keyword backbone, similarity edges)
 - `supabase/schema.sql` - Database schema with pgvector setup
+
+### Core Hooks
+
+- `src/hooks/useSemanticZoom.ts` - Filter graph data based on zoom level using community hierarchy
+- `src/hooks/useClusterLabels.ts` - Generate cluster labels via LLM with caching
+- `src/hooks/useStableRef.ts` - Prevent React effect re-runs for callbacks (see `docs/patterns/stable-refs.md`)
+- `src/hooks/useD3TopicsRenderer.ts` - D3/SVG graph rendering logic for TopicsView
+- `src/hooks/useThreeTopicsRenderer.ts` - Three.js/WebGL graph rendering logic for TopicsView
+- `src/hooks/useTopicsFilter.ts` - Click-to-filter and external filter logic
 
 ### API Routes
 
@@ -92,7 +103,7 @@ Semantic Navigator is a knowledge base tool that imports markdown files, atomize
 - `src/components/VaultBrowser.tsx` - File picker for importing markdown files
 - `src/components/NodeViewer.tsx` - Display node content and children
 - `src/components/MapView.tsx` - D3 force-directed graph of articles and keywords
-- `src/components/TopicsView.tsx` - **Main visualization view** for keyword-only graphs. Supports both D3/SVG and Three.js/WebGL renderers via `rendererType` prop. Note: This is the primary view we're actively developing (not MapView).
+- `src/components/TopicsView.tsx` - **Main visualization view** for keyword-only graphs. Orchestrates modular hooks for rendering (D3 or Three.js), filtering, clustering, and project creation. This is the primary view being actively developed.
 - `src/components/ImportProgress.tsx` - SSE-based import progress display
 
 ### Database
