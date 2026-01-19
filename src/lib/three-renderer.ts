@@ -23,7 +23,7 @@ import {
   shouldFitAfterCooling,
   markInitialFitDone,
 } from "@/lib/auto-fit";
-import { computeClusterLabels } from "@/lib/cluster-labels";
+import { createLabelOverlayManager, computeNodeDegrees } from "@/lib/three-label-overlays";
 
 // ============================================================================
 // Types
@@ -141,14 +141,8 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
   // Track the canvas element this renderer creates (for cleanup without affecting other renderers)
   const ownCanvas = container.querySelector("canvas");
 
-  // Create HTML overlay for cluster labels (positioned on top of WebGL canvas)
-  const labelOverlay = document.createElement("div");
-  labelOverlay.style.cssText = "position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:hidden;";
-  container.style.position = "relative"; // Ensure container is positioning context
-  container.appendChild(labelOverlay);
-
-  // Cache for label DOM elements (keyed by communityId)
-  const labelCache = new Map<number, HTMLDivElement>();
+  // Ensure container is positioning context for overlays
+  container.style.position = "relative";
 
   // Track current data
   let currentNodes = initialNodes;
@@ -187,6 +181,9 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
   );
   let currentCurveMethod = immediateParams.current.curveMethod;
   let currentCurveType = immediateParams.current.curveType;
+
+  // Compute node degrees (number of connections) for label visibility
+  let nodeDegrees = computeNodeDegrees(currentNodes.map(n => n.id), currentLinks);
 
   // Arc segments for custom arc rendering (more = smoother, but more geometry)
   const ARC_SEGMENTS = 16;
@@ -399,6 +396,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
 
       // Update cluster labels on each tick (positions change during simulation)
       updateClusterLabelsInternal();
+      updateKeywordLabelsInternal();
     });
 
   // Set initial data
@@ -525,8 +523,9 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     camera.position.x -= deltaX / pixelsPerUnit;
     camera.position.y += deltaY / pixelsPerUnit; // Y is inverted in screen coords
 
-    // Update cluster labels during pan
+    // Update labels during pan
     updateClusterLabelsInternal();
+    updateKeywordLabelsInternal();
   };
 
   const handleMouseUp = () => {
@@ -607,8 +606,9 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     camera.position.z = newZ;
     markUserInteraction(autoFitState); // User has zoomed, stop auto-fitting
 
-    // Update cluster labels during zoom
+    // Update labels during zoom
     updateClusterLabelsInternal();
+    updateKeywordLabelsInternal();
 
     // Debounce callback to avoid React re-renders during zoom
     if (zoomEndTimeout) clearTimeout(zoomEndTimeout);
@@ -749,69 +749,24 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     };
   }
 
-  // Helper to update cluster label DOM elements
+  // Label overlay manager (handles cluster and keyword labels)
+  const labelManager = createLabelOverlayManager({
+    container,
+    worldToScreen,
+    getCameraZ: () => graph.camera()?.position.z ?? 1000,
+    getNodeRadius: (node) => getNodeRadius(node, immediateParams.current.dotScale) * DOT_SCALE_FACTOR,
+  });
+
+  // Wrapper functions for tick/zoom updates
   function updateClusterLabelsInternal() {
-    const camera = graph.camera();
-    if (!camera) return;
+    labelManager.updateClusterLabels(currentNodes);
+  }
 
-    // Compute labels from current node positions
-    const labelData = computeClusterLabels({
-      nodes: currentNodes,
-      getColor: (communityId) => communityColorScale(String(communityId)),
-    });
-
-    const rect = container.getBoundingClientRect();
-    const fontSize = 18;
-
-    // Track which communities we've seen (for cleanup)
-    const seenCommunities = new Set<number>();
-
-    for (const data of labelData) {
-      seenCommunities.add(data.communityId);
-
-      // Convert centroid to screen coordinates
-      const screenPos = worldToScreen({ x: data.centroid[0], y: data.centroid[1] });
-      if (!screenPos) continue;
-
-      // Skip if off-screen (with some padding)
-      if (screenPos.x < -100 || screenPos.x > rect.width + 100 ||
-          screenPos.y < -100 || screenPos.y > rect.height + 100) {
-        // Hide existing label if off-screen
-        const existing = labelCache.get(data.communityId);
-        if (existing) existing.style.display = "none";
-        continue;
-      }
-
-      // Get or create label element
-      let labelEl = labelCache.get(data.communityId);
-      if (!labelEl) {
-        labelEl = document.createElement("div");
-        labelEl.style.cssText = "position:absolute;text-align:center;font-weight:600;white-space:pre-wrap;transform:translate(-50%,-50%);";
-        labelOverlay.appendChild(labelEl);
-        labelCache.set(data.communityId, labelEl);
-      }
-
-      // Update label content and position
-      labelEl.style.display = "block";
-      labelEl.style.left = `${screenPos.x}px`;
-      labelEl.style.top = `${screenPos.y}px`;
-      labelEl.style.fontSize = `${fontSize}px`;
-      labelEl.style.color = data.color;
-      labelEl.style.opacity = String(Math.max(0.2, data.visibilityRatio) * 0.7);
-
-      // Split label into words for multi-line display
-      if (labelEl.textContent !== data.label) {
-        labelEl.textContent = data.label.split(/\s+/).join("\n");
-      }
-    }
-
-    // Remove labels for communities that no longer exist
-    for (const [communityId, labelEl] of labelCache) {
-      if (!seenCommunities.has(communityId)) {
-        labelEl.remove();
-        labelCache.delete(communityId);
-      }
-    }
+  function updateKeywordLabelsInternal() {
+    // Get graph data with positions (3d-force-graph updates node positions in place)
+    const graphData = graph.graphData();
+    const graphNodes = graphData.nodes as SimNode[];
+    labelManager.updateKeywordLabels(graphNodes, nodeDegrees);
   }
 
   return {
@@ -842,6 +797,8 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
         immediateParams.current.curveMethod
       );
       currentCurveMethod = immediateParams.current.curveMethod;
+      // Recompute node degrees for label visibility
+      nodeDegrees = computeNodeDegrees(currentNodes.map(n => n.id), currentLinks);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       graph.graphData({ nodes: currentNodes as any, links: currentLinks as any });
     },
@@ -897,6 +854,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
 
     updateClusterLabels() {
       updateClusterLabelsInternal();
+      updateKeywordLabelsInternal();
     },
 
     updateColors(nodeColors: Map<string, string>) {
@@ -996,14 +954,8 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       }
       linkCache.clear();
 
-      // Remove label overlay and clear cache
-      for (const labelEl of labelCache.values()) {
-        labelEl.remove();
-      }
-      labelCache.clear();
-      if (labelOverlay.parentNode === container) {
-        container.removeChild(labelOverlay);
-      }
+      // Clean up label overlays
+      labelManager.destroy();
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (graph as any)._destructor?.();
