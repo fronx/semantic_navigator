@@ -7,10 +7,13 @@
  */
 
 import * as THREE from "three";
+import { Line2 } from "three/examples/jsm/lines/Line2.js";
+import { LineGeometry } from "three/examples/jsm/lines/LineGeometry.js";
+import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { forceCollide } from "d3-force";
 import { communityColorScale } from "@/lib/hull-renderer";
+import { blendColors, dimColor, colors } from "@/lib/colors";
 import { computeEdgeCurveDirections, type SimNode, type SimLink, type ImmediateParams } from "@/lib/map-renderer";
-import { computeArcPoints } from "@/lib/edge-curves";
 import {
   createConvergenceState,
   processSimulationTick,
@@ -125,6 +128,30 @@ function getNodeRadius(node: SimNode, dotScale: number): number {
   return BASE_DOT_RADIUS * dotScale;
 }
 
+/**
+ * Get edge color by blending the colors of its source and target nodes.
+ */
+function getEdgeColor(
+  link: SimLink,
+  nodeMap: Map<string, SimNode>,
+  nodeColors?: Map<string, string>
+): string {
+  const sourceId = typeof link.source === "string" ? link.source : link.source.id;
+  const targetId = typeof link.target === "string" ? link.target : link.target.id;
+
+  const sourceNode = nodeMap.get(sourceId);
+  const targetNode = nodeMap.get(targetId);
+
+  if (!sourceNode || !targetNode) {
+    return "#888888";
+  }
+
+  const sourceColor = getNodeColor(sourceNode, nodeColors);
+  const targetColor = getNodeColor(targetNode, nodeColors);
+
+  return blendColors(sourceColor, targetColor);
+}
+
 // ============================================================================
 // Renderer Factory
 // ============================================================================
@@ -151,6 +178,9 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
   let currentBaseDim = 0.3;
   let currentNodeColors: Map<string, string> | undefined = initialNodeColors;
 
+  // Node map for quick lookups (used for edge coloring)
+  let nodeMap = new Map<string, SimNode>(currentNodes.map(n => [n.id, n]));
+
   // Fix project nodes in place (exclude from force simulation)
   // Setting fx/fy anchors the node at that position
   for (const node of currentNodes) {
@@ -163,8 +193,11 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
   // Cache for node meshes to avoid recreating on every update
   const nodeCache = new Map<string, THREE.Mesh<THREE.CircleGeometry, THREE.MeshBasicMaterial>>();
 
-  // Cache for link objects (when using arc rendering)
-  const linkCache = new Map<string, THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>>();
+  // Cache for link objects (when using arc rendering with fat lines)
+  const linkCache = new Map<string, Line2>();
+
+  // Cache for original edge colors (for dimming via color mixing instead of opacity)
+  const edgeColorCache = new Map<string, string>();
 
   // Helper to get link cache key
   const getLinkKey = (link: SimLink): string => {
@@ -186,7 +219,10 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
   let nodeDegrees = computeNodeDegrees(currentNodes.map(n => n.id), currentLinks);
 
   // Arc segments for custom arc rendering (more = smoother, but more geometry)
-  const ARC_SEGMENTS = 16;
+  const ARC_SEGMENTS = 20;
+
+  // Z offset to keep edges behind nodes (prevents z-fighting flicker)
+  const EDGE_Z_OFFSET = -1;
 
   // Configure graph for 2D display (top-down view)
   graph
@@ -245,9 +281,9 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     .nodeVal((node: object) => getNodeRadius(node as SimNode, immediateParams.current.dotScale))
     .linkSource("source")
     .linkTarget("target")
-    .linkColor(() => "#888")
+    .linkColor((link: object) => getEdgeColor(link as SimLink, nodeMap, currentNodeColors))
     .linkOpacity(immediateParams.current.edgeOpacity * 0.4)
-    .linkWidth(1)
+    .linkWidth(1.5)
     .backgroundColor("#ffffff00") // Transparent
     .showNavInfo(false)
     .enableNodeDrag(true)
@@ -267,35 +303,53 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
           return immediateParams.current.edgeCurve * direction;
         });
     } else {
-      // Use custom circular arc rendering
+      // Use custom circular arc rendering with fat lines (Line2)
+      const rect = container.getBoundingClientRect();
+
       graph
         .linkCurvature(0) // Disable built-in curves
         .linkThreeObject((link: object) => {
           const l = link as SimLink;
           const key = getLinkKey(l);
 
+          const edgeColor = getEdgeColor(l, nodeMap, currentNodeColors);
+
           // Check cache first
           const cached = linkCache.get(key);
           if (cached) {
-            // Update opacity in case it changed
-            cached.material.opacity = immediateParams.current.edgeOpacity * 0.4;
-            cached.material.needsUpdate = true;
+            // Update color and opacity in case they changed
+            const mat = cached.material as LineMaterial;
+            mat.color.set(edgeColor);
+            mat.opacity = immediateParams.current.edgeOpacity * 0.4;
+            mat.needsUpdate = true;
             return cached;
           }
 
-          // Create a line with enough vertices for the arc
-          const geometry = new THREE.BufferGeometry();
-          const positions = new Float32Array((ARC_SEGMENTS + 1) * 3);
-          geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+          // Create fat line geometry with initial positions
+          // LineGeometry uses InstancedInterleavedBuffer internally - we'll update
+          // the instanceStart/instanceEnd attributes directly in linkPositionUpdate
+          // to avoid buffer recreation that setPositions() causes
+          const geometry = new LineGeometry();
+          const initialPositions = new Float32Array((ARC_SEGMENTS + 1) * 3);
+          geometry.setPositions(initialPositions); // Called once to set up buffers
 
-          const material = new THREE.LineBasicMaterial({
-            color: 0x888888,
+          const material = new LineMaterial({
+            color: new THREE.Color(edgeColor).getHex(),
+            linewidth: 2, // Width in world units
             transparent: true,
             opacity: immediateParams.current.edgeOpacity * 0.4,
+            resolution: new THREE.Vector2(rect.width, rect.height),
+            worldUnits: true, // Use world units so lines scale with zoom
+            alphaToCoverage: true, // Reduces transparency artifacts at joints
           });
 
-          const line = new THREE.Line(geometry, material);
+          const line = new Line2(geometry, material);
+          line.computeLineDistances();
+          // Disable frustum culling - the bounding box isn't updated when we
+          // modify the buffer directly, causing lines to disappear when zoomed in
+          line.frustumCulled = false;
           linkCache.set(key, line);
+          edgeColorCache.set(key, edgeColor); // Store original color for dimming
           return line;
         })
         .linkPositionUpdate((line: object, { start, end }: { start: { x: number; y: number; z?: number }; end: { x: number; y: number; z?: number } }, link: object) => {
@@ -303,30 +357,86 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
           const direction = curveDirections.get(l) ?? 1;
           const curveIntensity = immediateParams.current.edgeCurve;
 
-          // Compute arc points using shared utility
-          const arcPoints = computeArcPoints(
-            { x: start.x, y: start.y },
-            { x: end.x, y: end.y },
-            curveIntensity,
-            direction,
-            ARC_SEGMENTS
-          );
+          const line2 = line as Line2;
+          const geometry = line2.geometry as LineGeometry;
 
-          // Update line geometry
-          const threeObj = line as THREE.Line;
-          const positions = threeObj.geometry.attributes.position as THREE.BufferAttribute;
+          // LineGeometry converts N points into N-1 line segments
+          // Each segment is stored as 6 floats: [start_x, start_y, start_z, end_x, end_y, end_z]
+          // So for ARC_SEGMENTS+1 points, we have ARC_SEGMENTS segments = ARC_SEGMENTS * 6 floats
+          const instanceStart = geometry.attributes.instanceStart;
+          if (!instanceStart) return false;
 
-          for (let i = 0; i < arcPoints.length; i++) {
-            positions.setXYZ(i, arcPoints[i].x, arcPoints[i].y, 0);
+          // Get the underlying interleaved buffer array
+          const data = (instanceStart as THREE.InterleavedBufferAttribute).data;
+          const array = data.array as Float32Array;
+
+          const { x: x1, y: y1 } = start;
+          const { x: x2, y: y2 } = end;
+
+          const dx = x2 - x1;
+          const dy = y2 - y1;
+          const chordLength = Math.sqrt(dx * dx + dy * dy);
+
+          // Compute arc points and write as line segments into the interleaved buffer
+          // Buffer layout per segment: [start.x, start.y, start.z, end.x, end.y, end.z]
+          if (curveIntensity === 0 || chordLength === 0 || Math.abs(chordLength * curveIntensity) < 0.1) {
+            // Straight line - linear interpolation
+            for (let i = 0; i < ARC_SEGMENTS; i++) {
+              const t0 = i / ARC_SEGMENTS;
+              const t1 = (i + 1) / ARC_SEGMENTS;
+              const idx = i * 6;
+              // Segment start point
+              array[idx] = x1 + t0 * dx;
+              array[idx + 1] = y1 + t0 * dy;
+              array[idx + 2] = EDGE_Z_OFFSET;
+              // Segment end point
+              array[idx + 3] = x1 + t1 * dx;
+              array[idx + 4] = y1 + t1 * dy;
+              array[idx + 5] = EDGE_Z_OFFSET;
+            }
+          } else {
+            // Curved arc
+            const sagitta = chordLength * curveIntensity * direction;
+            const absSagitta = Math.abs(sagitta);
+            const radius = (chordLength * chordLength / 4 + absSagitta * absSagitta) / (2 * absSagitta);
+
+            const mx = (x1 + x2) / 2;
+            const my = (y1 + y2) / 2;
+            const perpX = -dy / chordLength;
+            const perpY = dx / chordLength;
+
+            const centerOffset = radius - absSagitta;
+            const sign = sagitta > 0 ? -1 : 1;
+            const cx = mx + sign * centerOffset * perpX;
+            const cy = my + sign * centerOffset * perpY;
+
+            const startAngle = Math.atan2(y1 - cy, x1 - cx);
+            const endAngle = Math.atan2(y2 - cy, x2 - cx);
+
+            let angleDiff = endAngle - startAngle;
+            while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+            while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+
+            for (let i = 0; i < ARC_SEGMENTS; i++) {
+              const t0 = i / ARC_SEGMENTS;
+              const t1 = (i + 1) / ARC_SEGMENTS;
+              const angle0 = startAngle + t0 * angleDiff;
+              const angle1 = startAngle + t1 * angleDiff;
+              const idx = i * 6;
+              // Segment start point
+              array[idx] = cx + radius * Math.cos(angle0);
+              array[idx + 1] = cy + radius * Math.sin(angle0);
+              array[idx + 2] = EDGE_Z_OFFSET;
+              // Segment end point
+              array[idx + 3] = cx + radius * Math.cos(angle1);
+              array[idx + 4] = cy + radius * Math.sin(angle1);
+              array[idx + 5] = EDGE_Z_OFFSET;
+            }
           }
-          // Fill remaining vertices with last point (in case we have fewer points)
-          const lastPoint = arcPoints[arcPoints.length - 1];
-          for (let i = arcPoints.length; i <= ARC_SEGMENTS; i++) {
-            positions.setXYZ(i, lastPoint.x, lastPoint.y, 0);
-          }
 
-          positions.needsUpdate = true;
-          threeObj.geometry.computeBoundingSphere();
+          // Mark buffer as needing GPU upload (no buffer recreation)
+          data.needsUpdate = true;
+          line2.computeLineDistances();
 
           return true; // Indicates we've updated the position
         });
@@ -787,9 +897,12 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
         line.material.dispose();
       }
       linkCache.clear();
+      edgeColorCache.clear();
 
       currentNodes = nodes;
       currentLinks = links;
+      // Rebuild node map for edge coloring
+      nodeMap = new Map<string, SimNode>(currentNodes.map(n => [n.id, n]));
       // Recompute curve directions (same logic as D3 renderer)
       curveDirections = computeEdgeCurveDirections(
         currentNodes,
@@ -822,6 +935,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
           line.material.dispose();
         }
         linkCache.clear();
+        edgeColorCache.clear();
 
         currentCurveType = immediateParams.current.curveType;
         configureCurveRendering();
@@ -874,23 +988,48 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       currentHighlight = highlightedIds;
       currentBaseDim = baseDim;
 
-      // Update materials in-place instead of recreating meshes
-      for (const [nodeId, mesh] of nodeCache) {
-        const material = mesh.material;
-        let opacity = 1;
+      // Detect current theme for background color
+      const isDarkMode = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      const backgroundColor = isDarkMode ? colors.background.dark : colors.background.light;
 
+      // Compute dim amount: 0 = full color, 1 = fully dimmed (background)
+      const getDimAmount = (isHighlighted: boolean): number => {
         if (highlightedIds === null) {
           // Nothing nearby - dim everything
-          opacity = 1 - baseDim;
+          return baseDim;
         } else if (highlightedIds.size > 0) {
           // Highlight selected, dim others
-          opacity = highlightedIds.has(nodeId) ? 1 : 0.15;
+          return isHighlighted ? 0 : baseDim;
         }
-        // else: highlightedIds is empty Set = hover ended, restore full opacity (1)
+        // highlightedIds is empty Set = hover ended, restore full color
+        return 0;
+      };
 
-        material.opacity = opacity;
-        material.transparent = opacity < 1;
+      // Update node materials (still use opacity for nodes - they don't have joint artifacts)
+      for (const [nodeId, mesh] of nodeCache) {
+        const material = mesh.material;
+        const dimAmount = getDimAmount(highlightedIds?.has(nodeId) ?? false);
+        material.opacity = 1 - dimAmount;
+        material.transparent = dimAmount > 0;
         material.needsUpdate = true;
+      }
+
+      // Update edge materials - use color mixing instead of opacity to avoid joint artifacts
+      // Edge is highlighted only if both endpoints are highlighted
+      for (const [linkKey, linkObj] of linkCache) {
+        const originalColor = edgeColorCache.get(linkKey);
+        if (!originalColor) continue;
+
+        // Parse linkKey to get source and target IDs
+        const [sourceId, targetId] = linkKey.split("->");
+        const bothHighlighted = (highlightedIds?.has(sourceId) ?? false) && (highlightedIds?.has(targetId) ?? false);
+        const dimAmount = getDimAmount(bothHighlighted);
+
+        const mat = linkObj.material as LineMaterial;
+        // Mix original color with background based on dim amount
+        const dimmedColor = dimAmount > 0 ? dimColor(originalColor, dimAmount, backgroundColor) : originalColor;
+        mat.color.set(dimmedColor);
+        mat.needsUpdate = true;
       }
     },
 
@@ -953,6 +1092,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
         line.material.dispose();
       }
       linkCache.clear();
+      edgeColorCache.clear();
 
       // Clean up label overlays
       labelManager.destroy();
