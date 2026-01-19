@@ -248,8 +248,7 @@ export function TopicsView({
     return (
       <div
         ref={containerRef}
-        className="w-full h-full"
-        style={{ cursor: "grab" }}
+        className="w-full h-full cursor-grab"
       />
     );
   }
@@ -257,8 +256,7 @@ export function TopicsView({
   return (
     <svg
       ref={svgRef}
-      className="w-full h-full"
-      style={{ cursor: "grab" }}
+      className="w-full h-full cursor-grab"
     />
   );
 }

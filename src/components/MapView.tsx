@@ -699,8 +699,7 @@ export function MapView({ searchQuery, filterQuery, synonymThreshold, onKeywordC
       {/* Map */}
       <svg
         ref={svgRef}
-        className="flex-1 h-full"
-        style={{ cursor: "grab" }}
+        className="flex-1 h-full cursor-grab"
       />
     </div>
   );
