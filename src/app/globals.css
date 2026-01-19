@@ -24,3 +24,22 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Keyword labels in graph visualizations */
+.keyword-label {
+  color: #333;
+  text-shadow:
+    0 0 3px #fff,
+    0 0 3px #fff,
+    0 0 3px #fff;
+}
+
+@media (prefers-color-scheme: dark) {
+  .keyword-label {
+    color: #ededed;
+    text-shadow:
+      0 0 3px #0a0a0a,
+      0 0 3px #0a0a0a,
+      0 0 3px #0a0a0a;
+  }
+}

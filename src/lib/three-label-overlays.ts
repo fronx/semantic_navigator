@@ -184,7 +184,8 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
       let labelEl = keywordLabelCache.get(node.id);
       if (!labelEl) {
         labelEl = document.createElement("div");
-        labelEl.style.cssText = "position:absolute;font-size:16px;color:#333;white-space:nowrap;transform:translate(0,-50%);text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;";
+        labelEl.className = "keyword-label";
+        labelEl.style.cssText = "position:absolute;font-size:16px;white-space:nowrap;transform:translate(0,-50%);";
         keywordOverlay.appendChild(labelEl);
         keywordLabelCache.set(node.id, labelEl);
       }
