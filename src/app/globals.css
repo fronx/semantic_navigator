@@ -57,8 +57,10 @@ body {
 }
 
 /* Keyword labels: beside nodes, single line, theme-aware glow */
+/* Note: font-size may be scaled dynamically based on zoom level */
 .keyword-label {
   position: absolute;
+  font-size: 16px;
   white-space: nowrap;
   transform: translate(0, -50%);
   color: #333;
@@ -81,8 +83,9 @@ body {
 /* Cluster labels: centered at centroid, multi-line, bold */
 .cluster-label {
   position: absolute;
-  transform: translate(-50%, -50%);
+  font-size: 18px;
+  font-weight: 600;
   text-align: center;
   white-space: pre-wrap;
-  font-weight: 600;
+  transform: translate(-50%, -50%);
 }

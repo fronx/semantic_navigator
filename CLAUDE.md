@@ -176,6 +176,36 @@ SELECT parent_id FROM containment_edges WHERE child_id = <paragraph_id>
 -- If section, query again to get the article
 ```
 
+## Styling
+
+**Prefer CSS classes over inline styles.** Define reusable classes in `src/app/globals.css`.
+
+**When to use CSS classes:**
+- Styles that appear in multiple places or could be reused
+- Theme-aware styles (light/dark mode via `prefers-color-scheme`)
+- Structural styles (positioning, layout, transforms)
+- Visual styles (colors, shadows, fonts)
+
+**When inline styles are acceptable:**
+- Dynamic values that change per-element (e.g., `left`, `top`, `opacity` computed from data)
+- One-off styles truly specific to a single use case
+- Values derived from runtime calculations (zoom level, node positions)
+
+**When TypeScript assigns styles dynamically**, reference CSS base values in comments:
+```typescript
+// Base size matches .keyword-label in globals.css
+const baseFontSize = 16;
+const zoomScale = Math.min(1, 500 / cameraZ);
+labelEl.style.fontSize = `${baseFontSize * zoomScale}px`;
+```
+
+**Composability:** Design classes to be combinable. For example:
+- `.graph-label-overlay` - base overlay container
+- `.graph-label-glow` - theme-aware text glow (can add to any element)
+- `.keyword-label` - complete keyword label styling (convenience composition)
+
+See `src/app/globals.css` for existing graph visualization label classes.
+
 ## Environment
 
 Requires `.env.local` with:

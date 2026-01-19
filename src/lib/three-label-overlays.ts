@@ -62,7 +62,6 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
 
   function updateClusterLabels(nodes: SimNode[]) {
     const rect = container.getBoundingClientRect();
-    const fontSize = 18;
 
     // Compute labels from current node positions
     const labelData = computeClusterLabels({
@@ -102,7 +101,6 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
       labelEl.style.display = "block";
       labelEl.style.left = `${screenPos.x}px`;
       labelEl.style.top = `${screenPos.y}px`;
-      labelEl.style.fontSize = `${fontSize}px`;
       labelEl.style.color = data.color;
       labelEl.style.opacity = String(Math.max(0.2, data.visibilityRatio) * 0.7);
 
@@ -146,8 +144,9 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     }
 
     // Font size scales with zoom: smaller when zoomed out
+    // Base size matches .keyword-label in globals.css
     const baseFontSize = 16;
-    const fontSize = baseFontSize * Math.min(1, 500 / cameraZ);
+    const zoomScale = Math.min(1, 500 / cameraZ);
 
     // Track which nodes we've processed (for cleanup)
     const seenNodes = new Set<string>();
@@ -200,7 +199,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
       labelEl.style.display = "block";
       labelEl.style.left = `${screenPos.x + screenRadius + 4}px`;
       labelEl.style.top = `${screenPos.y}px`;
-      labelEl.style.fontSize = `${fontSize}px`;
+      labelEl.style.fontSize = `${baseFontSize * zoomScale}px`;
 
       // Fade in based on how far above threshold
       const fadeRange = Math.max(1, maxDegree * 0.2);
