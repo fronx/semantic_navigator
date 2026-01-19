@@ -47,12 +47,13 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
 
   // Create overlay for cluster labels
   const clusterOverlay = document.createElement("div");
-  clusterOverlay.style.cssText = "position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:hidden;";
+  clusterOverlay.className = "graph-label-overlay";
   container.appendChild(clusterOverlay);
 
   // Create overlay for keyword labels (z-index above cluster labels)
   const keywordOverlay = document.createElement("div");
-  keywordOverlay.style.cssText = "position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:hidden;z-index:1;";
+  keywordOverlay.className = "graph-label-overlay";
+  keywordOverlay.style.zIndex = "1";
   container.appendChild(keywordOverlay);
 
   // Caches for DOM elements
@@ -92,7 +93,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
       let labelEl = clusterLabelCache.get(data.communityId);
       if (!labelEl) {
         labelEl = document.createElement("div");
-        labelEl.style.cssText = "position:absolute;text-align:center;font-weight:600;white-space:pre-wrap;transform:translate(-50%,-50%);";
+        labelEl.className = "cluster-label";
         clusterOverlay.appendChild(labelEl);
         clusterLabelCache.set(data.communityId, labelEl);
       }
@@ -185,7 +186,6 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
       if (!labelEl) {
         labelEl = document.createElement("div");
         labelEl.className = "keyword-label";
-        labelEl.style.cssText = "position:absolute;font-size:16px;white-space:nowrap;transform:translate(0,-50%);";
         keywordOverlay.appendChild(labelEl);
         keywordLabelCache.set(node.id, labelEl);
       }
