@@ -181,6 +181,43 @@ await supabase
 3. **Automatic on startup** - Sync happens when the app starts, not manually
 4. **Incremental benefit** - Each implementation step provides value independently
 
+### Testing Principles
+
+As we implement continuous sync, we will incrementally build up test coverage. Every change must include automated tests.
+
+**Testing pyramid - prefer unit tests:**
+
+Integration tests are valuable but expensive (slow, complex, potentially flaky). We should:
+- **Maximize unit test coverage** - Extract pure functions and test them in isolation
+- **Use integration tests sparingly** - Reserve for critical paths where unit tests can't catch the bugs
+- **One integration test suite for ingestion** - Cover the key database operations (create, skip, reimport, delete) in a single focused test file rather than sprawling integration tests
+
+| Component Type | Testing Approach |
+|----------------|------------------|
+| Pure functions (sync planner, hash comparison) | Unit tests |
+| Decision logic (should reimport?) | Extract to pure function, unit test |
+| Database operations (ingestion, deletion) | One focused integration test suite |
+| File system operations (vault scanner) | Unit tests with temp directories |
+| API endpoints | Minimal integration tests for critical paths |
+
+**Mocking strategy for the ingestion integration tests:**
+
+The ingestion pipeline has expensive external dependencies (Claude for chunking/summarization, OpenAI for embeddings). For the integration test suite:
+
+1. **Mock LLM calls** - Return canned chunks and summaries
+2. **Mock embedding calls** - Return deterministic fake embeddings (e.g., `[0.1, 0.2, ...]`)
+3. **Use real Supabase** - Test actual database operations, cascades, and constraints
+
+This gives us confidence that the database logic works correctly without incurring API costs or flakiness.
+
+**Test file locations:**
+- Unit tests: `src/lib/__tests__/<module>.test.ts`
+- Integration tests: `src/lib/__tests__/ingestion.integration.test.ts` (single file for all ingestion scenarios)
+
+**Current test gaps to address:**
+- `ingestion-chunks.ts` - No tests. Need one integration test suite covering reimport behavior.
+- `node-identity.ts` - No tests. Need unit tests for identity key generation.
+
 ### New Data Model
 
 Add a `vault_files` table to track file metadata separately from content:
@@ -244,20 +281,25 @@ Each step is independently testable and provides incremental value. Steps are or
 ---
 
 ### Step 1: Fix the update path (small, immediate value)
-**Status**: Not started
+**Status**: Complete
 
 **Problem**: Changed files are detected but not re-imported.
 
-**Change**: In `src/lib/ingestion-chunks.ts`, when `content_hash` differs, trigger the existing `deleteArticleWithChunks` path instead of logging a warning.
+**Changes made**:
+1. Extracted `determineImportAction()` pure function for decision logic
+2. Refactored `ingestArticleWithChunks` to use it
+3. Changed content now triggers delete + reimport path
 
-**Files to modify**:
-- `src/lib/ingestion-chunks.ts` (lines 131-139)
+**Files modified**:
+- `src/lib/ingestion-chunks.ts` - Added `determineImportAction`, refactored main function
 
-**Testable outcome**:
-1. Import a file via the existing UI
-2. Edit the file in your vault
-3. Import again (same file)
-4. Verify the new content appears in the database
+**Tests created**:
+- `src/lib/__tests__/ingestion-chunks.test.ts` - 6 unit tests for decision logic
+- `src/lib/__tests__/ingestion.integration.test.ts` - 4 integration tests:
+  1. New article import - Creates article and chunks
+  2. Unchanged article skip - Returns existing ID, no LLM calls
+  3. Changed article reimport - Deletes old, creates new
+  4. Project associations preserved - Associations survive reimport
 
 ---
 

@@ -12,6 +12,29 @@ interface SavedAssociation {
   association_type: AssociationType;
 }
 
+/**
+ * Determines what action to take when importing an article.
+ * Extracted as a pure function for easy unit testing.
+ */
+export type ImportAction = "create" | "skip" | "reimport";
+
+export function determineImportAction(
+  existingArticle: { content_hash: string } | null,
+  newContentHash: string,
+  forceReimport?: boolean
+): ImportAction {
+  if (!existingArticle) {
+    return "create";
+  }
+  if (forceReimport) {
+    return "reimport";
+  }
+  if (existingArticle.content_hash === newContentHash) {
+    return "skip";
+  }
+  return "reimport";
+}
+
 function hash(content: string): string {
   return createHash("sha256").update(content).digest("hex").slice(0, 16);
 }
@@ -122,21 +145,26 @@ export async function ingestArticleWithChunks(
     source_path: sourcePath,
   });
 
+  // Determine what action to take
+  const action = determineImportAction(
+    existingArticle ? { content_hash: existingArticle.content_hash } : null,
+    articleContentHash,
+    options?.forceReimport
+  );
+
   // Track associations to restore after reimport
   let savedAssociations: SavedAssociation[] = [];
 
-  if (existingArticle && options?.forceReimport) {
-    console.log(`[Reimport] Deleting existing article: "${parsed.title}"`);
-    savedAssociations = await deleteArticleWithChunks(supabase, existingArticle.id);
-  } else if (existingArticle) {
-    if (existingArticle.content_hash === articleContentHash) {
-      console.log(`[Skip] Article already exists: "${parsed.title}"`);
-      callbacks?.onProgress?.(`Article: ${parsed.title} (existing)`, 1, 1);
-      return existingArticle.id;
-    } else {
-      console.warn(`[Import] Article "${parsed.title}" content changed, skipping (not implemented)`);
-      return existingArticle.id;
-    }
+  if (action === "skip") {
+    console.log(`[Skip] Article already exists: "${parsed.title}"`);
+    callbacks?.onProgress?.(`Article: ${parsed.title} (existing)`, 1, 1);
+    return existingArticle!.id;
+  }
+
+  if (action === "reimport") {
+    const reason = options?.forceReimport ? "force reimport" : "content changed";
+    console.log(`[Reimport] Article "${parsed.title}" (${reason}), reimporting`);
+    savedAssociations = await deleteArticleWithChunks(supabase, existingArticle!.id);
   }
 
   // Run chunker to get all chunks
