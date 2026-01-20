@@ -12,6 +12,17 @@ interface SavedAssociation {
   association_type: AssociationType;
 }
 
+interface SavedBacklink {
+  source_id: string;
+  link_text: string;
+  context: string | null;
+}
+
+interface DeleteResult {
+  savedAssociations: SavedAssociation[];
+  savedBacklinks: SavedBacklink[];
+}
+
 /**
  * Determines what action to take when importing an article.
  * Extracted as a pure function for easy unit testing.
@@ -49,11 +60,11 @@ export interface ChunkIngestionOptions {
 }
 
 // Delete an article and all its descendants (handles old section→paragraph hierarchy too)
-// Returns saved project associations so they can be restored after reimport
+// Returns saved project associations and incoming backlinks so they can be restored after reimport
 async function deleteArticleWithChunks(
   supabase: SupabaseClient,
   articleId: string
-): Promise<SavedAssociation[]> {
+): Promise<DeleteResult> {
   // Save project associations before deletion (so they can be restored)
   const { data: associations } = await supabase
     .from("project_associations")
@@ -67,6 +78,23 @@ async function deleteArticleWithChunks(
 
   if (savedAssociations.length > 0) {
     console.log(`[Reimport] Saving ${savedAssociations.length} project associations for restoration`);
+  }
+
+  // Save incoming backlinks before deletion (so they can be restored)
+  // These are backlinks FROM other articles TO this article
+  const { data: backlinks } = await supabase
+    .from("backlink_edges")
+    .select("source_id, link_text, context")
+    .eq("target_id", articleId);
+
+  const savedBacklinks: SavedBacklink[] = (backlinks || []).map((b) => ({
+    source_id: b.source_id,
+    link_text: b.link_text,
+    context: b.context,
+  }));
+
+  if (savedBacklinks.length > 0) {
+    console.log(`[Reimport] Saving ${savedBacklinks.length} incoming backlinks for restoration`);
   }
 
   // Recursively get all descendant node IDs
@@ -95,7 +123,8 @@ async function deleteArticleWithChunks(
   await supabase.from("containment_edges").delete().in("parent_id", allNodeIds);
   await supabase.from("containment_edges").delete().in("child_id", allNodeIds);
 
-  // Delete backlink edges
+  // Delete backlink edges (both incoming and outgoing)
+  // Note: We saved incoming backlinks above so they can be restored
   await supabase.from("backlink_edges").delete().in("source_id", allNodeIds);
   await supabase.from("backlink_edges").delete().in("target_id", allNodeIds);
 
@@ -107,7 +136,7 @@ async function deleteArticleWithChunks(
 
   console.log(`[Reimport] Deleted ${allNodeIds.length} nodes (article + descendants)`);
 
-  return savedAssociations;
+  return { savedAssociations, savedBacklinks };
 }
 
 // Restore project associations after article reimport
@@ -127,6 +156,30 @@ async function restoreProjectAssociations(
   }
 
   console.log(`[Reimport] Restored ${associations.length} project associations`);
+}
+
+// Restore incoming backlinks after article reimport
+async function restoreBacklinks(
+  supabase: SupabaseClient,
+  newArticleId: string,
+  backlinks: SavedBacklink[]
+): Promise<void> {
+  if (backlinks.length === 0) return;
+
+  for (const backlink of backlinks) {
+    const { error } = await supabase.from("backlink_edges").insert({
+      source_id: backlink.source_id,
+      target_id: newArticleId,
+      link_text: backlink.link_text,
+      context: backlink.context,
+    });
+
+    if (error) {
+      console.warn(`[Backlinks] Failed to restore backlink from ${backlink.source_id}: ${error.message}`);
+    }
+  }
+
+  console.log(`[Reimport] Restored ${backlinks.length} incoming backlinks`);
 }
 
 export async function ingestArticleWithChunks(
@@ -152,8 +205,9 @@ export async function ingestArticleWithChunks(
     options?.forceReimport
   );
 
-  // Track associations to restore after reimport
+  // Track data to restore after reimport
   let savedAssociations: SavedAssociation[] = [];
+  let savedBacklinks: SavedBacklink[] = [];
 
   if (action === "skip") {
     console.log(`[Skip] Article already exists: "${parsed.title}"`);
@@ -164,7 +218,9 @@ export async function ingestArticleWithChunks(
   if (action === "reimport") {
     const reason = options?.forceReimport ? "force reimport" : "content changed";
     console.log(`[Reimport] Article "${parsed.title}" (${reason}), reimporting`);
-    savedAssociations = await deleteArticleWithChunks(supabase, existingArticle!.id);
+    const deleteResult = await deleteArticleWithChunks(supabase, existingArticle!.id);
+    savedAssociations = deleteResult.savedAssociations;
+    savedBacklinks = deleteResult.savedBacklinks;
   }
 
   // Run chunker to get all chunks
@@ -360,8 +416,9 @@ export async function ingestArticleWithChunks(
     }
   }
 
-  // Restore project associations if this was a reimport
+  // Restore project associations and incoming backlinks if this was a reimport
   await restoreProjectAssociations(supabase, articleNode.id, savedAssociations);
+  await restoreBacklinks(supabase, articleNode.id, savedBacklinks);
 
   return articleNode.id;
 }

@@ -469,4 +469,114 @@ Updated article content.
 
     expect(oldAssoc).toBeNull();
   });
+
+  it("repairs incoming backlinks when target article is reimported", async () => {
+    // Create two test files with unique paths
+    const testPathA = `__test__/A-${Date.now()}.md`;
+    const testPathB = `__test__/B-${Date.now()}.md`;
+
+    const contentA = `# Article A
+
+This is article A.
+`;
+
+    const contentB = `# Article B
+
+This is article B with a link to [[A-${Date.now()}]].
+`;
+
+    setupMocksForContent(contentA, 1);
+
+    // Import article A
+    const articleAId = await ingestArticleWithChunks(supabase, testPathA, contentA);
+    createdNodeIds.push(articleAId);
+
+    // Get A's chunk IDs for cleanup
+    const { data: edgesA } = await supabase
+      .from("containment_edges")
+      .select("child_id")
+      .eq("parent_id", articleAId);
+    for (const edge of edgesA!) {
+      createdNodeIds.push(edge.child_id);
+    }
+
+    vi.clearAllMocks();
+    setupMocksForContent(contentB, 1);
+
+    // Import article B
+    const articleBId = await ingestArticleWithChunks(supabase, testPathB, contentB);
+    createdNodeIds.push(articleBId);
+
+    // Get B's chunk IDs for cleanup
+    const { data: edgesB } = await supabase
+      .from("containment_edges")
+      .select("child_id")
+      .eq("parent_id", articleBId);
+    for (const edge of edgesB!) {
+      createdNodeIds.push(edge.child_id);
+    }
+
+    // Extract filename without extension from testPathA
+    const filenameA = testPathA.split("/").pop()?.replace(/\.md$/, "")!;
+
+    // Manually create a backlink edge from B to A (simulating B having [[A]] link)
+    await supabase.from("backlink_edges").insert({
+      source_id: articleBId,
+      target_id: articleAId,
+      link_text: filenameA,
+    });
+
+    // Verify backlink exists
+    const { data: beforeBacklink } = await supabase
+      .from("backlink_edges")
+      .select("*")
+      .eq("source_id", articleBId)
+      .eq("target_id", articleAId)
+      .single();
+
+    expect(beforeBacklink).toBeTruthy();
+    expect(beforeBacklink!.link_text).toBe(filenameA);
+
+    // Reimport article A with changed content
+    const updatedContentA = `# Article A
+
+This is updated article A with new content.
+`;
+
+    vi.clearAllMocks();
+    setupMocksForContent(updatedContentA, 1);
+
+    const newArticleAId = await ingestArticleWithChunks(
+      supabase,
+      testPathA,
+      updatedContentA
+    );
+
+    // Track new ID for cleanup
+    createdNodeIds.push(newArticleAId);
+
+    // Get new chunk IDs for cleanup
+    const { data: newEdgesA } = await supabase
+      .from("containment_edges")
+      .select("child_id")
+      .eq("parent_id", newArticleAId);
+    for (const edge of newEdgesA!) {
+      createdNodeIds.push(edge.child_id);
+    }
+
+    // Verify article A was reimported with new ID
+    expect(newArticleAId).not.toBe(articleAId);
+
+    // Verify the backlink from B now points to the NEW A article
+    const { data: afterBacklink } = await supabase
+      .from("backlink_edges")
+      .select("*")
+      .eq("source_id", articleBId)
+      .eq("link_text", filenameA)
+      .single();
+
+    expect(afterBacklink).toBeTruthy();
+    expect(afterBacklink!.target_id).toBe(newArticleAId);
+    expect(afterBacklink!.target_id).not.toBe(articleAId);
+  });
 });

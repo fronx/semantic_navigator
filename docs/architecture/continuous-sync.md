@@ -110,49 +110,11 @@ This is a small change with immediate value - it makes the existing import idemp
 
 ### Known Issues to Address
 
-#### 1. Backlinks break on reimport
+#### 1. Backlinks break on reimport - RESOLVED
 
-**Problem**: When an article is deleted and re-created, it gets a new UUID. Backlinks from OTHER articles pointing TO this article via `backlink_edges.target_id` now reference a non-existent node.
+**Problem**: When an article is deleted and re-created, it gets a new UUID. Backlinks from OTHER articles pointing TO this article via `backlink_edges.target_id` were cascade-deleted.
 
-**Current state**: `backlink_edges` uses UUIDs:
-```sql
-backlink_edges (
-  source_id uuid references nodes(id) on delete cascade,
-  target_id uuid references nodes(id) on delete cascade,
-  link_text text
-)
-```
-
-The `on delete cascade` means when we delete the target article, the backlink edge is also deleted. But the source article still conceptually links to that file - we've lost the relationship.
-
-**Solution options**:
-
-A. **Resolve backlinks by source_path instead of UUID**
-   - Store `target_path` instead of `target_id` in backlink_edges
-   - Resolve to UUID at query time via JOIN
-   - Pro: Survives reimport
-   - Con: Slower queries, need to handle missing targets
-
-B. **Update backlinks after reimport**
-   - After creating new article, find all backlink_edges where `link_text` matches the filename
-   - Update their `target_id` to point to the new article
-   - Pro: Keeps UUID-based lookups fast
-   - Con: More complex reimport logic
-
-C. **Use source_path as stable identifier everywhere**
-   - Make `source_path` the primary identifier for articles (not UUID)
-   - Pro: Simple, matches how users think about files
-   - Con: Large schema change, affects all queries
-
-**Recommendation**: Option B - update backlinks after reimport. It's surgical and doesn't require schema changes. Add this to `ingestArticleWithChunks` after creating the new article:
-
-```typescript
-// After article creation, repair incoming backlinks
-await supabase
-  .from("backlink_edges")
-  .update({ target_id: newArticleId })
-  .eq("link_text", filename);  // filename without .md extension
-```
+**Solution implemented**: Save/restore pattern (Step 2). Before deleting an article, save its incoming backlinks. After creating the new article, restore them with the new ID. This is consistent with how project associations are handled.
 
 #### 2. Orphaned keyword similarities
 
@@ -304,31 +266,19 @@ Each step is independently testable and provides incremental value. Steps are or
 ---
 
 ### Step 2: Fix backlinks on reimport
-**Status**: Not started
+**Status**: Complete
 
 **Problem**: When an article is reimported, incoming backlinks from other articles are lost (cascade deleted).
 
-**Change**: After creating the new article in `ingestArticleWithChunks`, repair backlinks by matching `link_text` to the filename:
+**Solution**: Extended the save/restore pattern (already used for project associations) to also handle incoming backlinks:
+1. Before deletion: Save incoming backlinks (where the article is the target)
+2. After creation: Restore backlinks with the new article ID
 
-```typescript
-// After article node creation
-const filenameWithoutExt = sourcePath.split("/").pop()?.replace(/\.md$/, "");
-if (filenameWithoutExt) {
-  await supabase
-    .from("backlink_edges")
-    .update({ target_id: articleNode.id })
-    .eq("link_text", filenameWithoutExt);
-}
-```
+**Files modified**:
+- `src/lib/ingestion-chunks.ts` - Added `SavedBacklink`, `restoreBacklinks()`, updated delete/reimport flow
 
-**Files to modify**:
-- `src/lib/ingestion-chunks.ts`
-
-**Testable outcome**:
-1. Import two files: A.md and B.md, where B contains `[[A]]`
-2. Verify backlink edge exists from B to A
-3. Edit A.md and reimport
-4. Verify backlink edge still exists and points to the new A article
+**Tests added**:
+- `ingestion.integration.test.ts` - "repairs incoming backlinks when target article is reimported"
 
 ---
 
