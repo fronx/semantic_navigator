@@ -6,6 +6,7 @@
 import type { SimNode } from "./map-renderer";
 import { computeClusterLabels } from "./cluster-labels";
 import { communityColorScale } from "./hull-renderer";
+import { clusterColorToCSS, type ClusterColorInfo } from "./semantic-colors";
 
 // ============================================================================
 // Types
@@ -28,6 +29,8 @@ export interface LabelOverlayOptions {
   getCameraZ: () => number;
   /** Function to get node radius in world units */
   getNodeRadius: (node: SimNode) => number;
+  /** Function to get current cluster colors (for label coloring) */
+  getClusterColors: () => Map<number, ClusterColorInfo>;
 }
 
 // ============================================================================
@@ -43,7 +46,7 @@ const KEYWORD_ZOOM_ALL = 300;   // Show all labels when zoomed in past this
 // ============================================================================
 
 export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOverlayManager {
-  const { container, worldToScreen, getCameraZ, getNodeRadius } = options;
+  const { container, worldToScreen, getCameraZ, getNodeRadius, getClusterColors } = options;
 
   // Create overlay for cluster labels
   const clusterOverlay = document.createElement("div");
@@ -62,11 +65,20 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
 
   function updateClusterLabels(nodes: SimNode[]) {
     const rect = container.getBoundingClientRect();
+    const clusterColors = getClusterColors();
 
     // Compute labels from current node positions
     const labelData = computeClusterLabels({
       nodes,
-      getColor: (communityId) => communityColorScale(String(communityId)),
+      getColor: (communityId) => {
+        // Use cluster color info if available (same as node colors)
+        const info = clusterColors.get(communityId);
+        if (info) {
+          return clusterColorToCSS(info);
+        }
+        // Fallback to legacy color scale
+        return communityColorScale(String(communityId));
+      },
     });
 
     // Track which communities we've seen (for cleanup)

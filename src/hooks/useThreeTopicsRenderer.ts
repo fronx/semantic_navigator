@@ -6,7 +6,6 @@
 import { useEffect, useRef } from "react";
 import { createThreeRenderer, type ThreeRenderer } from "@/lib/three-renderer";
 import { convertToThreeNodes } from "@/lib/topics-graph-nodes";
-import { computeNeighborAveragedColors } from "@/lib/semantic-colors";
 import { createHoverController } from "@/lib/topics-hover-controller";
 import type { BaseRendererOptions } from "@/lib/renderer-types";
 
@@ -108,17 +107,12 @@ export function useThreeTopicsRenderer(
       if (cancelled) return;
 
       (async () => {
-        // Compute embedding-based colors with neighbor averaging
-        const nodeColors = pcaTransform
-          ? computeNeighborAveragedColors(activeNodes, activeEdges, pcaTransform)
-          : undefined;
-
         const threeRenderer = await createThreeRenderer({
           container,
           nodes: mapNodes,
           links: mapLinks,
           immediateParams,
-          nodeColors,
+          pcaTransform: pcaTransform ?? undefined,
           callbacks: {
             onKeywordClick,
             onProjectClick,

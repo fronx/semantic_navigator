@@ -204,6 +204,53 @@ export function nodeColorFromCluster(
   return `hsl(${h.toFixed(0)}, ${s.toFixed(0)}%, ${l.toFixed(0)}%)`;
 }
 
+// --- Shared cluster color utilities ---
+
+/**
+ * Convert ClusterColorInfo to CSS HSL string.
+ * Used by both D3 and Three.js renderers for consistent label coloring.
+ */
+export function clusterColorToCSS(info: ClusterColorInfo): string {
+  return `hsl(${info.h.toFixed(0)}, ${info.s.toFixed(0)}%, ${info.l.toFixed(0)}%)`;
+}
+
+/** Node with embedding */
+interface NodeWithEmbedding {
+  id: string;
+  embedding?: number[];
+}
+
+/**
+ * Compute cluster color info from a pre-grouped communities map.
+ * Computes centroid of each cluster's embeddings and returns HSL color info.
+ *
+ * Used by both D3 and Three.js renderers.
+ *
+ * @param communitiesMap - Map from communityId to array of nodes in that community
+ * @param pcaTransform - PCA transform for projecting embeddings to 2D
+ */
+export function computeClusterColors<T extends NodeWithEmbedding>(
+  communitiesMap: Map<number, T[]>,
+  pcaTransform: PCATransform | undefined
+): Map<number, ClusterColorInfo> {
+  const clusterColors = new Map<number, ClusterColorInfo>();
+  if (!pcaTransform) return clusterColors;
+
+  for (const [communityId, members] of communitiesMap) {
+    const embeddings = members
+      .map((m) => m.embedding)
+      .filter((e): e is number[] => e !== undefined && e.length > 0);
+
+    if (embeddings.length > 0) {
+      const info = computeClusterColorInfo(embeddings, pcaTransform);
+      if (info) {
+        clusterColors.set(communityId, info);
+      }
+    }
+  }
+  return clusterColors;
+}
+
 // --- Neighbor-averaged coloring ---
 
 interface NodeWithEmbedding {

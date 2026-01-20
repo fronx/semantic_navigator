@@ -11,9 +11,17 @@ import { Line2 } from "three/examples/jsm/lines/Line2.js";
 import { LineGeometry } from "three/examples/jsm/lines/LineGeometry.js";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { forceCollide } from "d3-force";
-import { communityColorScale } from "@/lib/hull-renderer";
+import { communityColorScale, groupNodesByCommunity } from "@/lib/hull-renderer";
 import { blendColors, dimColor, colors } from "@/lib/colors";
 import { computeEdgeCurveDirections, type SimNode, type SimLink, type ImmediateParams } from "@/lib/map-renderer";
+import {
+  pcaProject,
+  coordinatesToHSL,
+  computeClusterColors,
+  nodeColorFromCluster,
+  type PCATransform,
+  type ClusterColorInfo,
+} from "@/lib/semantic-colors";
 import {
   createConvergenceState,
   processSimulationTick,
@@ -54,8 +62,6 @@ export interface ThreeRenderer {
   updateClusters: (nodeToCluster: Map<string, number>) => void;
   /** Update cluster labels (recomputes from current node positions and properties) */
   updateClusterLabels: () => void;
-  /** Update node colors from precomputed map */
-  updateColors: (nodeColors: Map<string, string>) => void;
   /** Apply highlight styling to nodes */
   applyHighlight: (highlightedIds: Set<string> | null, baseDim: number) => void;
   /** Get nodes for external access */
@@ -76,8 +82,8 @@ interface ThreeRendererOptions {
   links: SimLink[];
   immediateParams: { current: ImmediateParams };
   callbacks: ThreeRendererCallbacks;
-  /** Precomputed node colors (from embedding-based neighbor averaging) */
-  nodeColors?: Map<string, string>;
+  /** PCA transform for stable semantic colors (optional, falls back to communityColorScale) */
+  pcaTransform?: PCATransform;
 }
 
 // ============================================================================
@@ -103,16 +109,29 @@ const CIRCLE_SEGMENTS = 64;
 // Project node color - distinct purple/violet (same as D3 renderer)
 const PROJECT_COLOR = "#8b5cf6";
 
-function getNodeColor(node: SimNode, nodeColors?: Map<string, string>): string {
+
+function getNodeColor(
+  node: SimNode,
+  pcaTransform?: PCATransform,
+  clusterColors?: Map<number, ClusterColorInfo>,
+  colorMixRatio: number = 0
+): string {
   // Projects have a distinct purple color
   if (node.type === "project") {
     return PROJECT_COLOR;
   }
-  // Use precomputed embedding-based color if available
-  if (nodeColors) {
-    const color = nodeColors.get(node.id);
-    if (color) return color;
+
+  // Use cluster-based color if available (same logic as D3 renderer)
+  if (pcaTransform && node.embedding && node.embedding.length > 0 && node.communityId !== undefined && clusterColors) {
+    const clusterInfo = clusterColors.get(node.communityId);
+    if (clusterInfo) {
+      return nodeColorFromCluster(node.embedding, clusterInfo, pcaTransform, colorMixRatio);
+    }
+    // Fallback: use node's own embedding if not in cluster color map
+    const [x, y] = pcaProject(node.embedding, pcaTransform);
+    return coordinatesToHSL(x, y);
   }
+
   // Fall back to community-based coloring
   if (node.communityId !== undefined) {
     return communityColorScale(String(node.communityId));
@@ -134,7 +153,9 @@ function getNodeRadius(node: SimNode, dotScale: number): number {
 function getEdgeColor(
   link: SimLink,
   nodeMap: Map<string, SimNode>,
-  nodeColors?: Map<string, string>
+  pcaTransform?: PCATransform,
+  clusterColors?: Map<number, ClusterColorInfo>,
+  colorMixRatio: number = 0
 ): string {
   const sourceId = typeof link.source === "string" ? link.source : link.source.id;
   const targetId = typeof link.target === "string" ? link.target : link.target.id;
@@ -146,8 +167,8 @@ function getEdgeColor(
     return "#888888";
   }
 
-  const sourceColor = getNodeColor(sourceNode, nodeColors);
-  const targetColor = getNodeColor(targetNode, nodeColors);
+  const sourceColor = getNodeColor(sourceNode, pcaTransform, clusterColors, colorMixRatio);
+  const targetColor = getNodeColor(targetNode, pcaTransform, clusterColors, colorMixRatio);
 
   return blendColors(sourceColor, targetColor);
 }
@@ -157,7 +178,7 @@ function getEdgeColor(
 // ============================================================================
 
 export async function createThreeRenderer(options: ThreeRendererOptions): Promise<ThreeRenderer> {
-  const { container, nodes: initialNodes, links: initialLinks, immediateParams, callbacks, nodeColors: initialNodeColors } = options;
+  const { container, nodes: initialNodes, links: initialLinks, immediateParams, callbacks, pcaTransform } = options;
 
   // Dynamic import to avoid SSR issues (3d-force-graph requires browser APIs)
   const ForceGraph3D = (await import("3d-force-graph")).default;
@@ -176,7 +197,11 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
   let currentLinks = initialLinks;
   let currentHighlight: Set<string> | null = null;
   let currentBaseDim = 0.3;
-  let currentNodeColors: Map<string, string> | undefined = initialNodeColors;
+
+  // Cluster colors computed from node embeddings (same approach as D3 renderer)
+  let clusterColors = computeClusterColors(groupNodesByCommunity(currentNodes), pcaTransform);
+  // Track colorMixRatio to detect changes
+  let currentColorMixRatio = immediateParams.current.colorMixRatio;
 
   // Node map for quick lookups (used for edge coloring)
   let nodeMap = new Map<string, SimNode>(currentNodes.map(n => [n.id, n]));
@@ -239,7 +264,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       if (cached) {
         // Update existing mesh properties
         const material = cached.material;
-        material.color.set(getNodeColor(n, currentNodeColors));
+        material.color.set(getNodeColor(n, pcaTransform, clusterColors, immediateParams.current.colorMixRatio));
 
         // Update opacity based on highlight state
         let opacity = 1;
@@ -258,7 +283,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       // Create new mesh and cache it
       const radius = getNodeRadius(n, immediateParams.current.dotScale) * DOT_SCALE_FACTOR;
       const geometry = new THREE.CircleGeometry(radius, CIRCLE_SEGMENTS);
-      const color = new THREE.Color(getNodeColor(n, currentNodeColors));
+      const color = new THREE.Color(getNodeColor(n, pcaTransform, clusterColors, immediateParams.current.colorMixRatio));
 
       // Calculate opacity based on highlight state
       let opacity = 1;
@@ -281,7 +306,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     .nodeVal((node: object) => getNodeRadius(node as SimNode, immediateParams.current.dotScale))
     .linkSource("source")
     .linkTarget("target")
-    .linkColor((link: object) => getEdgeColor(link as SimLink, nodeMap, currentNodeColors))
+    .linkColor((link: object) => getEdgeColor(link as SimLink, nodeMap, pcaTransform, clusterColors, immediateParams.current.colorMixRatio))
     .linkOpacity(immediateParams.current.edgeOpacity * 0.4)
     .linkWidth(1.5)
     .backgroundColor("#ffffff00") // Transparent
@@ -312,7 +337,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
           const l = link as SimLink;
           const key = getLinkKey(l);
 
-          const edgeColor = getEdgeColor(l, nodeMap, currentNodeColors);
+          const edgeColor = getEdgeColor(l, nodeMap, pcaTransform, clusterColors, immediateParams.current.colorMixRatio);
 
           // Check cache first
           const cached = linkCache.get(key);
@@ -865,6 +890,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     worldToScreen,
     getCameraZ: () => graph.camera()?.position.z ?? 1000,
     getNodeRadius: (node) => getNodeRadius(node, immediateParams.current.dotScale) * DOT_SCALE_FACTOR,
+    getClusterColors: () => clusterColors,
   });
 
   // Wrapper functions for tick/zoom updates
@@ -949,18 +975,37 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
         graph.linkCurvature(graph.linkCurvature());
       }
       graph.linkOpacity(immediateParams.current.edgeOpacity * 0.4);
+
+      // Update node colors if colorMixRatio changed
+      if (immediateParams.current.colorMixRatio !== currentColorMixRatio) {
+        currentColorMixRatio = immediateParams.current.colorMixRatio;
+
+        // Update all cached mesh colors
+        for (const node of currentNodes) {
+          const mesh = nodeCache.get(node.id);
+          if (mesh) {
+            mesh.material.color.set(getNodeColor(node, pcaTransform, clusterColors, currentColorMixRatio));
+            mesh.material.needsUpdate = true;
+          }
+        }
+      }
     },
 
     updateClusters(nodeToCluster: Map<string, number>) {
-      // Update communityId on each node and update material colors in-place
+      // Update communityId on each node
       for (const node of currentNodes) {
         const clusterId = nodeToCluster.get(node.id);
         node.communityId = clusterId;
+      }
 
-        // Update cached mesh color directly
+      // Recompute cluster colors with new assignments
+      clusterColors = computeClusterColors(groupNodesByCommunity(currentNodes), pcaTransform);
+
+      // Update cached mesh colors in-place
+      for (const node of currentNodes) {
         const mesh = nodeCache.get(node.id);
         if (mesh) {
-          mesh.material.color.set(getNodeColor(node, currentNodeColors));
+          mesh.material.color.set(getNodeColor(node, pcaTransform, clusterColors, immediateParams.current.colorMixRatio));
           mesh.material.needsUpdate = true;
         }
       }
@@ -969,19 +1014,6 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     updateClusterLabels() {
       updateClusterLabelsInternal();
       updateKeywordLabelsInternal();
-    },
-
-    updateColors(nodeColors: Map<string, string>) {
-      currentNodeColors = nodeColors;
-
-      // Update all cached mesh colors
-      for (const node of currentNodes) {
-        const mesh = nodeCache.get(node.id);
-        if (mesh) {
-          mesh.material.color.set(getNodeColor(node, currentNodeColors));
-          mesh.material.needsUpdate = true;
-        }
-      }
     },
 
     applyHighlight(highlightedIds: Set<string> | null, baseDim: number) {

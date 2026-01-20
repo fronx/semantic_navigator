@@ -21,15 +21,7 @@ export interface GraphNodeConversionResult {
   mapLinks: SimLink[];
 }
 
-/**
- * Keyword ID format:
- * - 'raw': Use KeywordNode.id directly (D3 renderer)
- * - 'prefixed': Use "kw:" + label (Three.js renderer)
- */
-export type KeywordIdFormat = "raw" | "prefixed";
-
 interface ConvertToSimNodesOptions extends GraphNodeConversionOptions {
-  keywordIdFormat: KeywordIdFormat;
   /** Whether to include isKNN on edges (D3 uses it for link force strength) */
   includeKNN?: boolean;
 }
@@ -37,6 +29,9 @@ interface ConvertToSimNodesOptions extends GraphNodeConversionOptions {
 /**
  * Convert keyword/project nodes to simulation-ready format.
  * Unified function used by both D3 and Three.js renderers.
+ *
+ * Note: KeywordNode.id and SimilarityEdge source/target are already in
+ * "kw:label" format from the API, so both renderers use the same ID format.
  */
 export function convertToSimNodes(
   options: ConvertToSimNodesOptions
@@ -48,16 +43,14 @@ export function convertToSimNodes(
     width,
     height,
     getSavedPosition,
-    keywordIdFormat,
     includeKNN = false,
   } = options;
 
-  // Convert keyword nodes with format-specific ID
+  // Convert keyword nodes (IDs already in "kw:label" format from API)
   const keywordMapNodes: SimNode[] = keywordNodes.map((n) => {
-    const id = keywordIdFormat === "prefixed" ? `kw:${n.label}` : n.id;
-    const savedPos = getSavedPosition?.(id);
+    const savedPos = getSavedPosition?.(n.id);
     return {
-      id,
+      id: n.id,
       type: "keyword" as const,
       label: n.label,
       communityId: undefined,
@@ -84,7 +77,7 @@ export function convertToSimNodes(
 
   const mapNodes = [...keywordMapNodes, ...projectMapNodes];
 
-  // Convert edges
+  // Convert edges (IDs already in "kw:label" format from API)
   const mapLinks: SimLink[] = edges.map((e) => ({
     source: e.source,
     target: e.target,
@@ -97,28 +90,24 @@ export function convertToSimNodes(
 
 /**
  * Convert keyword nodes to simulation-ready format for D3 renderer.
- * D3 uses the raw KeywordNode.id for node IDs.
  */
 export function convertToD3Nodes(
   options: GraphNodeConversionOptions
 ): GraphNodeConversionResult {
   return convertToSimNodes({
     ...options,
-    keywordIdFormat: "raw",
     includeKNN: true,
   });
 }
 
 /**
  * Convert keyword nodes to simulation-ready format for Three.js renderer.
- * Three.js uses "kw:" prefix for keyword IDs.
  */
 export function convertToThreeNodes(
   options: GraphNodeConversionOptions
 ): GraphNodeConversionResult {
   return convertToSimNodes({
     ...options,
-    keywordIdFormat: "prefixed",
     includeKNN: false,
   });
 }

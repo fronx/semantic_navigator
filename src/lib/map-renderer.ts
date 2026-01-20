@@ -11,7 +11,8 @@ import { createHullRenderer, groupNodesByCommunity, communityColorScale, type Hu
 import {
   pcaProject,
   coordinatesToHSL,
-  computeClusterColorInfo,
+  computeClusterColors,
+  clusterColorToCSS,
   nodeColorFromCluster,
   type PCATransform,
   type ClusterColorInfo,
@@ -158,30 +159,6 @@ function computeBlendedColors(
   return blended;
 }
 
-/**
- * Compute cluster color info for all communities.
- */
-function computeClusterColors(
-  communitiesMap: Map<number, SimNode[]>,
-  pcaTransform?: PCATransform
-): Map<number, ClusterColorInfo> {
-  const clusterColors = new Map<number, ClusterColorInfo>();
-  if (!pcaTransform) return clusterColors;
-
-  for (const [communityId, members] of communitiesMap) {
-    const embeddings = members
-      .map((m) => m.embedding)
-      .filter((e): e is number[] => e !== undefined && e.length > 0);
-
-    if (embeddings.length > 0) {
-      const info = computeClusterColorInfo(embeddings, pcaTransform);
-      if (info) {
-        clusterColors.set(communityId, info);
-      }
-    }
-  }
-  return clusterColors;
-}
 
 function getNodeColor(
   d: SimNode,
@@ -424,6 +401,16 @@ export function createRenderer(options: RendererOptions): MapRenderer {
   let communitiesMap = groupNodesByCommunity(currentNodes);
   let clusterColors = computeClusterColors(communitiesMap, pcaTransform);
 
+  // Helper to get cluster label color from clusterColors (uses same colors as nodes)
+  function getClusterLabelColor(communityId: number): string {
+    const info = clusterColors.get(communityId);
+    if (info) {
+      return clusterColorToCSS(info);
+    }
+    // Fallback to legacy color scale
+    return communityColorScale(String(communityId));
+  }
+
   // Track if hovering a project node (to suppress neighborhood highlighting)
   let hoveringProjectNode = false;
 
@@ -579,6 +566,7 @@ export function createRenderer(options: RendererOptions): MapRenderer {
       centroid: [number, number];
       label: string;
       opacity: number;
+      color: string;
     }
     const labelData: LabelData[] = hullData.map((h: HullData) => {
       const members = communitiesMap.get(h.communityId) || [];
@@ -589,8 +577,10 @@ export function createRenderer(options: RendererOptions): MapRenderer {
       const label = hub?.hullLabel || hub?.label || visibleMembers[0]?.label || "";
       const visibilityRatio = visibleMembers.length / members.length;
       const opacity = visibleIds ? Math.max(0.2, visibilityRatio) * 0.7 : 0.7;
+      // Use hull color (from cluster embeddings) for consistent coloring with nodes
+      const color = getClusterLabelColor(h.communityId);
 
-      return { communityId: h.communityId, centroid: h.geometry.centroid, label, opacity };
+      return { communityId: h.communityId, centroid: h.geometry.centroid, label, opacity, color };
     });
 
     // D3 data join for hull labels
@@ -622,7 +612,7 @@ export function createRenderer(options: RendererOptions): MapRenderer {
         .attr("x", d.centroid[0])
         .attr("y", d.centroid[1] - ((words.length - 1) * lineHeight) / 2)
         .attr("font-size", `${fontSize}px`)
-        .attr("fill", communityColorScale(String(d.communityId)))
+        .attr("fill", d.color)
         .attr("fill-opacity", d.opacity);
 
       // Check if label text changed (compare current tspan content)
