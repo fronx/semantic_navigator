@@ -976,7 +976,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       }
       graph.linkOpacity(immediateParams.current.edgeOpacity * 0.4);
 
-      // Update node colors if colorMixRatio changed
+      // Update node and edge colors if colorMixRatio changed
       if (immediateParams.current.colorMixRatio !== currentColorMixRatio) {
         currentColorMixRatio = immediateParams.current.colorMixRatio;
 
@@ -987,6 +987,25 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
             mesh.material.color.set(getNodeColor(node, pcaTransform, clusterColors, currentColorMixRatio));
             mesh.material.needsUpdate = true;
           }
+        }
+
+        // Update edge colors
+        for (const link of currentLinks) {
+          const key = getLinkKey(link);
+          const newColor = getEdgeColor(link, nodeMap, pcaTransform, clusterColors, currentColorMixRatio);
+          edgeColorCache.set(key, newColor);
+
+          const linkObj = linkCache.get(key);
+          if (linkObj) {
+            const mat = linkObj.material as LineMaterial;
+            mat.color.set(newColor);
+            mat.needsUpdate = true;
+          }
+        }
+
+        // For bezier mode, force re-render
+        if (currentCurveType === "bezier") {
+          graph.linkColor((link: object) => getEdgeColor(link as SimLink, nodeMap, pcaTransform, clusterColors, currentColorMixRatio));
         }
       }
     },
@@ -1008,6 +1027,25 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
           mesh.material.color.set(getNodeColor(node, pcaTransform, clusterColors, immediateParams.current.colorMixRatio));
           mesh.material.needsUpdate = true;
         }
+      }
+
+      // Update edge colors based on new node colors
+      for (const link of currentLinks) {
+        const key = getLinkKey(link);
+        const newColor = getEdgeColor(link, nodeMap, pcaTransform, clusterColors, immediateParams.current.colorMixRatio);
+        edgeColorCache.set(key, newColor);
+
+        const linkObj = linkCache.get(key);
+        if (linkObj) {
+          const mat = linkObj.material as LineMaterial;
+          mat.color.set(newColor);
+          mat.needsUpdate = true;
+        }
+      }
+
+      // For bezier mode, force re-render by re-setting linkColor
+      if (currentCurveType === "bezier") {
+        graph.linkColor((link: object) => getEdgeColor(link as SimLink, nodeMap, pcaTransform, clusterColors, immediateParams.current.colorMixRatio));
       }
     },
 

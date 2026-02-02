@@ -5,7 +5,7 @@
 
 import * as d3 from "d3";
 import type { MapNode } from "@/app/api/map/route";
-import { colors } from "@/lib/colors";
+import { colors, blendColors } from "@/lib/colors";
 import { createHoverTooltip } from "@/lib/d3-utils";
 import { createHullRenderer, groupNodesByCommunity, communityColorScale, type HullData } from "@/lib/hull-renderer";
 import {
@@ -192,6 +192,29 @@ function getNodeColor(
     return communityColorScale(String(d.communityId));
   }
   return "#9ca3af"; // grey-400 for unclustered keywords
+}
+
+/**
+ * Compute edge color by blending source and target node colors.
+ */
+function getEdgeColor(
+  link: SimLink,
+  blendedColors: Map<string, string>,
+  pcaTransform?: PCATransform,
+  clusterColors?: Map<number, ClusterColorInfo>,
+  colorMixRatio: number = 0
+): string {
+  const source = link.source as SimNode;
+  const target = link.target as SimNode;
+
+  if (!source || !target) {
+    return colors.edge.default;
+  }
+
+  const sourceColor = getNodeColor(source, blendedColors, pcaTransform, clusterColors, colorMixRatio);
+  const targetColor = getNodeColor(target, blendedColors, pcaTransform, clusterColors, colorMixRatio);
+
+  return blendColors(sourceColor, targetColor);
 }
 
 /**
@@ -419,7 +442,6 @@ export function createRenderer(options: RendererOptions): MapRenderer {
   const hullLabelGroup = g.append("g").attr("class", "hull-labels");
 
   const linkGroup = g.append("g")
-    .attr("stroke", colors.edge.default)
     .attr("stroke-opacity", immediateParams.current.edgeOpacity * 0.4);
 
   // Node group container (persists across updateData)
@@ -522,7 +544,8 @@ export function createRenderer(options: RendererOptions): MapRenderer {
     })
     .join("path")
     .attr("fill", "none")
-    .attr("stroke-width", 3 * visualScale);
+    .attr("stroke-width", 3 * visualScale)
+    .attr("stroke", (d) => getEdgeColor(d, blendedColors, pcaTransform, clusterColors, immediateParams.current.colorMixRatio));
 
   // Initial node selection
   let nodeSelection = nodeGroup
@@ -658,8 +681,9 @@ export function createRenderer(options: RendererOptions): MapRenderer {
       .select("circle")
       .attr("fill", (d) => getNodeColor(d, blendedColors, pcaTransform, clusterColors, params.colorMixRatio));
 
-    // Update edge opacity
+    // Update edge opacity and colors
     linkGroup.attr("stroke-opacity", params.edgeOpacity * 0.4);
+    linkSelection.attr("stroke", (d) => getEdgeColor(d, blendedColors, pcaTransform, clusterColors, params.colorMixRatio));
 
     // Update edge curves
     linkSelection.attr("d", (d) => computeCurvedPath(d, params.edgeCurve, edgeCurveDirections?.get(d) ?? 1));
@@ -691,8 +715,10 @@ export function createRenderer(options: RendererOptions): MapRenderer {
       .join(
         (enter) => enter.append("path")
           .attr("fill", "none")
-          .attr("stroke-width", 3 * visualScale),
-        (update) => update,
+          .attr("stroke-width", 3 * visualScale)
+          .attr("stroke", (d) => getEdgeColor(d, blendedColors, pcaTransform, clusterColors, immediateParams.current.colorMixRatio)),
+        (update) => update
+          .attr("stroke", (d) => getEdgeColor(d, blendedColors, pcaTransform, clusterColors, immediateParams.current.colorMixRatio)),
         (exit) => exit.remove()
       );
 
@@ -759,6 +785,9 @@ export function createRenderer(options: RendererOptions): MapRenderer {
 
     // Update node circle colors based on new communityId values
     nodeSelection.select("circle").attr("fill", (d) => getNodeColor(d, blendedColors, pcaTransform, clusterColors, immediateParams.current.colorMixRatio));
+
+    // Update edge colors based on new node colors
+    linkSelection.attr("stroke", (d) => getEdgeColor(d, blendedColors, pcaTransform, clusterColors, immediateParams.current.colorMixRatio));
   }
 
   return {
