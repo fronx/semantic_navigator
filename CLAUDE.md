@@ -218,5 +218,7 @@ Requires `.env.local` with:
 
 ## Documentation
 
-- `docs/README.md` - Architecture documentation and ADRs
+- `docs/README.md` - Architecture documentation index and ADRs
 - `docs/patterns/` - Reusable code patterns (stable refs, etc.)
+
+**When creating new documentation files**, always add a link to `docs/README.md` so they're discoverable. This includes ADRs, guides, patterns, and investigation reports.
