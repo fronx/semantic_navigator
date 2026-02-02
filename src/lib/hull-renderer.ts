@@ -9,6 +9,13 @@ import { centroidToColor, type PCATransform } from "./semantic-colors";
 // Legacy color scale (fallback when no PCA transform provided)
 export const communityColorScale = d3.scaleOrdinal(d3.schemeTableau10);
 
+// Hull visual constants (shared by D3 and Three.js renderers)
+export const HULL_STYLES = {
+  FILL_OPACITY: 0.08,
+  STROKE_OPACITY: 0.3,
+  STROKE_WIDTH_SCALE: 2,
+} as const;
+
 export interface HullGeometry {
   hull: [number, number][];
   centroid: [number, number];
@@ -113,8 +120,9 @@ export interface HullData {
 /**
  * Compute color for a community from member embeddings.
  * Falls back to legacy color scale if no PCA transform or embeddings.
+ * Shared by both D3 and Three.js hull renderers.
  */
-function computeHullColor(
+export function computeHullColor(
   communityId: number,
   members: SimNode[],
   pcaTransform?: PCATransform
@@ -167,15 +175,15 @@ export function createHullRenderer(options: HullRendererOptions): HullRenderer {
         (enter) =>
           enter
             .append("path")
-            .attr("stroke-width", 2 * visualScale),
+            .attr("stroke-width", HULL_STYLES.STROKE_WIDTH_SCALE * visualScale),
         (update) => update,
         (exit) => exit.remove()
       )
       .attr("d", (d) => `M${d.geometry.expandedHull.join("L")}Z`)
       .attr("fill", (d) => d.color)
-      .attr("fill-opacity", 0.08 * opacity)
+      .attr("fill-opacity", HULL_STYLES.FILL_OPACITY * opacity)
       .attr("stroke", (d) => d.color)
-      .attr("stroke-opacity", 0.3 * opacity);
+      .attr("stroke-opacity", HULL_STYLES.STROKE_OPACITY * opacity);
 
     return hullData;
   }

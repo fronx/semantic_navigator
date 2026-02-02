@@ -37,6 +37,7 @@ import { createInputHandler } from "./input-handler";
 import { createNodeRenderer, getNodeRadius, BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "./node-renderer";
 import { createEdgeRenderer } from "./edge-renderer";
 import { createLabelOverlayManager, computeNodeDegrees } from "./label-overlays";
+import { createHullRenderer } from "./hull-renderer";
 
 // ============================================================================
 // Types
@@ -177,6 +178,17 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     getClusterColors: () => clusterColors,
   });
 
+  const hullRenderer = createHullRenderer({
+    scene: graph.scene(),
+    container,
+    immediateParams,
+    visualScale: 1.0,
+    pcaTransform,
+  });
+
+  // Initialize hull communities
+  hullRenderer.updateCommunities(groupNodesByCommunity(currentNodes));
+
   // ---------------------------------------------------------------------------
   // Label Update Helpers
   // ---------------------------------------------------------------------------
@@ -274,6 +286,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
         setTimeout(() => { if (!destroyed) fitToNodesInternal(0.25); }, 0);
       }
 
+      hullRenderer.update();
       updateAllLabels();
     });
 
@@ -382,6 +395,9 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       currentCurveMethod = immediateParams.current.curveMethod;
       nodeDegrees = computeNodeDegrees(currentNodes.map(n => n.id), currentLinks);
 
+      // Update hull communities with new node set
+      hullRenderer.updateCommunities(groupNodesByCommunity(currentNodes));
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       graph.graphData({ nodes: currentNodes as any, links: currentLinks as any });
     },
@@ -414,12 +430,16 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
         nodeRenderer.refreshColors(currentNodes);
         edgeRenderer.refreshColors();
       }
+
+      // Update hull visuals (opacity may have changed)
+      hullRenderer.update();
     },
 
     updateClusters(nodeToCluster: Map<string, number>) {
       clusterColors = nodeRenderer.updateClusters(currentNodes, nodeToCluster);
       nodeRenderer.refreshColors(currentNodes);
       edgeRenderer.refreshColors();
+      hullRenderer.updateCommunities(groupNodesByCommunity(currentNodes));
     },
 
     updateClusterLabels() {
@@ -455,6 +475,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       inputHandler.destroy();
       nodeRenderer.dispose();
       edgeRenderer.dispose();
+      hullRenderer.dispose();
       labelManager.destroy();
 
       // Dispose WebGL resources
