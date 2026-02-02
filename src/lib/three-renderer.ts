@@ -104,6 +104,19 @@ const COLLISION_PADDING = 1;
 /** Number of segments for circle geometry (higher = smoother circles) */
 const CIRCLE_SEGMENTS = 64;
 
+/**
+ * Render layer ordering for Three.js objects.
+ * Items render in array order (later = on top). Each layer has room for
+ * internal offsets (e.g., edges use offset to avoid z-fighting among themselves).
+ */
+const RENDER_LAYERS = ["edges", "nodes"] as const;
+type RenderLayer = (typeof RENDER_LAYERS)[number];
+const LAYER_SPACING = 10000;
+
+function getRenderOrder(layer: RenderLayer, offset = 0): number {
+  return RENDER_LAYERS.indexOf(layer) * LAYER_SPACING + offset;
+}
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -230,6 +243,26 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
   }
   const nodeCache = new Map<string, NodeMeshGroup>();
 
+  // Cache for original node colors (for dimming via color mixing instead of opacity)
+  const nodeColorCache = new Map<string, string>();
+  const OUTLINE_COLOR = "#ffffff";
+
+  // Helper to get current background color for dimming calculations
+  function getBackgroundColor(): string {
+    const isDarkMode = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    return isDarkMode ? colors.background.dark : colors.background.light;
+  }
+
+  // Helper to compute dim amount for a node based on highlight state
+  function getNodeDimAmount(nodeId: string): number {
+    if (currentHighlight === null) {
+      return currentBaseDim;
+    } else if (currentHighlight.size > 0) {
+      return currentHighlight.has(nodeId) ? 0 : 0.85; // 0.85 = 1 - 0.15 (old opacity)
+    }
+    return 0;
+  }
+
   // Cache for link objects (when using arc rendering with fat lines)
   const linkCache = new Map<string, Line2>();
 
@@ -275,25 +308,21 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       // Check cache first
       const cached = nodeCache.get(n.id);
       if (cached) {
-        // Update existing mesh properties
-        const fillMaterial = cached.fill.material;
-        fillMaterial.color.set(getNodeColor(n, pcaTransform, clusterColors, immediateParams.current.colorMixRatio));
+        // Update existing mesh properties with color-based dimming
+        const originalFillColor = getNodeColor(n, pcaTransform, clusterColors, immediateParams.current.colorMixRatio);
+        nodeColorCache.set(n.id, originalFillColor);
 
-        // Update opacity based on highlight state
-        let opacity = 1;
-        if (currentHighlight === null) {
-          opacity = 1 - currentBaseDim;
-        } else if (currentHighlight.size > 0) {
-          opacity = currentHighlight.has(n.id) ? 1 : 0.15;
-        }
-        fillMaterial.opacity = opacity;
-        fillMaterial.transparent = opacity < 1;
+        const dimAmount = getNodeDimAmount(n.id);
+        const backgroundColor = getBackgroundColor();
+
+        const fillMaterial = cached.fill.material;
+        const dimmedFillColor = dimAmount > 0 ? dimColor(originalFillColor, dimAmount, backgroundColor) : originalFillColor;
+        fillMaterial.color.set(dimmedFillColor);
         fillMaterial.needsUpdate = true;
 
-        // Update outline opacity to match
         const outlineMaterial = cached.outline.material;
-        outlineMaterial.opacity = opacity;
-        outlineMaterial.transparent = opacity < 1;
+        const dimmedOutlineColor = dimAmount > 0 ? dimColor(OUTLINE_COLOR, dimAmount, backgroundColor) : OUTLINE_COLOR;
+        outlineMaterial.color.set(dimmedOutlineColor);
         outlineMaterial.needsUpdate = true;
 
         return cached.group;
@@ -303,31 +332,31 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       const radius = getNodeRadius(n, immediateParams.current.dotScale) * DOT_SCALE_FACTOR;
       const strokeWidth = (n.type === "project" ? 3 : 1.5) * DOT_SCALE_FACTOR * 0.3;
 
-      // Calculate opacity based on highlight state
-      let opacity = 1;
-      if (currentHighlight === null) {
-        opacity = 1 - currentBaseDim;
-      } else if (currentHighlight.size > 0) {
-        opacity = currentHighlight.has(n.id) ? 1 : 0.15;
-      }
+      // Store original fill color and compute dimmed colors
+      const originalFillColor = getNodeColor(n, pcaTransform, clusterColors, immediateParams.current.colorMixRatio);
+      nodeColorCache.set(n.id, originalFillColor);
+
+      const dimAmount = getNodeDimAmount(n.id);
+      const backgroundColor = getBackgroundColor();
+      const dimmedFillColor = dimAmount > 0 ? dimColor(originalFillColor, dimAmount, backgroundColor) : originalFillColor;
+      const dimmedOutlineColor = dimAmount > 0 ? dimColor(OUTLINE_COLOR, dimAmount, backgroundColor) : OUTLINE_COLOR;
 
       // Create outline ring (white stroke) - positioned behind the fill
       const outlineGeometry = new THREE.RingGeometry(radius, radius + strokeWidth, CIRCLE_SEGMENTS);
       const outlineMaterial = new THREE.MeshBasicMaterial({
-        color: 0xffffff,
-        transparent: opacity < 1,
-        opacity,
+        color: new THREE.Color(dimmedOutlineColor),
+        transparent: true, // Must be transparent to use renderOrder (same pass as edges)
+        depthTest: false, // Disable depth testing - use renderOrder for layering
       });
       const outlineMesh = new THREE.Mesh(outlineGeometry, outlineMaterial);
       outlineMesh.position.z = -0.1; // Slightly behind the fill
 
       // Create fill circle
       const fillGeometry = new THREE.CircleGeometry(radius, CIRCLE_SEGMENTS);
-      const fillColor = new THREE.Color(getNodeColor(n, pcaTransform, clusterColors, immediateParams.current.colorMixRatio));
       const fillMaterial = new THREE.MeshBasicMaterial({
-        color: fillColor,
-        transparent: opacity < 1,
-        opacity,
+        color: new THREE.Color(dimmedFillColor),
+        transparent: true, // Must be transparent to use renderOrder (same pass as edges)
+        depthTest: false, // Disable depth testing - use renderOrder for layering
       });
       const fillMesh = new THREE.Mesh(fillGeometry, fillMaterial);
 
@@ -335,6 +364,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       const group = new THREE.Group();
       group.add(outlineMesh);
       group.add(fillMesh);
+      group.renderOrder = getRenderOrder("nodes");
 
       nodeCache.set(n.id, { group, fill: fillMesh, outline: outlineMesh });
       return group;
@@ -402,10 +432,13 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
             resolution: new THREE.Vector2(rect.width, rect.height),
             worldUnits: true, // Use world units so lines scale with zoom
             alphaToCoverage: true, // Reduces transparency artifacts at joints
+            depthTest: false, // Disable depth testing - edges are coplanar, use renderOrder instead
           });
 
           const line = new Line2(geometry, material);
           line.computeLineDistances();
+          // Assign unique renderOrder to prevent z-fighting flicker between edges
+          line.renderOrder = getRenderOrder("edges", linkCache.size);
           // Disable frustum culling - the bounding box isn't updated when we
           // modify the buffer directly, causing lines to disappear when zoomed in
           line.frustumCulled = false;
@@ -972,6 +1005,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
         outline.material.dispose();
       }
       nodeCache.clear();
+      nodeColorCache.clear();
 
       for (const line of linkCache.values()) {
         line.geometry.dispose();
@@ -1035,12 +1069,22 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       if (immediateParams.current.colorMixRatio !== currentColorMixRatio) {
         currentColorMixRatio = immediateParams.current.colorMixRatio;
 
-        // Update all cached mesh colors
+        // Update all cached mesh colors (with dimming applied)
+        const backgroundColor = getBackgroundColor();
         for (const node of currentNodes) {
           const cached = nodeCache.get(node.id);
           if (cached) {
-            cached.fill.material.color.set(getNodeColor(node, pcaTransform, clusterColors, currentColorMixRatio));
+            const originalColor = getNodeColor(node, pcaTransform, clusterColors, currentColorMixRatio);
+            nodeColorCache.set(node.id, originalColor);
+
+            const dimAmount = getNodeDimAmount(node.id);
+            const dimmedFillColor = dimAmount > 0 ? dimColor(originalColor, dimAmount, backgroundColor) : originalColor;
+            cached.fill.material.color.set(dimmedFillColor);
             cached.fill.material.needsUpdate = true;
+
+            const dimmedOutlineColor = dimAmount > 0 ? dimColor(OUTLINE_COLOR, dimAmount, backgroundColor) : OUTLINE_COLOR;
+            cached.outline.material.color.set(dimmedOutlineColor);
+            cached.outline.material.needsUpdate = true;
           }
         }
 
@@ -1075,12 +1119,22 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       // Recompute cluster colors with new assignments
       clusterColors = computeClusterColors(groupNodesByCommunity(currentNodes), pcaTransform);
 
-      // Update cached mesh colors in-place
+      // Update cached mesh colors in-place (with dimming applied)
+      const backgroundColor = getBackgroundColor();
       for (const node of currentNodes) {
         const cached = nodeCache.get(node.id);
         if (cached) {
-          cached.fill.material.color.set(getNodeColor(node, pcaTransform, clusterColors, immediateParams.current.colorMixRatio));
+          const originalColor = getNodeColor(node, pcaTransform, clusterColors, immediateParams.current.colorMixRatio);
+          nodeColorCache.set(node.id, originalColor);
+
+          const dimAmount = getNodeDimAmount(node.id);
+          const dimmedFillColor = dimAmount > 0 ? dimColor(originalColor, dimAmount, backgroundColor) : originalColor;
+          cached.fill.material.color.set(dimmedFillColor);
           cached.fill.material.needsUpdate = true;
+
+          const dimmedOutlineColor = dimAmount > 0 ? dimColor(OUTLINE_COLOR, dimAmount, backgroundColor) : OUTLINE_COLOR;
+          cached.outline.material.color.set(dimmedOutlineColor);
+          cached.outline.material.needsUpdate = true;
         }
       }
 
@@ -1130,18 +1184,19 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
         return 0;
       };
 
-      // Update node materials (still use opacity for nodes - they don't have joint artifacts)
+      // Update node materials - use color mixing (not opacity) so nodes fully occlude edges
       for (const [nodeId, { fill, outline }] of nodeCache) {
-        const dimAmount = getDimAmount(highlightedIds?.has(nodeId) ?? false);
-        const opacity = 1 - dimAmount;
-        const transparent = dimAmount > 0;
+        const originalFillColor = nodeColorCache.get(nodeId);
+        if (!originalFillColor) continue;
 
-        fill.material.opacity = opacity;
-        fill.material.transparent = transparent;
+        const dimAmount = getDimAmount(highlightedIds?.has(nodeId) ?? false);
+
+        const dimmedFillColor = dimAmount > 0 ? dimColor(originalFillColor, dimAmount, backgroundColor) : originalFillColor;
+        fill.material.color.set(dimmedFillColor);
         fill.material.needsUpdate = true;
 
-        outline.material.opacity = opacity;
-        outline.material.transparent = transparent;
+        const dimmedOutlineColor = dimAmount > 0 ? dimColor(OUTLINE_COLOR, dimAmount, backgroundColor) : OUTLINE_COLOR;
+        outline.material.color.set(dimmedOutlineColor);
         outline.material.needsUpdate = true;
       }
 
