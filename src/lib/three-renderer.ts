@@ -258,9 +258,46 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     if (currentHighlight === null) {
       return currentBaseDim;
     } else if (currentHighlight.size > 0) {
-      return currentHighlight.has(nodeId) ? 0 : 0.85; // 0.85 = 1 - 0.15 (old opacity)
+      return currentHighlight.has(nodeId) ? 0 : currentBaseDim;
     }
     return 0;
+  }
+
+  // Helper to update a cached node's fill and outline colors with dimming
+  function updateNodeMeshColors(
+    cached: NodeMeshGroup,
+    originalFillColor: string,
+    dimAmount: number,
+    backgroundColor: string
+  ): void {
+    const dimmedFillColor = dimAmount > 0 ? dimColor(originalFillColor, dimAmount, backgroundColor) : originalFillColor;
+    cached.fill.material.color.set(dimmedFillColor);
+    cached.fill.material.needsUpdate = true;
+
+    const dimmedOutlineColor = dimAmount > 0 ? dimColor(OUTLINE_COLOR, dimAmount, backgroundColor) : OUTLINE_COLOR;
+    cached.outline.material.color.set(dimmedOutlineColor);
+    cached.outline.material.needsUpdate = true;
+  }
+
+  // Helper to refresh all edge colors from current state
+  function refreshAllEdgeColors(): void {
+    for (const link of currentLinks) {
+      const key = getLinkKey(link);
+      const newColor = getEdgeColor(link, nodeMap, pcaTransform, clusterColors, currentColorMixRatio);
+      edgeColorCache.set(key, newColor);
+
+      const linkObj = linkCache.get(key);
+      if (linkObj) {
+        const mat = linkObj.material as LineMaterial;
+        mat.color.set(newColor);
+        mat.needsUpdate = true;
+      }
+    }
+
+    // For bezier mode, force re-render
+    if (currentCurveType === "bezier") {
+      graph.linkColor((link: object) => getEdgeColor(link as SimLink, nodeMap, pcaTransform, clusterColors, currentColorMixRatio));
+    }
   }
 
   // Cache for link objects (when using arc rendering with fat lines)
@@ -311,20 +348,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
         // Update existing mesh properties with color-based dimming
         const originalFillColor = getNodeColor(n, pcaTransform, clusterColors, immediateParams.current.colorMixRatio);
         nodeColorCache.set(n.id, originalFillColor);
-
-        const dimAmount = getNodeDimAmount(n.id);
-        const backgroundColor = getBackgroundColor();
-
-        const fillMaterial = cached.fill.material;
-        const dimmedFillColor = dimAmount > 0 ? dimColor(originalFillColor, dimAmount, backgroundColor) : originalFillColor;
-        fillMaterial.color.set(dimmedFillColor);
-        fillMaterial.needsUpdate = true;
-
-        const outlineMaterial = cached.outline.material;
-        const dimmedOutlineColor = dimAmount > 0 ? dimColor(OUTLINE_COLOR, dimAmount, backgroundColor) : OUTLINE_COLOR;
-        outlineMaterial.color.set(dimmedOutlineColor);
-        outlineMaterial.needsUpdate = true;
-
+        updateNodeMeshColors(cached, originalFillColor, getNodeDimAmount(n.id), getBackgroundColor());
         return cached.group;
       }
 
@@ -1076,36 +1100,12 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
           if (cached) {
             const originalColor = getNodeColor(node, pcaTransform, clusterColors, currentColorMixRatio);
             nodeColorCache.set(node.id, originalColor);
-
-            const dimAmount = getNodeDimAmount(node.id);
-            const dimmedFillColor = dimAmount > 0 ? dimColor(originalColor, dimAmount, backgroundColor) : originalColor;
-            cached.fill.material.color.set(dimmedFillColor);
-            cached.fill.material.needsUpdate = true;
-
-            const dimmedOutlineColor = dimAmount > 0 ? dimColor(OUTLINE_COLOR, dimAmount, backgroundColor) : OUTLINE_COLOR;
-            cached.outline.material.color.set(dimmedOutlineColor);
-            cached.outline.material.needsUpdate = true;
+            updateNodeMeshColors(cached, originalColor, getNodeDimAmount(node.id), backgroundColor);
           }
         }
 
         // Update edge colors
-        for (const link of currentLinks) {
-          const key = getLinkKey(link);
-          const newColor = getEdgeColor(link, nodeMap, pcaTransform, clusterColors, currentColorMixRatio);
-          edgeColorCache.set(key, newColor);
-
-          const linkObj = linkCache.get(key);
-          if (linkObj) {
-            const mat = linkObj.material as LineMaterial;
-            mat.color.set(newColor);
-            mat.needsUpdate = true;
-          }
-        }
-
-        // For bezier mode, force re-render
-        if (currentCurveType === "bezier") {
-          graph.linkColor((link: object) => getEdgeColor(link as SimLink, nodeMap, pcaTransform, clusterColors, currentColorMixRatio));
-        }
+        refreshAllEdgeColors();
       }
     },
 
@@ -1126,36 +1126,12 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
         if (cached) {
           const originalColor = getNodeColor(node, pcaTransform, clusterColors, immediateParams.current.colorMixRatio);
           nodeColorCache.set(node.id, originalColor);
-
-          const dimAmount = getNodeDimAmount(node.id);
-          const dimmedFillColor = dimAmount > 0 ? dimColor(originalColor, dimAmount, backgroundColor) : originalColor;
-          cached.fill.material.color.set(dimmedFillColor);
-          cached.fill.material.needsUpdate = true;
-
-          const dimmedOutlineColor = dimAmount > 0 ? dimColor(OUTLINE_COLOR, dimAmount, backgroundColor) : OUTLINE_COLOR;
-          cached.outline.material.color.set(dimmedOutlineColor);
-          cached.outline.material.needsUpdate = true;
+          updateNodeMeshColors(cached, originalColor, getNodeDimAmount(node.id), backgroundColor);
         }
       }
 
       // Update edge colors based on new node colors
-      for (const link of currentLinks) {
-        const key = getLinkKey(link);
-        const newColor = getEdgeColor(link, nodeMap, pcaTransform, clusterColors, immediateParams.current.colorMixRatio);
-        edgeColorCache.set(key, newColor);
-
-        const linkObj = linkCache.get(key);
-        if (linkObj) {
-          const mat = linkObj.material as LineMaterial;
-          mat.color.set(newColor);
-          mat.needsUpdate = true;
-        }
-      }
-
-      // For bezier mode, force re-render by re-setting linkColor
-      if (currentCurveType === "bezier") {
-        graph.linkColor((link: object) => getEdgeColor(link as SimLink, nodeMap, pcaTransform, clusterColors, immediateParams.current.colorMixRatio));
-      }
+      refreshAllEdgeColors();
     },
 
     updateClusterLabels() {
@@ -1167,37 +1143,13 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       currentHighlight = highlightedIds;
       currentBaseDim = baseDim;
 
-      // Detect current theme for background color
-      const isDarkMode = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      const backgroundColor = isDarkMode ? colors.background.dark : colors.background.light;
-
-      // Compute dim amount: 0 = full color, 1 = fully dimmed (background)
-      const getDimAmount = (isHighlighted: boolean): number => {
-        if (highlightedIds === null) {
-          // Nothing nearby - dim everything
-          return baseDim;
-        } else if (highlightedIds.size > 0) {
-          // Highlight selected, dim others
-          return isHighlighted ? 0 : baseDim;
-        }
-        // highlightedIds is empty Set = hover ended, restore full color
-        return 0;
-      };
+      const backgroundColor = getBackgroundColor();
 
       // Update node materials - use color mixing (not opacity) so nodes fully occlude edges
-      for (const [nodeId, { fill, outline }] of nodeCache) {
+      for (const [nodeId, cached] of nodeCache) {
         const originalFillColor = nodeColorCache.get(nodeId);
         if (!originalFillColor) continue;
-
-        const dimAmount = getDimAmount(highlightedIds?.has(nodeId) ?? false);
-
-        const dimmedFillColor = dimAmount > 0 ? dimColor(originalFillColor, dimAmount, backgroundColor) : originalFillColor;
-        fill.material.color.set(dimmedFillColor);
-        fill.material.needsUpdate = true;
-
-        const dimmedOutlineColor = dimAmount > 0 ? dimColor(OUTLINE_COLOR, dimAmount, backgroundColor) : OUTLINE_COLOR;
-        outline.material.color.set(dimmedOutlineColor);
-        outline.material.needsUpdate = true;
+        updateNodeMeshColors(cached, originalFillColor, getNodeDimAmount(nodeId), backgroundColor);
       }
 
       // Update edge materials - use color mixing instead of opacity to avoid joint artifacts
@@ -1209,10 +1161,13 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
         // Parse linkKey to get source and target IDs
         const [sourceId, targetId] = linkKey.split("->");
         const bothHighlighted = (highlightedIds?.has(sourceId) ?? false) && (highlightedIds?.has(targetId) ?? false);
-        const dimAmount = getDimAmount(bothHighlighted);
+
+        // Apply same dimming logic as nodes: edges are "highlighted" only if both endpoints are
+        const dimAmount = highlightedIds === null ? currentBaseDim :
+                          highlightedIds.size > 0 ? (bothHighlighted ? 0 : currentBaseDim) :
+                          0;
 
         const mat = linkObj.material as LineMaterial;
-        // Mix original color with background based on dim amount
         const dimmedColor = dimAmount > 0 ? dimColor(originalColor, dimAmount, backgroundColor) : originalColor;
         mat.color.set(dimmedColor);
         mat.needsUpdate = true;
