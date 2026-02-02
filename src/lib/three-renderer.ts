@@ -300,6 +300,29 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     }
   }
 
+  // Helper to get camera viewport dimensions at z=0
+  function getCameraViewport(cameraZ: number): { width: number; height: number } {
+    const rect = container.getBoundingClientRect();
+    const fov = 75 * Math.PI / 180; // PerspectiveCamera default FOV
+    const visibleHeight = 2 * cameraZ * Math.tan(fov / 2);
+    const visibleWidth = visibleHeight * (rect.width / rect.height);
+    return { width: visibleWidth, height: visibleHeight };
+  }
+
+  // Helper to notify zoom/pan changes
+  function notifyZoomChange(camera: THREE.Camera): void {
+    if (callbacks.onZoomEnd) {
+      const k = 500 / camera.position.z;
+      callbacks.onZoomEnd({ k, x: camera.position.x, y: camera.position.y });
+    }
+  }
+
+  // Helper to update all labels (cluster + keyword)
+  function updateAllLabels(): void {
+    updateClusterLabelsInternal();
+    updateKeywordLabelsInternal();
+  }
+
   // Cache for link objects (when using arc rendering with fat lines)
   const linkCache = new Map<string, Line2>();
 
@@ -623,8 +646,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       }
 
       // Update cluster labels on each tick (positions change during simulation)
-      updateClusterLabelsInternal();
-      updateKeywordLabelsInternal();
+      updateAllLabels();
     });
 
   // Set initial data
@@ -742,18 +764,16 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     lastMouseY = event.clientY;
 
     // Convert screen delta to world delta based on camera distance
-    const fov = (camera as THREE.PerspectiveCamera).fov * Math.PI / 180;
+    const viewport = getCameraViewport(camera.position.z);
     const rect = container.getBoundingClientRect();
-    const visibleHeight = 2 * camera.position.z * Math.tan(fov / 2);
-    const pixelsPerUnit = rect.height / visibleHeight;
+    const pixelsPerUnit = rect.height / viewport.height;
 
     // Move camera (invert because dragging "grabs" the canvas)
     camera.position.x -= deltaX / pixelsPerUnit;
     camera.position.y += deltaY / pixelsPerUnit; // Y is inverted in screen coords
 
     // Update labels during pan
-    updateClusterLabelsInternal();
-    updateKeywordLabelsInternal();
+    updateAllLabels();
   };
 
   const handleMouseUp = () => {
@@ -763,13 +783,8 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       markUserInteraction(autoFitState); // User has panned, stop auto-fitting
 
       // Notify zoom/pan change
-      if (callbacks.onZoomEnd) {
-        const camera = graph.camera();
-        if (camera) {
-          const k = 500 / camera.position.z;
-          callbacks.onZoomEnd({ k, x: camera.position.x, y: camera.position.y });
-        }
-      }
+      const camera = graph.camera();
+      if (camera) notifyZoomChange(camera);
     }
   };
 
@@ -817,38 +832,26 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     if (Math.abs(newZ - oldZ) < 0.01) return;
 
     // Calculate the graph position under the mouse before zoom
-    const fov = (camera as THREE.PerspectiveCamera).fov * Math.PI / 180;
-    const oldHeight = 2 * oldZ * Math.tan(fov / 2);
-    const oldWidth = oldHeight * (rect.width / rect.height);
+    const oldViewport = getCameraViewport(oldZ);
+    const graphX = camera.position.x + ndcX * (oldViewport.width / 2);
+    const graphY = camera.position.y + ndcY * (oldViewport.height / 2);
 
-    const graphX = camera.position.x + ndcX * (oldWidth / 2);
-    const graphY = camera.position.y + ndcY * (oldHeight / 2);
-
-    // Calculate new visible area
-    const newHeight = 2 * newZ * Math.tan(fov / 2);
-    const newWidth = newHeight * (rect.width / rect.height);
-
-    // Adjust camera position so the point under cursor stays fixed
-    camera.position.x = graphX - ndcX * (newWidth / 2);
-    camera.position.y = graphY - ndcY * (newHeight / 2);
+    // Calculate new visible area and adjust camera position so the point under cursor stays fixed
+    const newViewport = getCameraViewport(newZ);
+    camera.position.x = graphX - ndcX * (newViewport.width / 2);
+    camera.position.y = graphY - ndcY * (newViewport.height / 2);
     camera.position.z = newZ;
     markUserInteraction(autoFitState); // User has zoomed, stop auto-fitting
 
     // Update labels during zoom
-    updateClusterLabelsInternal();
-    updateKeywordLabelsInternal();
+    updateAllLabels();
 
     // Notify for hover highlight recalculation during zoom
     callbacks.onZoom?.();
 
     // Debounce callback to avoid React re-renders during zoom
     if (zoomEndTimeout) clearTimeout(zoomEndTimeout);
-    zoomEndTimeout = setTimeout(() => {
-      if (callbacks.onZoomEnd) {
-        const k = 500 / camera.position.z;
-        callbacks.onZoomEnd({ k, x: camera.position.x, y: camera.position.y });
-      }
-    }, 150);
+    zoomEndTimeout = setTimeout(() => notifyZoomChange(camera), 150);
   };
 
   container.addEventListener("wheel", handleWheel, { passive: false });
@@ -878,16 +881,13 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
 
     // Calculate camera Z to fit the graph with padding
     const rect = container.getBoundingClientRect();
-    const fov = (camera as THREE.PerspectiveCamera).fov * Math.PI / 180;
+    const fov = 75 * Math.PI / 180; // PerspectiveCamera default FOV
     const aspect = rect.width / rect.height;
-
-    // Calculate Z needed to fit graph (accounting for padding)
     const paddedWidth = graphWidth * (1 + padding);
     const paddedHeight = graphHeight * (1 + padding);
 
-    // Z needed to see the full height
+    // Z needed to see the full height/width
     const zForHeight = paddedHeight / (2 * Math.tan(fov / 2));
-    // Z needed to see the full width
     const zForWidth = paddedWidth / (2 * Math.tan(fov / 2) * aspect);
 
     // Use the larger Z (more zoomed out) to fit both dimensions
@@ -921,11 +921,8 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     }
     cameraAnimationFrameId = requestAnimationFrame(animateCamera);
 
-    // Notify zoom change
-    if (callbacks.onZoomEnd) {
-      const k = 500 / newZ;
-      callbacks.onZoomEnd({ k, x: graphCenterX, y: graphCenterY });
-    }
+    // Notify zoom change (using temporary camera position for callback)
+    notifyZoomChange({ position: { z: newZ, x: graphCenterX, y: graphCenterY } } as THREE.Camera);
   }
 
   // Early fit after ~1.5 seconds so user sees the graph quickly
@@ -943,11 +940,8 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       fitToNodesInternal(0.25);
     }
 
-    if (callbacks.onZoomEnd) {
-      const camera = graph.camera();
-      const k = camera ? 500 / camera.position.z : 1;
-      callbacks.onZoomEnd({ k, x: camera.position.x, y: camera.position.y });
-    }
+    const camera = graph.camera();
+    if (camera) notifyZoomChange(camera);
   });
 
   // Store cleanup function
@@ -977,15 +971,11 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     if (!camera) return null;
 
     const rect = container.getBoundingClientRect();
-    const fov = (camera as THREE.PerspectiveCamera).fov * Math.PI / 180;
-
-    // Calculate visible area at z=0
-    const visibleHeight = 2 * camera.position.z * Math.tan(fov / 2);
-    const visibleWidth = visibleHeight * (rect.width / rect.height);
+    const viewport = getCameraViewport(camera.position.z);
 
     // Convert world to NDC
-    const ndcX = (world.x - camera.position.x) / (visibleWidth / 2);
-    const ndcY = (world.y - camera.position.y) / (visibleHeight / 2);
+    const ndcX = (world.x - camera.position.x) / (viewport.width / 2);
+    const ndcY = (world.y - camera.position.y) / (viewport.height / 2);
 
     // Convert NDC to screen coordinates
     return {
@@ -1183,10 +1173,9 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       if (!camera) return { k: 1, x: 0, y: 0 };
 
       const rect = container.getBoundingClientRect();
-      const fov = (camera as THREE.PerspectiveCamera).fov * Math.PI / 180;
-      const visibleHeight = 2 * camera.position.z * Math.tan(fov / 2);
+      const viewport = getCameraViewport(camera.position.z);
       // k = pixels per world unit (for proper radius conversion)
-      const k = rect.height / visibleHeight;
+      const k = rect.height / viewport.height;
 
       return { k, x: 0, y: 0 };
     },
@@ -1196,11 +1185,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       if (!camera) return { x: 0, y: 0 };
 
       const rect = container.getBoundingClientRect();
-      const fov = (camera as THREE.PerspectiveCamera).fov * Math.PI / 180;
-
-      // Calculate visible area at z=0
-      const visibleHeight = 2 * camera.position.z * Math.tan(fov / 2);
-      const visibleWidth = visibleHeight * (rect.width / rect.height);
+      const viewport = getCameraViewport(camera.position.z);
 
       // Convert screen to normalized device coordinates (-1 to +1)
       const ndcX = (screen.x / rect.width) * 2 - 1;
@@ -1208,8 +1193,8 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
 
       // Convert NDC to world coordinates
       return {
-        x: camera.position.x + ndcX * (visibleWidth / 2),
-        y: camera.position.y + ndcY * (visibleHeight / 2),
+        x: camera.position.x + ndcX * (viewport.width / 2),
+        y: camera.position.y + ndcY * (viewport.height / 2),
       };
     },
 
