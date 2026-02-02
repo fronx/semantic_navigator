@@ -192,6 +192,10 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
   // Ensure container is positioning context for overlays
   container.style.position = "relative";
 
+  // Track destruction state to prevent callbacks after cleanup
+  let destroyed = false;
+  let cameraAnimationFrameId: number | null = null;
+
   // Track current data
   let currentNodes = initialNodes;
   let currentLinks = initialLinks;
@@ -512,7 +516,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
 
       // Periodically fit as graph grows during simulation
       if (shouldFitDuringSimulation(autoFitState, convergenceState)) {
-        setTimeout(() => fitToNodesInternal(0.25), 0);
+        setTimeout(() => { if (!destroyed) fitToNodesInternal(0.25); }, 0);
       }
 
       if (coolingJustStarted) {
@@ -526,7 +530,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       if (shouldFitAfterCooling(autoFitState, convergenceState)) {
         markInitialFitDone(autoFitState);
         // Defer fit to avoid calling during tick
-        setTimeout(() => fitToNodesInternal(0.25), 0);
+        setTimeout(() => { if (!destroyed) fitToNodesInternal(0.25); }, 0);
       }
 
       // Update cluster labels on each tick (positions change during simulation)
@@ -805,6 +809,9 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     const startTime = performance.now();
 
     function animateCamera() {
+      // Stop animation if renderer was destroyed
+      if (destroyed) return;
+
       const elapsed = performance.now() - startTime;
       const t = Math.min(elapsed / duration, 1);
       // Ease out cubic for smooth deceleration
@@ -815,10 +822,12 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       camera.position.z = startZ + (newZ - startZ) * eased;
 
       if (t < 1) {
-        requestAnimationFrame(animateCamera);
+        cameraAnimationFrameId = requestAnimationFrame(animateCamera);
+      } else {
+        cameraAnimationFrameId = null;
       }
     }
-    animateCamera();
+    cameraAnimationFrameId = requestAnimationFrame(animateCamera);
 
     // Notify zoom change
     if (callbacks.onZoomEnd) {
@@ -851,6 +860,15 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
 
   // Store cleanup function
   const cleanup = () => {
+    // Mark as destroyed to stop any pending callbacks
+    destroyed = true;
+
+    // Cancel any pending animation frame
+    if (cameraAnimationFrameId !== null) {
+      cancelAnimationFrame(cameraAnimationFrameId);
+      cameraAnimationFrameId = null;
+    }
+
     if (earlyFitTimeout) clearTimeout(earlyFitTimeout);
     if (zoomEndTimeout) clearTimeout(zoomEndTimeout);
     container.removeEventListener("wheel", handleWheel);
@@ -1166,6 +1184,43 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
 
       // Clean up label overlays
       labelManager.destroy();
+
+      // CRITICAL: Properly dispose the WebGL renderer to prevent GPU memory leaks
+      // The _destructor only pauses animation and clears data, but doesn't release WebGL context
+      try {
+        // Get the Three.js WebGLRenderer
+        const renderer = graph.renderer();
+        if (renderer) {
+          // Dispose all WebGL resources (textures, buffers, shaders, etc.)
+          renderer.dispose();
+          // Force immediate release of the WebGL context
+          // This is critical to prevent "too many WebGL contexts" errors
+          renderer.forceContextLoss();
+        }
+
+        // Get the scene and dispose all objects in it
+        const scene = graph.scene();
+        if (scene) {
+          scene.traverse((object: THREE.Object3D) => {
+            // Dispose geometries
+            if ((object as THREE.Mesh).geometry) {
+              (object as THREE.Mesh).geometry.dispose();
+            }
+            // Dispose materials (can be single or array)
+            const mesh = object as THREE.Mesh;
+            if (mesh.material) {
+              if (Array.isArray(mesh.material)) {
+                mesh.material.forEach((mat) => mat.dispose());
+              } else {
+                mesh.material.dispose();
+              }
+            }
+          });
+          scene.clear();
+        }
+      } catch (e) {
+        console.warn("Error during WebGL cleanup:", e);
+      }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (graph as any)._destructor?.();

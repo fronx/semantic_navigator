@@ -107,22 +107,30 @@ export function useThreeTopicsRenderer(
       if (cancelled) return;
 
       (async () => {
-        const threeRenderer = await createThreeRenderer({
-          container,
-          nodes: mapNodes,
-          links: mapLinks,
-          immediateParams,
-          pcaTransform: pcaTransform ?? undefined,
-          callbacks: {
-            onKeywordClick,
-            onProjectClick,
-            onProjectDrag,
-            onZoomEnd: (transform) => onZoomChange?.(transform.k),
-            onProjectInteractionStart: () => {
-              projectInteractionRef.current = true;
+        let threeRenderer;
+        try {
+          threeRenderer = await createThreeRenderer({
+            container,
+            nodes: mapNodes,
+            links: mapLinks,
+            immediateParams,
+            pcaTransform: pcaTransform ?? undefined,
+            callbacks: {
+              onKeywordClick,
+              onProjectClick,
+              onProjectDrag,
+              onZoomEnd: (transform) => onZoomChange?.(transform.k),
+              onProjectInteractionStart: () => {
+                projectInteractionRef.current = true;
+              },
             },
-          },
-        });
+          });
+        } catch (error) {
+          console.error("Failed to create Three.js renderer (WebGL may be unavailable):", error);
+          // WebGL context creation failed - renderer will remain null
+          // The parent component should fall back to D3 renderer
+          return;
+        }
 
         if (cancelled) {
           threeRenderer.destroy();
