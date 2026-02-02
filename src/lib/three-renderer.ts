@@ -222,7 +222,13 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
   }
 
   // Cache for node meshes to avoid recreating on every update
-  const nodeCache = new Map<string, THREE.Mesh<THREE.CircleGeometry, THREE.MeshBasicMaterial>>();
+  // Each node has a group with two meshes: outline (ring) and fill (circle)
+  interface NodeMeshGroup {
+    group: THREE.Group;
+    fill: THREE.Mesh<THREE.CircleGeometry, THREE.MeshBasicMaterial>;
+    outline: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
+  }
+  const nodeCache = new Map<string, NodeMeshGroup>();
 
   // Cache for link objects (when using arc rendering with fat lines)
   const linkCache = new Map<string, Line2>();
@@ -261,6 +267,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     .nodeId("id")
     .nodeLabel((node: object) => (node as SimNode).label)
     // Use custom node objects with MeshBasicMaterial for vibrant, flat colors (no lighting)
+    // Each node is a group with two meshes: white outline ring and colored fill circle
     // IMPORTANT: We cache meshes to avoid memory leaks from recreating geometries/materials
     .nodeThreeObject((node: object) => {
       const n = node as SimNode;
@@ -269,8 +276,8 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       const cached = nodeCache.get(n.id);
       if (cached) {
         // Update existing mesh properties
-        const material = cached.material;
-        material.color.set(getNodeColor(n, pcaTransform, clusterColors, immediateParams.current.colorMixRatio));
+        const fillMaterial = cached.fill.material;
+        fillMaterial.color.set(getNodeColor(n, pcaTransform, clusterColors, immediateParams.current.colorMixRatio));
 
         // Update opacity based on highlight state
         let opacity = 1;
@@ -279,17 +286,22 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
         } else if (currentHighlight.size > 0) {
           opacity = currentHighlight.has(n.id) ? 1 : 0.15;
         }
-        material.opacity = opacity;
-        material.transparent = opacity < 1;
-        material.needsUpdate = true;
+        fillMaterial.opacity = opacity;
+        fillMaterial.transparent = opacity < 1;
+        fillMaterial.needsUpdate = true;
 
-        return cached;
+        // Update outline opacity to match
+        const outlineMaterial = cached.outline.material;
+        outlineMaterial.opacity = opacity;
+        outlineMaterial.transparent = opacity < 1;
+        outlineMaterial.needsUpdate = true;
+
+        return cached.group;
       }
 
-      // Create new mesh and cache it
+      // Create new group with outline and fill
       const radius = getNodeRadius(n, immediateParams.current.dotScale) * DOT_SCALE_FACTOR;
-      const geometry = new THREE.CircleGeometry(radius, CIRCLE_SEGMENTS);
-      const color = new THREE.Color(getNodeColor(n, pcaTransform, clusterColors, immediateParams.current.colorMixRatio));
+      const strokeWidth = (n.type === "project" ? 3 : 1.5) * DOT_SCALE_FACTOR * 0.3;
 
       // Calculate opacity based on highlight state
       let opacity = 1;
@@ -299,15 +311,33 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
         opacity = currentHighlight.has(n.id) ? 1 : 0.15;
       }
 
-      const material = new THREE.MeshBasicMaterial({
-        color,
+      // Create outline ring (white stroke) - positioned behind the fill
+      const outlineGeometry = new THREE.RingGeometry(radius, radius + strokeWidth, CIRCLE_SEGMENTS);
+      const outlineMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
         transparent: opacity < 1,
         opacity,
       });
+      const outlineMesh = new THREE.Mesh(outlineGeometry, outlineMaterial);
+      outlineMesh.position.z = -0.1; // Slightly behind the fill
 
-      const mesh = new THREE.Mesh(geometry, material);
-      nodeCache.set(n.id, mesh);
-      return mesh;
+      // Create fill circle
+      const fillGeometry = new THREE.CircleGeometry(radius, CIRCLE_SEGMENTS);
+      const fillColor = new THREE.Color(getNodeColor(n, pcaTransform, clusterColors, immediateParams.current.colorMixRatio));
+      const fillMaterial = new THREE.MeshBasicMaterial({
+        color: fillColor,
+        transparent: opacity < 1,
+        opacity,
+      });
+      const fillMesh = new THREE.Mesh(fillGeometry, fillMaterial);
+
+      // Group both meshes
+      const group = new THREE.Group();
+      group.add(outlineMesh);
+      group.add(fillMesh);
+
+      nodeCache.set(n.id, { group, fill: fillMesh, outline: outlineMesh });
+      return group;
     })
     .nodeVal((node: object) => getNodeRadius(node as SimNode, immediateParams.current.dotScale))
     .linkSource("source")
@@ -935,9 +965,11 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
 
     updateData(nodes: SimNode[], links: SimLink[]) {
       // Dispose old cached objects before replacing data
-      for (const mesh of nodeCache.values()) {
-        mesh.geometry.dispose();
-        mesh.material.dispose();
+      for (const { fill, outline } of nodeCache.values()) {
+        fill.geometry.dispose();
+        fill.material.dispose();
+        outline.geometry.dispose();
+        outline.material.dispose();
       }
       nodeCache.clear();
 
@@ -1005,10 +1037,10 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
 
         // Update all cached mesh colors
         for (const node of currentNodes) {
-          const mesh = nodeCache.get(node.id);
-          if (mesh) {
-            mesh.material.color.set(getNodeColor(node, pcaTransform, clusterColors, currentColorMixRatio));
-            mesh.material.needsUpdate = true;
+          const cached = nodeCache.get(node.id);
+          if (cached) {
+            cached.fill.material.color.set(getNodeColor(node, pcaTransform, clusterColors, currentColorMixRatio));
+            cached.fill.material.needsUpdate = true;
           }
         }
 
@@ -1045,10 +1077,10 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
 
       // Update cached mesh colors in-place
       for (const node of currentNodes) {
-        const mesh = nodeCache.get(node.id);
-        if (mesh) {
-          mesh.material.color.set(getNodeColor(node, pcaTransform, clusterColors, immediateParams.current.colorMixRatio));
-          mesh.material.needsUpdate = true;
+        const cached = nodeCache.get(node.id);
+        if (cached) {
+          cached.fill.material.color.set(getNodeColor(node, pcaTransform, clusterColors, immediateParams.current.colorMixRatio));
+          cached.fill.material.needsUpdate = true;
         }
       }
 
@@ -1099,12 +1131,18 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       };
 
       // Update node materials (still use opacity for nodes - they don't have joint artifacts)
-      for (const [nodeId, mesh] of nodeCache) {
-        const material = mesh.material;
+      for (const [nodeId, { fill, outline }] of nodeCache) {
         const dimAmount = getDimAmount(highlightedIds?.has(nodeId) ?? false);
-        material.opacity = 1 - dimAmount;
-        material.transparent = dimAmount > 0;
-        material.needsUpdate = true;
+        const opacity = 1 - dimAmount;
+        const transparent = dimAmount > 0;
+
+        fill.material.opacity = opacity;
+        fill.material.transparent = transparent;
+        fill.material.needsUpdate = true;
+
+        outline.material.opacity = opacity;
+        outline.material.transparent = transparent;
+        outline.material.needsUpdate = true;
       }
 
       // Update edge materials - use color mixing instead of opacity to avoid joint artifacts
@@ -1173,9 +1211,11 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       cleanup();
 
       // Dispose all cached node geometries and materials
-      for (const mesh of nodeCache.values()) {
-        mesh.geometry.dispose();
-        mesh.material.dispose();
+      for (const { fill, outline } of nodeCache.values()) {
+        fill.geometry.dispose();
+        fill.material.dispose();
+        outline.geometry.dispose();
+        outline.material.dispose();
       }
       nodeCache.clear();
 
