@@ -26,4 +26,7 @@
 
 - [ADR-005: Hierarchical Keyword Bubbling](architecture/adr/005-hierarchical-keywords.md) - LLM-based keyword reduction for semantic map performance
 - [ADR-006: Keyword node_type Denormalization](architecture/adr/006-keyword-node-type-denormalization.md) - Partial HNSW index for 8x map query speedup
+- [ADR-008: Semantic Zoom](architecture/adr/008-semantic-zoom.md) - Zoom-based graph filtering with position persistence
+- [ADR-010: Client-Side Clustering](architecture/adr/010-client-side-clustering.md) - Move Louvain clustering to client for graph topology consistency
 - [ADR-012: WebGL Memory Leak Fix](architecture/adr/012-webgl-memory-leak-fix.md) - Proper WebGL context disposal to prevent browser unresponsiveness
+- [ADR-013: Leiden Clustering with Precomputation](architecture/adr/013-leiden-clustering-precomputation.md) - Leiden algorithm for better peripheral cluster detection, with precomputed labels to reduce API costs

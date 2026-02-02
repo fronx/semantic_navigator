@@ -1,17 +1,17 @@
 /**
- * Client-side Louvain clustering for Topics view.
+ * Client-side Leiden clustering for Topics view.
  * Runs community detection on the rendered graph edges,
  * ensuring clusters match the visual layout.
  *
  * Features:
- * - Louvain clustering on rendered graph (matches visual layout)
+ * - Leiden clustering on rendered graph (matches visual layout, guarantees connected communities)
+ * - Periphery detection via betweenness centrality
  * - Semantic labels from Haiku API
  * - Client-side caching with semantic similarity matching
  */
 import { useMemo, useState, useEffect, useRef } from "react";
-import Graph from "graphology";
-import louvain from "graphology-communities-louvain";
 import type { KeywordNode, SimilarityEdge } from "@/lib/graph-queries";
+import { computeLeidenClustering } from "@/lib/leiden-clustering";
 import {
   loadCache,
   saveCache,
@@ -50,7 +50,7 @@ interface ClusteringResult {
 }
 
 /**
- * Compute Louvain clustering on the graph.
+ * Compute Leiden clustering on the graph.
  * Pure function - no React hooks.
  */
 function computeClustering(
@@ -58,75 +58,26 @@ function computeClustering(
   edges: SimilarityEdge[],
   resolution: number
 ): ClusteringResult {
-  if (nodes.length === 0) {
-    return { nodeToCluster: new Map(), clusters: new Map() };
-  }
+  // Delegate to Leiden clustering module (includes periphery detection)
+  const { nodeToCluster, clusters } = computeLeidenClustering(nodes, edges, resolution);
 
-  // Build graphology graph from edges
-  const graph = new Graph({ type: "undirected" });
-
-  for (const node of nodes) {
-    graph.addNode(node.id);
-  }
-
-  for (const edge of edges) {
-    // Skip if nodes don't exist (shouldn't happen, but defensive)
-    if (!graph.hasNode(edge.source) || !graph.hasNode(edge.target)) continue;
-    // Skip self-loops and duplicate edges
-    if (edge.source === edge.target) continue;
-    if (graph.hasEdge(edge.source, edge.target)) continue;
-
-    graph.addEdge(edge.source, edge.target, { weight: edge.similarity });
-  }
-
-  // Run Louvain
-  const result = louvain.detailed(graph, {
-    resolution,
-    getEdgeWeight: "weight",
-  });
-
-  // Build nodeToCluster map
-  const nodeToCluster = new Map<string, number>();
-  for (const [nodeId, clusterId] of Object.entries(result.communities)) {
-    nodeToCluster.set(nodeId, clusterId);
-  }
-
-  // Group nodes by cluster and find hubs
-  const clusterMembers = new Map<number, Array<{ id: string; label: string; degree: number }>>();
-  const nodeLabels = new Map(nodes.map((n) => [n.id, n.label]));
-
-  for (const [nodeId, clusterId] of nodeToCluster) {
-    if (!clusterMembers.has(clusterId)) {
-      clusterMembers.set(clusterId, []);
-    }
-    clusterMembers.get(clusterId)!.push({
-      id: nodeId,
-      label: nodeLabels.get(nodeId) || nodeId,
-      degree: graph.degree(nodeId),
+  // Convert to ClusteringResult format (strip isPeripheral for now, keep for future use)
+  const clustersWithoutPeriphery = new Map<number, Omit<Cluster, "label">>();
+  for (const [id, cluster] of clusters) {
+    clustersWithoutPeriphery.set(id, {
+      id: cluster.id,
+      members: cluster.members,
+      hub: cluster.hub,
     });
   }
 
-  // Build cluster metadata
-  const clusters = new Map<number, Omit<Cluster, "label">>();
-  for (const [clusterId, members] of clusterMembers) {
-    // Sort by degree desc, then label length asc to find hub
-    const sorted = [...members].sort((a, b) => {
-      if (b.degree !== a.degree) return b.degree - a.degree;
-      return a.label.length - b.label.length;
-    });
-
-    clusters.set(clusterId, {
-      id: clusterId,
-      members: members.map((m) => m.label),
-      hub: sorted[0].label,
-    });
-  }
-
-  return { nodeToCluster, clusters };
+  return { nodeToCluster, clusters: clustersWithoutPeriphery };
 }
 
 export interface UseClusterLabelsOptions {
   onError?: (message: string) => void;
+  /** Use precomputed clusters instead of computing fresh (default: true) */
+  usePrecomputed?: boolean;
 }
 
 /**
@@ -144,14 +95,91 @@ export function useClusterLabels(
   resolution: number,
   options?: UseClusterLabelsOptions
 ): ClusterLabelsResult {
-  // Compute clustering synchronously
-  const clustering = useMemo(
-    () => computeClustering(nodes, edges, resolution),
-    [nodes, edges, resolution]
-  );
+  // State for precomputed data
+  const [precomputedData, setPrecomputedData] = useState<{
+    nodeToCluster: Map<string, number>;
+    clusters: Map<number, Cluster>;
+  } | null>(null);
 
   // Track semantic labels from Haiku
   const [semanticLabels, setSemanticLabels] = useState<Record<number, string>>({});
+
+  // Stable ref for usePrecomputed option
+  const usePrecomputed = options?.usePrecomputed !== false; // Default true
+
+  // Fetch precomputed data when enabled
+  useEffect(() => {
+    if (!usePrecomputed) return;
+
+    let cancelled = false;
+
+    async function fetchPrecomputed() {
+      try {
+        const nodeIds = nodes.map(n => n.id).join(",");
+        const response = await fetch(
+          `/api/precomputed-clusters?resolution=${resolution}&nodeIds=${nodeIds}`
+        );
+
+        if (!response.ok) {
+          console.warn("[precomputed-clusters] Failed, falling back to client-side");
+          setPrecomputedData(null);
+          return;
+        }
+
+        const data = await response.json();
+
+        if (!cancelled && data.nodeToCluster && data.clusters) {
+          setPrecomputedData({
+            nodeToCluster: new Map(data.nodeToCluster),
+            clusters: new Map(
+              data.clusters.map(([id, cluster]: [number, any]) => [id, cluster])
+            ),
+          });
+        }
+      } catch (err) {
+        console.error("[precomputed-clusters] Error:", err);
+        setPrecomputedData(null);
+      }
+    }
+
+    fetchPrecomputed();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [nodes, resolution, usePrecomputed]);
+
+  // Compute clustering (use precomputed when available)
+  const clustering = useMemo(() => {
+    // If precomputed data is available and covers our nodes, use it
+    if (precomputedData && precomputedData.nodeToCluster.size > 0) {
+      // Verify coverage
+      const coveredNodes = nodes.filter(n =>
+        precomputedData.nodeToCluster.has(n.id)
+      );
+
+      if (coveredNodes.length >= nodes.length * 0.9) { // 90% coverage
+        console.log(`[cluster-labels] Using precomputed clusters (${coveredNodes.length}/${nodes.length} nodes)`);
+        // Convert precomputed clusters to ClusteringResult format (strip label)
+        const clustersWithoutLabel = new Map<number, Omit<Cluster, "label">>();
+        for (const [id, cluster] of precomputedData.clusters) {
+          clustersWithoutLabel.set(id, {
+            id: cluster.id,
+            members: cluster.members,
+            hub: cluster.hub,
+          });
+        }
+        return {
+          nodeToCluster: precomputedData.nodeToCluster,
+          clusters: clustersWithoutLabel,
+        };
+      }
+    }
+
+    // Fall back to client-side clustering
+    console.log(`[cluster-labels] Computing clusters client-side with Leiden`);
+    return computeClustering(nodes, edges, resolution);
+  }, [nodes, edges, resolution, precomputedData]);
 
   // Cache ref to persist across renders (loaded once on mount)
   const cacheRef = useRef<ClusterLabelCache | null>(null);
@@ -181,6 +209,23 @@ export function useClusterLabels(
     let cancelled = false;
 
     async function fetchLabelsWithCache() {
+      // If using precomputed data with labels, skip Haiku API call
+      if (precomputedData && precomputedData.clusters.size > 0) {
+        const labelsFromPrecomputed: Record<number, string> = {};
+        for (const [clusterId, cluster] of precomputedData.clusters) {
+          if (cluster.label) {
+            labelsFromPrecomputed[clusterId] = cluster.label;
+          }
+        }
+
+        if (Object.keys(labelsFromPrecomputed).length > 0) {
+          console.log(`[cluster-labels] Using precomputed labels (${Object.keys(labelsFromPrecomputed).length} clusters)`);
+          setSemanticLabels(labelsFromPrecomputed);
+          return; // Skip fetching from Haiku
+        }
+      }
+
+
       // Load cache on first run
       if (!cacheRef.current) {
         cacheRef.current = loadCache();
@@ -357,7 +402,7 @@ export function useClusterLabels(
     return () => {
       cancelled = true;
     };
-  }, [clustering, embeddingsByLabel]);
+  }, [clustering, embeddingsByLabel, precomputedData]);
 
   // Merge clustering with semantic labels
   const clustersWithLabels = useMemo(() => {
