@@ -303,7 +303,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
   // Helper to get camera viewport dimensions at z=0
   function getCameraViewport(cameraZ: number): { width: number; height: number } {
     const rect = container.getBoundingClientRect();
-    const fov = 75 * Math.PI / 180; // PerspectiveCamera default FOV
+    const fov = 10 * Math.PI / 180; // Very narrow FOV (nearly orthographic) minimizes parallax
     const visibleHeight = 2 * cameraZ * Math.tan(fov / 2);
     const visibleWidth = visibleHeight * (rect.width / rect.height);
     return { width: visibleWidth, height: visibleHeight };
@@ -336,6 +336,28 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     }
   }
 
+  // Helper to dispose node cache and free GPU resources
+  function disposeNodeCache(): void {
+    for (const { fill, outline } of nodeCache.values()) {
+      fill.geometry.dispose();
+      fill.material.dispose();
+      outline.geometry.dispose();
+      outline.material.dispose();
+    }
+    nodeCache.clear();
+    nodeColorCache.clear();
+  }
+
+  // Helper to dispose link cache and free GPU resources
+  function disposeLinkCache(): void {
+    for (const line of linkCache.values()) {
+      line.geometry.dispose();
+      line.material.dispose();
+    }
+    linkCache.clear();
+    edgeColorCache.clear();
+  }
+
   // Cache for link objects (when using arc rendering with fat lines)
   const linkCache = new Map<string, Line2>();
 
@@ -363,9 +385,6 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
 
   // Arc segments for custom arc rendering (more = smoother, but more geometry)
   const ARC_SEGMENTS = 20;
-
-  // Z offset to keep edges behind nodes (prevents z-fighting flicker)
-  const EDGE_Z_OFFSET = -1;
 
   // Configure graph for 2D display (top-down view)
   graph
@@ -409,7 +428,6 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
         depthTest: false, // Disable depth testing - use renderOrder for layering
       });
       const outlineMesh = new THREE.Mesh(outlineGeometry, outlineMaterial);
-      outlineMesh.position.z = -0.1; // Slightly behind the fill
 
       // Create fill circle
       const fillGeometry = new THREE.CircleGeometry(radius, CIRCLE_SEGMENTS);
@@ -542,11 +560,11 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
               // Segment start point
               array[idx] = x1 + t0 * dx;
               array[idx + 1] = y1 + t0 * dy;
-              array[idx + 2] = EDGE_Z_OFFSET;
+              array[idx + 2] = 0;
               // Segment end point
               array[idx + 3] = x1 + t1 * dx;
               array[idx + 4] = y1 + t1 * dy;
-              array[idx + 5] = EDGE_Z_OFFSET;
+              array[idx + 5] = 0;
             }
           } else {
             // Curved arc
@@ -580,11 +598,11 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
               // Segment start point
               array[idx] = cx + radius * Math.cos(angle0);
               array[idx + 1] = cy + radius * Math.sin(angle0);
-              array[idx + 2] = EDGE_Z_OFFSET;
+              array[idx + 2] = 0;
               // Segment end point
               array[idx + 3] = cx + radius * Math.cos(angle1);
               array[idx + 4] = cy + radius * Math.sin(angle1);
-              array[idx + 5] = EDGE_Z_OFFSET;
+              array[idx + 5] = 0;
             }
           }
 
@@ -712,12 +730,14 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
   });
 
   // Camera setup for 2D view (top-down)
-  // Start zoomed out enough to see a large graph, then fit will adjust
+  // Use very narrow FOV (nearly orthographic) to minimize parallax between HTML labels and 3D nodes
   setTimeout(() => {
-    const camera = graph.camera();
+    const camera = graph.camera() as THREE.PerspectiveCamera;
     if (camera) {
-      // Start at z=1500 (zoomed out) - fit will adjust once layout settles
-      camera.position.set(0, 0, 1500);
+      camera.fov = 10; // Very narrow FOV (nearly orthographic) minimizes parallax
+      camera.updateProjectionMatrix();
+      // Start at z=10500 (much farther to compensate for very narrow FOV)
+      camera.position.set(0, 0, 10500);
       camera.lookAt(0, 0, 0);
     }
   }, 100);
@@ -894,7 +914,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
 
     // Calculate camera Z to fit the graph with padding
     const rect = container.getBoundingClientRect();
-    const fov = 75 * Math.PI / 180; // PerspectiveCamera default FOV
+    const fov = 10 * Math.PI / 180; // Match getCameraViewport FOV (very narrow, nearly orthographic)
     const aspect = rect.width / rect.height;
     const paddedWidth = graphWidth * (1 + padding);
     const paddedHeight = graphHeight * (1 + padding);
@@ -1025,21 +1045,8 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
 
     updateData(nodes: SimNode[], links: SimLink[]) {
       // Dispose old cached objects before replacing data
-      for (const { fill, outline } of nodeCache.values()) {
-        fill.geometry.dispose();
-        fill.material.dispose();
-        outline.geometry.dispose();
-        outline.material.dispose();
-      }
-      nodeCache.clear();
-      nodeColorCache.clear();
-
-      for (const line of linkCache.values()) {
-        line.geometry.dispose();
-        line.material.dispose();
-      }
-      linkCache.clear();
-      edgeColorCache.clear();
+      disposeNodeCache();
+      disposeLinkCache();
 
       currentNodes = nodes;
       currentLinks = links;
@@ -1071,14 +1078,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
 
       // Reconfigure curve rendering if type changed
       if (immediateParams.current.curveType !== currentCurveType) {
-        // Dispose old link objects before switching
-        for (const line of linkCache.values()) {
-          line.geometry.dispose();
-          line.material.dispose();
-        }
-        linkCache.clear();
-        edgeColorCache.clear();
-
+        disposeLinkCache();
         currentCurveType = immediateParams.current.curveType;
         configureCurveRendering();
         // Need to refresh graph data to apply new link objects
@@ -1195,22 +1195,9 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     destroy() {
       cleanup();
 
-      // Dispose all cached node geometries and materials
-      for (const { fill, outline } of nodeCache.values()) {
-        fill.geometry.dispose();
-        fill.material.dispose();
-        outline.geometry.dispose();
-        outline.material.dispose();
-      }
-      nodeCache.clear();
-
-      // Dispose all cached link geometries and materials
-      for (const line of linkCache.values()) {
-        line.geometry.dispose();
-        line.material.dispose();
-      }
-      linkCache.clear();
-      edgeColorCache.clear();
+      // Dispose all cached geometries and materials
+      disposeNodeCache();
+      disposeLinkCache();
 
       // Clean up label overlays
       labelManager.destroy();
