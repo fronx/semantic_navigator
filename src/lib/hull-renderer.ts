@@ -5,6 +5,7 @@
 import * as d3 from "d3";
 import type { SimNode } from "./map-renderer";
 import { centroidToColor, type PCATransform } from "./semantic-colors";
+import { computeLabelPosition, computeGraphCenter } from "./cluster-label-position";
 
 // Legacy color scale (fallback when no PCA transform provided)
 export const communityColorScale = d3.scaleOrdinal(d3.schemeTableau10);
@@ -20,6 +21,8 @@ export interface HullGeometry {
   hull: [number, number][];
   centroid: [number, number];
   expandedHull: [number, number][];
+  /** Label position - offset toward cluster spread for elongated clusters */
+  labelPosition: [number, number];
 }
 
 /**
@@ -28,7 +31,8 @@ export interface HullGeometry {
  */
 export function computeHullGeometry(
   points: [number, number][],
-  expansion = 1.3
+  expansion = 1.3,
+  graphCenter?: [number, number]
 ): HullGeometry | null {
   if (points.length < 3) return null;
 
@@ -42,7 +46,10 @@ export function computeHullGeometry(
     return [centroid[0] + dx * expansion, centroid[1] + dy * expansion] as [number, number];
   });
 
-  return { hull, centroid, expandedHull };
+  // Compute label position - offset toward cluster spread for elongated clusters
+  const labelPosition = computeLabelPosition(hull, centroid, graphCenter);
+
+  return { hull, centroid, expandedHull, labelPosition };
 }
 
 /**
@@ -157,9 +164,12 @@ export function createHullRenderer(options: HullRendererOptions): HullRenderer {
     const hullData: HullData[] = [];
 
     if (opacity > 0) {
+      // Compute graph center (mean of all node positions) for label positioning
+      const graphCenter = computeGraphCenter(communitiesMap.values());
+
       for (const [communityId, members] of communitiesMap) {
         const points: [number, number][] = members.map((n) => [n.x!, n.y!]);
-        const geometry = computeHullGeometry(points);
+        const geometry = computeHullGeometry(points, 1.3, graphCenter);
         if (geometry) {
           const color = computeHullColor(communityId, members, pcaTransform);
           hullData.push({ communityId, geometry, color });

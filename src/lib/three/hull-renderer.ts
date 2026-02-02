@@ -16,6 +16,7 @@ import {
   HULL_STYLES,
   type HullGeometry,
 } from "@/lib/hull-renderer";
+import { computeGraphCenter } from "@/lib/cluster-label-position";
 import { getRenderOrder } from "./node-renderer";
 
 // ============================================================================
@@ -146,9 +147,12 @@ export function createHullRenderer(options: HullRendererOptions): HullRenderer {
 
     // Update or create hulls for each community
     if (opacity > 0) {
+      // Compute graph center (mean of all node positions) for label positioning
+      const graphCenter = computeGraphCenter(communitiesMap.values());
+
       for (const [communityId, members] of communitiesMap) {
         const points: [number, number][] = members.map((n) => [n.x!, n.y!]);
-        const geometry = computeHullGeometry(points);
+        const geometry = computeHullGeometry(points, 1.3, graphCenter);
 
         if (!geometry) {
           // Remove hull if geometry cannot be computed (< 3 points)

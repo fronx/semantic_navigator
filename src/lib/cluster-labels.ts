@@ -5,6 +5,7 @@
 
 import type { SimNode } from "./map-renderer";
 import { groupNodesByCommunity, computeHullGeometry } from "./hull-renderer";
+import { computeGraphCenter } from "./cluster-label-position";
 
 export interface ClusterLabelData {
   communityId: number;
@@ -34,10 +35,13 @@ export function computeClusterLabels(options: ComputeClusterLabelsOptions): Clus
   const communitiesMap = groupNodesByCommunity(nodes);
   const labelData: ClusterLabelData[] = [];
 
+  // Compute graph center (mean of all node positions) for label positioning
+  const graphCenter = computeGraphCenter(nodes);
+
   for (const [communityId, members] of communitiesMap) {
     // Get positions for hull computation
     const points: [number, number][] = members.map((n) => [n.x!, n.y!]);
-    const geometry = computeHullGeometry(points);
+    const geometry = computeHullGeometry(points, 1.3, graphCenter);
     if (!geometry) continue;
 
     // Filter to visible members if visibleIds is provided
@@ -55,7 +59,7 @@ export function computeClusterLabels(options: ComputeClusterLabelsOptions): Clus
 
     labelData.push({
       communityId,
-      centroid: geometry.centroid,
+      centroid: geometry.labelPosition,
       label,
       visibilityRatio,
       color: getColor(communityId),
