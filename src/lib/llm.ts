@@ -3,8 +3,20 @@
  */
 import Anthropic from "@anthropic-ai/sdk";
 
+// Check if API key is configured
+const apiKey = process.env.ANTHROPIC_API_KEY;
+const isApiKeyConfigured = Boolean(apiKey && apiKey.trim() && !apiKey.startsWith("#"));
+
 // Shared Anthropic client - reused across all LLM calls
-export const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+// Only create if API key is configured to avoid SDK errors
+export const anthropic = isApiKeyConfigured
+  ? new Anthropic({ apiKey })
+  : (null as unknown as Anthropic);
+
+/** Check if LLM features are available */
+export function isLLMAvailable(): boolean {
+  return isApiKeyConfigured;
+}
 
 /**
  * Extract JSON from LLM response, handling markdown code blocks.
@@ -54,6 +66,15 @@ export async function generateClusterLabels(
   clusters: Array<{ id: number; keywords: string[] }>
 ): Promise<Record<number, string>> {
   if (clusters.length === 0) return {};
+
+  // If LLM is not available, use first keyword as fallback label
+  if (!isLLMAvailable()) {
+    const result: Record<number, string> = {};
+    for (const c of clusters) {
+      result[c.id] = c.keywords[0] ?? `cluster ${c.id}`;
+    }
+    return result;
+  }
 
   // Build a compact representation for the prompt
   const clusterDescriptions = clusters.map(
@@ -125,6 +146,15 @@ export async function refineClusterLabels(
   refinements: RefinementRequest[]
 ): Promise<Record<number, string>> {
   if (refinements.length === 0) return {};
+
+  // If LLM is not available, keep all existing labels
+  if (!isLLMAvailable()) {
+    const result: Record<number, string> = {};
+    for (const r of refinements) {
+      result[r.id] = r.oldLabel;
+    }
+    return result;
+  }
 
   // Build compact descriptions showing old vs new
   const descriptions = refinements.map((r) => {

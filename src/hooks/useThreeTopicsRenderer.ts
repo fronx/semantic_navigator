@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useRef } from "react";
-import { createThreeRenderer, type ThreeRenderer } from "@/lib/three-renderer";
+import { createThreeRenderer, type ThreeRenderer } from "@/lib/three";
 import { convertToThreeNodes } from "@/lib/topics-graph-nodes";
 import { createHoverController } from "@/lib/topics-hover-controller";
 import type { BaseRendererOptions } from "@/lib/renderer-types";

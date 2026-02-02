@@ -3,10 +3,11 @@
  * Handles DOM-based labels positioned over the WebGL canvas.
  */
 
-import type { SimNode } from "./map-renderer";
-import { computeClusterLabels } from "./cluster-labels";
-import { communityColorScale } from "./hull-renderer";
-import { clusterColorToCSS, type ClusterColorInfo } from "./semantic-colors";
+import type { SimNode } from "@/lib/map-renderer";
+import { computeClusterLabels } from "@/lib/cluster-labels";
+import { communityColorScale } from "@/lib/hull-renderer";
+import { clusterColorToCSS, type ClusterColorInfo } from "@/lib/semantic-colors";
+import { CAMERA_FOV_DEGREES } from "./camera-controller";
 
 // ============================================================================
 // Types
@@ -38,7 +39,7 @@ export interface LabelOverlayOptions {
 // ============================================================================
 
 // Zoom thresholds for keyword label visibility (in camera Z units)
-// Adjusted for 10° FOV (3x higher than 30° FOV values due to increased camera distance)
+// Adjusted for 10deg FOV (3x higher than 30deg FOV values due to increased camera distance)
 const KEYWORD_ZOOM_START = 5000; // Start showing labels when zooming in past this
 const KEYWORD_ZOOM_ALL = 1200;    // Show all labels when zoomed in past this
 
@@ -158,7 +159,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
 
     // Font size scales with zoom: smaller when zoomed out
     // Base size matches .keyword-label in globals.css
-    // Adjusted for 10° FOV (3x higher baseline due to increased camera distance)
+    // Adjusted for 10deg FOV (3x higher baseline due to increased camera distance)
     const baseFontSize = 28;
     const zoomScale = Math.min(1, 1500 / cameraZ);
 
@@ -205,8 +206,9 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
 
       // Calculate offset from node center (to the right of the dot)
       const worldRadius = getNodeRadius(node);
-      // Convert world radius to screen pixels (using 10° FOV to match camera)
-      const pixelsPerUnit = rect.height / (2 * cameraZ * Math.tan((10 * Math.PI / 180) / 2));
+      // Convert world radius to screen pixels (using camera FOV)
+      const fovRadians = CAMERA_FOV_DEGREES * Math.PI / 180;
+      const pixelsPerUnit = rect.height / (2 * cameraZ * Math.tan(fovRadians / 2));
       const screenRadius = worldRadius * pixelsPerUnit;
 
       // Update label content and position

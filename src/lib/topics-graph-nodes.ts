@@ -53,7 +53,7 @@ export function convertToSimNodes(
       id: n.id,
       type: "keyword" as const,
       label: n.label,
-      communityId: undefined,
+      communityId: n.communityId, // Preserve community from source data
       embedding: n.embedding,
       communityMembers: undefined,
       hullLabel: undefined,
