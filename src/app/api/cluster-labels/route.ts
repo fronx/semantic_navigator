@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateClusterLabels } from "@/lib/llm";
+import { errorResponse } from "@/lib/api-error";
 
 export async function POST(request: NextRequest) {
   const { clusters } = await request.json();
@@ -23,9 +24,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ labels });
   } catch (error) {
     console.error("[cluster-labels] Error generating labels:", error);
-    return NextResponse.json(
-      { error: "Failed to generate labels" },
-      { status: 500 }
-    );
+    return errorResponse(error);
   }
 }

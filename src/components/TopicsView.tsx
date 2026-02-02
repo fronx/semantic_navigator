@@ -49,6 +49,8 @@ export interface TopicsViewProps {
   onCreateProject?: (worldPos: { x: number; y: number }, screenPos: { x: number; y: number }) => void;
   /** Callback when a project node is dragged to a new position */
   onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
+  /** Callback when an error occurs (e.g., cluster label generation fails) */
+  onError?: (message: string) => void;
 }
 
 // ============================================================================
@@ -71,6 +73,7 @@ export function TopicsView({
   externalFilter,
   onCreateProject,
   onProjectDrag,
+  onError,
 }: TopicsViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -108,7 +111,12 @@ export function TopicsView({
   projectNodesRef.current = projectNodes;
 
   // Client-side Louvain clustering
-  const { nodeToCluster, baseClusters, labels } = useClusterLabels(keywordNodes, edges, clusterResolution);
+  const { nodeToCluster, baseClusters, labels } = useClusterLabels(
+    keywordNodes,
+    edges,
+    clusterResolution,
+    { onError }
+  );
 
   // PCA transform for stable semantic colors
   const [pcaTransform, setPcaTransform] = useState<PCATransform | null>(null);

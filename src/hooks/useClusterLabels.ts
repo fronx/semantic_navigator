@@ -125,6 +125,10 @@ function computeClustering(
   return { nodeToCluster, clusters };
 }
 
+export interface UseClusterLabelsOptions {
+  onError?: (message: string) => void;
+}
+
 /**
  * Run Louvain clustering on the provided graph edges.
  * Fetches semantic labels from Haiku API asynchronously.
@@ -132,11 +136,13 @@ function computeClustering(
  * @param nodes - Keyword nodes from the graph
  * @param edges - Similarity edges (same edges used for force layout)
  * @param resolution - Louvain resolution parameter (higher = more clusters)
+ * @param options - Optional callbacks (onError for error notifications)
  */
 export function useClusterLabels(
   nodes: KeywordNode[],
   edges: SimilarityEdge[],
-  resolution: number
+  resolution: number,
+  options?: UseClusterLabelsOptions
 ): ClusterLabelsResult {
   // Compute clustering synchronously
   const clustering = useMemo(
@@ -149,6 +155,10 @@ export function useClusterLabels(
 
   // Cache ref to persist across renders (loaded once on mount)
   const cacheRef = useRef<ClusterLabelCache | null>(null);
+
+  // Stable ref for onError callback to avoid re-running effect
+  const onErrorRef = useRef(options?.onError);
+  onErrorRef.current = options?.onError;
 
   // Build label-to-embedding lookup for centroid calculation
   const embeddingsByLabel = useMemo(() => {
@@ -256,9 +266,15 @@ export function useClusterLabels(
               body: JSON.stringify({ refinements }),
             });
 
-            if (!response.ok || cancelled) return;
+            if (cancelled) return;
 
-            const { labels: refinedLabels } = await response.json();
+            const data = await response.json();
+            if (!response.ok) {
+              onErrorRef.current?.(data.error || "Failed to refine labels");
+              return;
+            }
+
+            const { labels: refinedLabels } = data;
 
             if (!cancelled && Object.keys(refinedLabels).length > 0) {
               // Update displayed labels
@@ -279,8 +295,9 @@ export function useClusterLabels(
                 `[cluster-cache] Refined ${Object.keys(refinedLabels).length} labels`
               );
             }
-          } catch {
-            // Silently fail - cached labels remain
+          } catch (err) {
+            console.error("[cluster-labels/refine] Error:", err);
+            onErrorRef.current?.(err instanceof Error ? err.message : "Failed to refine labels");
           }
         })();
       }
@@ -299,9 +316,13 @@ export function useClusterLabels(
             body: JSON.stringify({ clusters: clustersPayload }),
           });
 
-          if (!response.ok) return;
+          const data = await response.json();
+          if (!response.ok) {
+            onErrorRef.current?.(data.error || "Failed to generate labels");
+            return;
+          }
 
-          const { labels } = await response.json();
+          const { labels } = data;
 
           if (!cancelled) {
             // Merge fresh labels with cached ones
@@ -322,8 +343,9 @@ export function useClusterLabels(
             // Persist cache
             saveCache(cache);
           }
-        } catch {
-          // Silently fail - cached/hub labels will be used
+        } catch (err) {
+          console.error("[cluster-labels] Error:", err);
+          onErrorRef.current?.(err instanceof Error ? err.message : "Failed to generate labels");
         }
       }
     }

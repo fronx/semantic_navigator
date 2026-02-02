@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { TopicsView, type RendererType } from "@/components/TopicsView";
+import { ErrorBanner } from "@/components/ErrorBanner";
+import { useErrorNotification } from "@/hooks/useErrorNotification";
 import { ProjectSelector, type Project } from "@/components/ProjectSelector";
 import { ProjectSidebar, type Project as SidebarProject } from "@/components/ProjectSidebar";
 import { InlineTitleInput } from "@/components/InlineTitleInput";
@@ -115,6 +117,9 @@ export default function TopicsPage() {
   } | null>(null);
   const [editingProject, setEditingProject] = useState<SidebarProject | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+
+  // Error notification for background operations (cluster labels, etc.)
+  const { error: notificationError, notify: notifyError, clear: clearError } = useErrorNotification();
 
   // Fetch project neighborhood when project selected
   useEffect(() => {
@@ -360,6 +365,7 @@ export default function TopicsPage() {
 
   return (
     <div className="h-screen flex flex-col bg-zinc-50 dark:bg-zinc-950">
+      <ErrorBanner message={notificationError} onDismiss={clearError} />
       <header className="flex-shrink-0 border-b bg-white dark:bg-zinc-900 dark:border-zinc-800">
         <div className="px-3 py-1.5 flex items-center gap-3">
           <ProjectSelector
@@ -517,6 +523,7 @@ export default function TopicsPage() {
             externalFilter={projectFilter}
             onCreateProject={handleCreateProject}
             onProjectDrag={handleProjectDrag}
+            onError={notifyError}
           />
 
           {/* Inline title input for project creation */}

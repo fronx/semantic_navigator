@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { refineClusterLabels, type RefinementRequest } from "@/lib/llm";
+import { errorResponse } from "@/lib/api-error";
 
 export async function POST(request: NextRequest) {
   const { refinements } = await request.json();
@@ -49,6 +50,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ labels });
   } catch (error) {
     console.error("[cluster-labels/refine] Error:", error);
-    return NextResponse.json({ error: "Failed to refine labels" }, { status: 500 });
+    return errorResponse(error);
   }
 }
