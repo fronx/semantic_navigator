@@ -95,6 +95,9 @@ export function useD3TopicsRenderer(
   const hoverConfigRef = useRef(hoverConfig);
   hoverConfigRef.current = hoverConfig;
 
+  // Ref for zoom handler (called during zoom gesture to update hover highlight)
+  const onZoomHandlerRef = useRef<(() => void) | null>(null);
+
   // Main D3 rendering effect
   useEffect(() => {
     if (!enabled) return;
@@ -191,6 +194,7 @@ export function useD3TopicsRenderer(
         onKeywordClick,
         onProjectClick,
         onProjectDrag,
+        onZoom: () => onZoomHandlerRef.current?.(),
         onZoomEnd: (transform) => onZoomChange?.(transform.k),
         onProjectInteractionStart: handleProjectInteractionStart,
       },
@@ -266,6 +270,14 @@ export function useD3TopicsRenderer(
         applyHighlight: (ids, baseDim) => renderer.applyHighlight(ids, baseDim, computeEdgeOpacity),
       },
     });
+
+    // Set up zoom handler to recalculate hover highlight during zoom gestures
+    onZoomHandlerRef.current = () => {
+      const screenPos = cursorScreenPosRef.current;
+      if (screenPos && isHoveringRef.current) {
+        hoverController.handleMouseMove(screenPos.x, screenPos.y);
+      }
+    };
 
     d3.select(svg)
       .on("mouseenter.project", () => hoverController.handleMouseEnter())

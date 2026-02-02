@@ -33,6 +33,8 @@ export interface RendererCallbacks {
   onProjectClick?: (projectId: string) => void;
   /** Called when a project node is dragged to a new position */
   onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
+  /** Called continuously during zoom gesture (for hover highlight updates) */
+  onZoom?: () => void;
   /** Called when zoom gesture ends (for semantic zoom) */
   onZoomEnd?: (transform: { k: number; x: number; y: number }, viewport: { width: number; height: number }) => void;
   /** Called when a project node interaction starts (click or drag) - used to suppress click-to-filter */
@@ -395,7 +397,10 @@ export function createRenderer(options: RendererOptions): MapRenderer {
   // Zoom behavior
   const zoom = d3.zoom<SVGSVGElement, unknown>()
     .scaleExtent([0.1, 4])
-    .on("zoom", (event) => g.attr("transform", event.transform))
+    .on("zoom", (event) => {
+      g.attr("transform", event.transform);
+      callbacks.onZoom?.();
+    })
     .on("end", (event) => {
       if (callbacks.onZoomEnd) {
         const transform = event.transform;

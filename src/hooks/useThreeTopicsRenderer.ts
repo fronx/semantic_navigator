@@ -62,6 +62,9 @@ export function useThreeTopicsRenderer(
   const hoverConfigRef = useRef(hoverConfig);
   hoverConfigRef.current = hoverConfig;
 
+  // Ref for zoom handler (called during zoom gesture to update hover highlight)
+  const onZoomHandlerRef = useRef<(() => void) | null>(null);
+
   // Main Three.js rendering effect
   useEffect(() => {
     if (!enabled) return;
@@ -119,6 +122,7 @@ export function useThreeTopicsRenderer(
               onKeywordClick,
               onProjectClick,
               onProjectDrag,
+              onZoom: () => onZoomHandlerRef.current?.(),
               onZoomEnd: (transform) => onZoomChange?.(transform.k),
               onProjectInteractionStart: () => {
                 projectInteractionRef.current = true;
@@ -153,6 +157,14 @@ export function useThreeTopicsRenderer(
           onFilterClick,
           renderer: threeRenderer,
         });
+
+        // Set up zoom handler to recalculate hover highlight during zoom gestures
+        onZoomHandlerRef.current = () => {
+          const screenPos = cursorScreenPosRef.current;
+          if (screenPos && isHoveringRef.current) {
+            hoverController.handleMouseMove(screenPos.x, screenPos.y);
+          }
+        };
 
         // Wire up DOM event listeners to hover controller
         handleMouseEnter = () => hoverController.handleMouseEnter();

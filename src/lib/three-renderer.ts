@@ -46,6 +46,8 @@ export interface ThreeRendererCallbacks {
   onProjectClick?: (projectId: string) => void;
   /** Called when a project node is dragged to a new position */
   onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
+  /** Called continuously during zoom gesture (for hover highlight updates) */
+  onZoom?: () => void;
   onZoomEnd?: (transform: { k: number; x: number; y: number }) => void;
   /** Called when a project node interaction starts (click or drag) - used to suppress click-to-filter */
   onProjectInteractionStart?: () => void;
@@ -748,6 +750,9 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     // Update labels during zoom
     updateClusterLabelsInternal();
     updateKeywordLabelsInternal();
+
+    // Notify for hover highlight recalculation during zoom
+    callbacks.onZoom?.();
 
     // Debounce callback to avoid React re-renders during zoom
     if (zoomEndTimeout) clearTimeout(zoomEndTimeout);
