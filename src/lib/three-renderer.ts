@@ -323,6 +323,19 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     updateKeywordLabelsInternal();
   }
 
+  // Helper to refresh all node colors (recomputes from current state)
+  function refreshAllNodeColors(): void {
+    const backgroundColor = getBackgroundColor();
+    for (const node of currentNodes) {
+      const cached = nodeCache.get(node.id);
+      if (cached) {
+        const originalColor = getNodeColor(node, pcaTransform, clusterColors, immediateParams.current.colorMixRatio);
+        nodeColorCache.set(node.id, originalColor);
+        updateNodeMeshColors(cached, originalColor, getNodeDimAmount(node.id), backgroundColor);
+      }
+    }
+  }
+
   // Cache for link objects (when using arc rendering with fat lines)
   const linkCache = new Map<string, Line2>();
 
@@ -1082,19 +1095,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       // Update node and edge colors if colorMixRatio changed
       if (immediateParams.current.colorMixRatio !== currentColorMixRatio) {
         currentColorMixRatio = immediateParams.current.colorMixRatio;
-
-        // Update all cached mesh colors (with dimming applied)
-        const backgroundColor = getBackgroundColor();
-        for (const node of currentNodes) {
-          const cached = nodeCache.get(node.id);
-          if (cached) {
-            const originalColor = getNodeColor(node, pcaTransform, clusterColors, currentColorMixRatio);
-            nodeColorCache.set(node.id, originalColor);
-            updateNodeMeshColors(cached, originalColor, getNodeDimAmount(node.id), backgroundColor);
-          }
-        }
-
-        // Update edge colors
+        refreshAllNodeColors();
         refreshAllEdgeColors();
       }
     },
@@ -1109,24 +1110,13 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       // Recompute cluster colors with new assignments
       clusterColors = computeClusterColors(groupNodesByCommunity(currentNodes), pcaTransform);
 
-      // Update cached mesh colors in-place (with dimming applied)
-      const backgroundColor = getBackgroundColor();
-      for (const node of currentNodes) {
-        const cached = nodeCache.get(node.id);
-        if (cached) {
-          const originalColor = getNodeColor(node, pcaTransform, clusterColors, immediateParams.current.colorMixRatio);
-          nodeColorCache.set(node.id, originalColor);
-          updateNodeMeshColors(cached, originalColor, getNodeDimAmount(node.id), backgroundColor);
-        }
-      }
-
-      // Update edge colors based on new node colors
+      // Update cached mesh and edge colors based on new cluster assignments
+      refreshAllNodeColors();
       refreshAllEdgeColors();
     },
 
     updateClusterLabels() {
-      updateClusterLabelsInternal();
-      updateKeywordLabelsInternal();
+      updateAllLabels();
     },
 
     applyHighlight(highlightedIds: Set<string> | null, baseDim: number) {
