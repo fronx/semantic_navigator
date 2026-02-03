@@ -116,6 +116,38 @@ const VerticalBlurShader = {
   `,
 };
 
+/**
+ * Composite shader - overlays chunks texture on top of blurred scene
+ */
+const CompositeShader = {
+  uniforms: {
+    tDiffuse: { value: null },  // Blurred scene from composer
+    tChunks: { value: null },   // Sharp chunks texture
+  },
+
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform sampler2D tChunks;
+    varying vec2 vUv;
+
+    void main() {
+      vec4 scene = texture2D(tDiffuse, vUv);
+      vec4 chunks = texture2D(tChunks, vUv);
+
+      // Alpha blend chunks on top (chunks have alpha where geometry exists)
+      gl_FragColor = mix(scene, chunks, chunks.a);
+    }
+  `,
+};
+
 // ============================================================================
 // Interfaces
 // ============================================================================
@@ -153,17 +185,27 @@ export function createBlurComposer(options: BlurComposerOptions): BlurComposer {
   // Create new cameras for layer-separated rendering (avoid cloning to prevent circular refs)
   const edgesCamera = new THREE.PerspectiveCamera();
   const nodesCamera = new THREE.PerspectiveCamera();
+  const chunksCamera = new THREE.PerspectiveCamera();
 
   // Assign layer masks
   edgesCamera.layers.set(0); // See only edges and hulls (layer 0)
-  nodesCamera.layers.set(KEYWORD_LAYER); // Keywords (layer 2)
-  nodesCamera.layers.enable(CHUNK_LAYER); // Chunks (layer 3)
+  nodesCamera.layers.set(KEYWORD_LAYER); // Keywords stay sharp
+  chunksCamera.layers.set(CHUNK_LAYER); // Chunk overlay pass
 
   // Create half-res render target for edges
   const edgesTarget = new THREE.WebGLRenderTarget(halfWidth, halfHeight, {
     minFilter: THREE.LinearFilter,
     magFilter: THREE.LinearFilter,
     format: THREE.RGBAFormat,
+    stencilBuffer: false,
+  });
+
+  // Create full-res render target for chunks (need alpha for compositing)
+  const chunksTarget = new THREE.WebGLRenderTarget(width, height, {
+    minFilter: THREE.LinearFilter,
+    magFilter: THREE.LinearFilter,
+    format: THREE.RGBAFormat,
+    type: THREE.UnsignedByteType,
     stencilBuffer: false,
   });
 
@@ -190,7 +232,12 @@ export function createBlurComposer(options: BlurComposerOptions): BlurComposer {
   nodesPass.clear = false; // Don't clear - composite on top of blurred edges
   composer.addPass(nodesPass);
 
-  // Pass 5: Output pass for final tone mapping
+  // Pass 5: Composite chunks on top
+  const compositePass = new ShaderPass(CompositeShader);
+  compositePass.uniforms.tChunks.value = chunksTarget.texture;
+  composer.addPass(compositePass);
+
+  // Pass 6: Output pass for final tone mapping
   const outputPass = new OutputPass();
   composer.addPass(outputPass);
 
@@ -219,7 +266,7 @@ export function createBlurComposer(options: BlurComposerOptions): BlurComposer {
     const mainCam = camera as THREE.PerspectiveCamera;
 
     // Manually sync transform properties (avoid .copy() circular refs)
-    for (const cam of [edgesCamera, nodesCamera]) {
+    for (const cam of [edgesCamera, nodesCamera, chunksCamera]) {
       cam.position.set(mainCam.position.x, mainCam.position.y, mainCam.position.z);
       cam.quaternion.set(
         mainCam.quaternion.x,
@@ -268,6 +315,13 @@ export function createBlurComposer(options: BlurComposerOptions): BlurComposer {
     const previousRender = renderer.render;
     renderer.render = originalRender;
     try {
+      // First, render chunks to separate target
+      renderer.setRenderTarget(chunksTarget);
+      renderer.clear();
+      originalRender(scene, chunksCamera);
+      renderer.setRenderTarget(null);
+
+      // Then run the composer with all passes (includes composite)
       composer.render();
     } finally {
       renderer.render = previousRender;
@@ -293,6 +347,9 @@ export function createBlurComposer(options: BlurComposerOptions): BlurComposer {
     // Update edges target size
     edgesTarget.setSize(halfWidth, halfHeight);
 
+    // Update chunks target size
+    chunksTarget.setSize(width, height);
+
     // Update blur shader resolutions
     horizontalBlurPass.uniforms.resolution.value.set(halfWidth, halfHeight);
     verticalBlurPass.uniforms.resolution.value.set(halfWidth, halfHeight);
@@ -303,6 +360,7 @@ export function createBlurComposer(options: BlurComposerOptions): BlurComposer {
    */
   function dispose(): void {
     edgesTarget.dispose();
+    chunksTarget.dispose();
     composer.dispose();
   }
 

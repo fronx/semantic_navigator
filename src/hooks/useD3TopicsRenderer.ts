@@ -268,6 +268,8 @@ export function useD3TopicsRenderer(
         getNodes: () => renderer.getNodes(),
         // Wrap applyHighlight to pass contrast-based edge opacity function
         applyHighlight: (ids, baseDim) => renderer.applyHighlight(ids, baseDim, computeEdgeOpacity),
+        // D3 renderer doesn't support chunks - return far zoom to disable chunk-based behavior
+        getCameraZ: () => 20000,
       },
     });
 

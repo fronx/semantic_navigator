@@ -72,6 +72,7 @@ export interface ThreeRenderer {
   getNodes: () => SimNode[];
   getTransform: () => { k: number; x: number; y: number };
   screenToWorld: (screen: { x: number; y: number }) => { x: number; y: number };
+  getCameraZ: () => number;
   fitToNodes: (padding?: number) => void;
   destroy: () => void;
 }
@@ -625,6 +626,10 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
 
     screenToWorld(screen: { x: number; y: number }) {
       return cameraController.screenToWorld(screen);
+    },
+
+    getCameraZ() {
+      return cameraController.getCameraZ();
     },
 
     fitToNodes(padding = 0.2) {

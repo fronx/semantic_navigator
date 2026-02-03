@@ -9,6 +9,7 @@ import { computeHoverHighlight } from "@/lib/hover-highlight";
 import { DEFAULT_HOVER_CONFIG, type HoverHighlightConfig } from "@/hooks/useGraphHoverHighlight";
 import type { KeywordNode, SimilarityEdge } from "@/lib/graph-queries";
 import type { SimNode } from "@/lib/map-renderer";
+import { calculateScales } from "@/lib/chunk-scale";
 
 // ============================================================================
 // Types
@@ -20,6 +21,7 @@ export interface RendererAdapter {
   isHoveringProject(): boolean;
   getNodes(): SimNode[];
   applyHighlight(ids: Set<string> | null, baseDim: number): void;
+  getCameraZ(): number;
 }
 
 export interface HoverControllerOptions {
@@ -94,6 +96,18 @@ export function createHoverController(options: HoverControllerOptions): HoverCon
 
     // Skip hover highlighting if cursor is over a project node
     if (renderer.isHoveringProject()) {
+      highlightedIdsRef.current = new Set();
+      renderer.applyHighlight(new Set(), baseDim);
+      return;
+    }
+
+    // Check if chunks are visible - if so, skip radius highlighting and dim everything equally
+    const cameraZ = renderer.getCameraZ();
+    const { chunkScale } = calculateScales(cameraZ);
+    const CHUNK_VISIBILITY_THRESHOLD = 0.01;
+
+    if (chunkScale > CHUNK_VISIBILITY_THRESHOLD) {
+      // Chunks are visible - disable radius highlighting, apply equal dimming
       highlightedIdsRef.current = new Set();
       renderer.applyHighlight(new Set(), baseDim);
       return;
