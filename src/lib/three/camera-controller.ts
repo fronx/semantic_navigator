@@ -4,6 +4,7 @@
  */
 
 import type * as THREE from "three";
+import { calculateZoomToCursor } from "./zoom-to-cursor";
 
 // Very narrow FOV (nearly orthographic) minimizes parallax between HTML labels and 3D nodes
 export const CAMERA_FOV_DEGREES = 10;
@@ -147,18 +148,22 @@ export function createCameraController(options: CameraControllerOptions): Camera
 
     if (Math.abs(newZ - oldZ) < 0.01) return;
 
-    // Calculate the graph position under the cursor before zoom
-    const oldViewport = getViewport();
-    const graphX = camera.position.x + cursorNDC.x * (oldViewport.width / 2);
-    const graphY = camera.position.y + cursorNDC.y * (oldViewport.height / 2);
+    // Calculate new camera position using shared zoom-to-cursor logic
+    const rect = container.getBoundingClientRect();
+    const aspect = rect.width / rect.height;
+    const result = calculateZoomToCursor({
+      oldZ,
+      newZ,
+      cameraX: camera.position.x,
+      cameraY: camera.position.y,
+      cursorNDC,
+      aspect,
+    });
 
-    // Update Z first so getViewport returns new dimensions
+    // Update camera position
+    camera.position.x = result.cameraX;
+    camera.position.y = result.cameraY;
     camera.position.z = newZ;
-
-    // Calculate new visible area and adjust camera position so the point under cursor stays fixed
-    const newViewport = getViewport();
-    camera.position.x = graphX - cursorNDC.x * (newViewport.width / 2);
-    camera.position.y = graphY - cursorNDC.y * (newViewport.height / 2);
   }
 
   function fitToNodes(nodes: Array<{ x?: number; y?: number }>, padding = 0.2): void {
