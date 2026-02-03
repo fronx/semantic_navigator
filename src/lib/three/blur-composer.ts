@@ -1,31 +1,23 @@
 /**
- * Blur composer for frosted glass edge rendering.
- * Implements post-processing with layer separation to blur edges behind sharp nodes.
+ * Custom blur pipeline that renders background layers to a texture,
+ * applies a separable blur, and composites sharp chunk nodes on top.
  */
 
 import * as THREE from "three";
-import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
-import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
-import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
-import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import type { EdgeRenderer } from "./edge-renderer";
-import { KEYWORD_LAYER, CHUNK_LAYER } from "./node-renderer";
+import { KEYWORD_LAYER, CHUNK_LAYER, PANEL_LAYER } from "./node-renderer";
 
 // ============================================================================
 // Gaussian Blur Shaders
 // ============================================================================
 
-/**
- * Horizontal gaussian blur shader (9-tap separable)
- */
 const HorizontalBlurShader = {
   uniforms: {
     tDiffuse: { value: null },
     resolution: { value: new THREE.Vector2() },
     radius: { value: 1.0 },
   },
-
   vertexShader: `
     varying vec2 vUv;
     void main() {
@@ -33,7 +25,6 @@ const HorizontalBlurShader = {
       gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
     }
   `,
-
   fragmentShader: `
     uniform sampler2D tDiffuse;
     uniform vec2 resolution;
@@ -44,7 +35,6 @@ const HorizontalBlurShader = {
       vec2 texelSize = 1.0 / resolution;
       vec4 color = vec4(0.0);
 
-      // 9-tap gaussian kernel weights (sum = 1.0)
       float weights[9];
       weights[0] = 0.05;
       weights[1] = 0.09;
@@ -66,24 +56,13 @@ const HorizontalBlurShader = {
   `,
 };
 
-/**
- * Vertical gaussian blur shader (9-tap separable)
- */
 const VerticalBlurShader = {
   uniforms: {
     tDiffuse: { value: null },
     resolution: { value: new THREE.Vector2() },
     radius: { value: 1.0 },
   },
-
-  vertexShader: `
-    varying vec2 vUv;
-    void main() {
-      vUv = uv;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-  `,
-
+  vertexShader: HorizontalBlurShader.vertexShader,
   fragmentShader: `
     uniform sampler2D tDiffuse;
     uniform vec2 resolution;
@@ -94,7 +73,6 @@ const VerticalBlurShader = {
       vec2 texelSize = 1.0 / resolution;
       vec4 color = vec4(0.0);
 
-      // 9-tap gaussian kernel weights (sum = 1.0)
       float weights[9];
       weights[0] = 0.05;
       weights[1] = 0.09;
@@ -112,38 +90,6 @@ const VerticalBlurShader = {
       }
 
       gl_FragColor = color;
-    }
-  `,
-};
-
-/**
- * Composite shader - overlays chunks texture on top of blurred scene
- */
-const CompositeShader = {
-  uniforms: {
-    tDiffuse: { value: null },  // Blurred scene from composer
-    tChunks: { value: null },   // Sharp chunks texture
-  },
-
-  vertexShader: `
-    varying vec2 vUv;
-    void main() {
-      vUv = uv;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-  `,
-
-  fragmentShader: `
-    uniform sampler2D tDiffuse;
-    uniform sampler2D tChunks;
-    varying vec2 vUv;
-
-    void main() {
-      vec4 scene = texture2D(tDiffuse, vUv);
-      vec4 chunks = texture2D(tChunks, vUv);
-
-      // Alpha blend chunks on top (chunks have alpha where geometry exists)
-      gl_FragColor = mix(scene, chunks, chunks.a);
     }
   `,
 };
@@ -170,6 +116,34 @@ export interface BlurComposer {
 }
 
 // ============================================================================
+// Helpers
+// ============================================================================
+
+function makeShaderMaterial(definition: typeof HorizontalBlurShader): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    uniforms: THREE.UniformsUtils.clone(definition.uniforms),
+    vertexShader: definition.vertexShader,
+    fragmentShader: definition.fragmentShader,
+    depthTest: false,
+    depthWrite: false,
+    transparent: false,
+  });
+}
+
+function createFullscreenQuad(): {
+  scene: THREE.Scene;
+  camera: THREE.OrthographicCamera;
+  mesh: THREE.Mesh;
+} {
+  const geometry = new THREE.PlaneGeometry(2, 2);
+  const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color: 0x000000 }));
+  const scene = new THREE.Scene();
+  const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  scene.add(mesh);
+  return { scene, camera, mesh };
+}
+
+// ============================================================================
 // Blur Composer Implementation
 // ============================================================================
 
@@ -179,75 +153,65 @@ export function createBlurComposer(options: BlurComposerOptions): BlurComposer {
   const rect = container.getBoundingClientRect();
   let width = rect.width;
   let height = rect.height;
-  let halfWidth = Math.floor(width / 2);
-  let halfHeight = Math.floor(height / 2);
+  let halfWidth = Math.max(1, Math.floor(width / 2));
+  let halfHeight = Math.max(1, Math.floor(height / 2));
 
-  // Create new cameras for layer-separated rendering (avoid cloning to prevent circular refs)
-  const edgesCamera = new THREE.PerspectiveCamera();
-  const nodesCamera = new THREE.PerspectiveCamera();
-  const chunksCamera = new THREE.PerspectiveCamera();
-
-  // Assign layer masks
-  edgesCamera.layers.set(0); // See only edges and hulls (layer 0)
-  nodesCamera.layers.set(KEYWORD_LAYER); // Keywords stay sharp
-  chunksCamera.layers.set(CHUNK_LAYER); // Chunk overlay pass
-
-  // Create half-res render target for edges
-  const edgesTarget = new THREE.WebGLRenderTarget(halfWidth, halfHeight, {
+  const backgroundTarget = new THREE.WebGLRenderTarget(halfWidth, halfHeight, {
     minFilter: THREE.LinearFilter,
     magFilter: THREE.LinearFilter,
     format: THREE.RGBAFormat,
     stencilBuffer: false,
   });
+  const blurPingTarget = backgroundTarget.clone();
+  const blurOutputTarget = backgroundTarget.clone();
 
-  // Create full-res render target for chunks (need alpha for compositing)
-  const chunksTarget = new THREE.WebGLRenderTarget(width, height, {
-    minFilter: THREE.LinearFilter,
-    magFilter: THREE.LinearFilter,
-    format: THREE.RGBAFormat,
-    type: THREE.UnsignedByteType,
-    stencilBuffer: false,
+  const fullscreen = createFullscreenQuad();
+  const horizontalBlurMaterial = makeShaderMaterial(HorizontalBlurShader);
+  const verticalBlurMaterial = makeShaderMaterial(VerticalBlurShader);
+  const panelMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      tDiffuse: { value: null },
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D tDiffuse;
+      varying vec2 vUv;
+      void main() {
+        gl_FragColor = texture2D(tDiffuse, vUv);
+      }
+    `,
+    transparent: false,
+    depthTest: true,
+    depthWrite: false,
   });
+  const panelGeometry = new THREE.PlaneGeometry(1, 1);
+  const panelMesh = new THREE.Mesh(panelGeometry, panelMaterial);
+  panelMesh.layers.set(PANEL_LAYER);
+  panelMesh.frustumCulled = false;
+  scene.add(panelMesh);
 
-  // Create composer for the multi-pass pipeline
-  const composer = new EffectComposer(renderer);
+  const tempDir = new THREE.Vector3();
+  const tempPos = new THREE.Vector3();
+  const PANEL_DISTANCE = 50;
 
-  // Pass 1: Render edges to half-res target
-  const edgesPass = new RenderPass(scene, edgesCamera);
-  edgesPass.clear = true;
-  composer.addPass(edgesPass);
+  function updatePanelTransform(): void {
+    const cam = camera as THREE.PerspectiveCamera;
+    cam.getWorldDirection(tempDir);
+    tempPos.copy(cam.position).add(tempDir.multiplyScalar(PANEL_DISTANCE));
+    panelMesh.position.copy(tempPos);
+    panelMesh.quaternion.copy(cam.quaternion);
 
-  // Pass 2: Horizontal blur
-  const horizontalBlurPass = new ShaderPass(HorizontalBlurShader);
-  horizontalBlurPass.uniforms.resolution.value.set(halfWidth, halfHeight);
-  composer.addPass(horizontalBlurPass);
+    const height = 2 * Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2) * PANEL_DISTANCE;
+    const width = height * cam.aspect;
+    panelMesh.scale.set(width, height, 1);
+  }
 
-  // Pass 3: Vertical blur
-  const verticalBlurPass = new ShaderPass(VerticalBlurShader);
-  verticalBlurPass.uniforms.resolution.value.set(halfWidth, halfHeight);
-  composer.addPass(verticalBlurPass);
-
-  // Pass 4: Render nodes on top (sharp)
-  const nodesPass = new RenderPass(scene, nodesCamera);
-  nodesPass.clear = false; // Don't clear - composite on top of blurred edges
-  composer.addPass(nodesPass);
-
-  // Pass 5: Composite chunks on top
-  const compositePass = new ShaderPass(CompositeShader);
-  compositePass.uniforms.tChunks.value = chunksTarget.texture;
-  composer.addPass(compositePass);
-
-  // Pass 6: Output pass for final tone mapping
-  const outputPass = new OutputPass();
-  composer.addPass(outputPass);
-
-  // Set initial composer size
-  composer.setSize(width, height);
-
-  /**
-   * Update LineMaterial resolution uniforms for Line2 thickness correctness.
-   * Must be called before rendering edges at half-res and after restoring to full-res.
-   */
   function updateLineResolutions(resWidth: number, resHeight: number): void {
     const lines = edgeRenderer.getAllLineObjects();
     for (const line of lines) {
@@ -258,110 +222,99 @@ export function createBlurComposer(options: BlurComposerOptions): BlurComposer {
     }
   }
 
-  /**
-   * Synchronize layer cameras with main camera.
-   * Must be called every frame before rendering.
-   */
-  function updateCameras(): void {
-    const mainCam = camera as THREE.PerspectiveCamera;
-
-    // Manually sync transform properties (avoid .copy() circular refs)
-    for (const cam of [edgesCamera, nodesCamera, chunksCamera]) {
-      cam.position.set(mainCam.position.x, mainCam.position.y, mainCam.position.z);
-      cam.quaternion.set(
-        mainCam.quaternion.x,
-        mainCam.quaternion.y,
-        mainCam.quaternion.z,
-        mainCam.quaternion.w
-      );
-
-      // Copy camera parameters
-      cam.fov = mainCam.fov;
-      cam.aspect = mainCam.aspect;
-      cam.near = mainCam.near;
-      cam.far = mainCam.far;
-
-      // Update projection matrix and matrices
-      cam.updateProjectionMatrix();
-      cam.updateMatrixWorld();
-    }
+  function renderFullscreenQuad(material: THREE.ShaderMaterial, target: THREE.WebGLRenderTarget | null): void {
+    fullscreen.mesh.material = material;
+    renderer.setRenderTarget(target);
+    originalRender(fullscreen.scene, fullscreen.camera);
   }
 
-  /**
-   * Main render function with blur.
-   * Early exits when blur radius is negligible (performance optimization).
-   */
   function render(): void {
     const blurRadius = getBlurRadius();
 
-    // Early exit: skip blur when zoomed out (zero overhead)
     if (blurRadius < 0.01) {
+      panelMesh.visible = false;
       originalRender(scene, camera);
       return;
     }
+    panelMesh.visible = true;
 
-    // Update camera clones to match main camera
-    updateCameras();
+    // Save renderer + camera state
+    const previousMask = camera.layers.mask;
+    const previousAutoClear = renderer.autoClear;
+    const previousTarget = renderer.getRenderTarget();
 
-    // Update blur shader uniforms
-    horizontalBlurPass.uniforms.radius.value = blurRadius;
-    verticalBlurPass.uniforms.radius.value = blurRadius;
+    // Step 1: render background layers (edges + keywords) to off-screen target
+    camera.layers.set(0);
+    camera.layers.enable(KEYWORD_LAYER);
 
-    // Update LineMaterial resolutions for half-res rendering
     updateLineResolutions(halfWidth, halfHeight);
-
-    // Render the multi-pass pipeline. Swap in the original renderer implementation
-    // so EffectComposer internals don't recurse back into our interceptor.
-    const previousRender = renderer.render;
-    renderer.render = originalRender;
-    try {
-      // First, render chunks to separate target
-      renderer.setRenderTarget(chunksTarget);
-      renderer.clear();
-      originalRender(scene, chunksCamera);
-      renderer.setRenderTarget(null);
-
-      // Then run the composer with all passes (includes composite)
-      composer.render();
-    } finally {
-      renderer.render = previousRender;
-    }
-
-    // Restore LineMaterial resolutions to full-res (for UI consistency)
+    renderer.setRenderTarget(backgroundTarget);
+    renderer.autoClear = true;
+    renderer.clear(true, true, true);
+    originalRender(scene, camera);
     updateLineResolutions(width, height);
+
+    // Step 2: separable blur (horizontal -> vertical)
+    horizontalBlurMaterial.uniforms.tDiffuse.value = backgroundTarget.texture;
+    horizontalBlurMaterial.uniforms.resolution.value.set(halfWidth, halfHeight);
+    horizontalBlurMaterial.uniforms.radius.value = blurRadius;
+    renderFullscreenQuad(horizontalBlurMaterial, blurPingTarget);
+
+    verticalBlurMaterial.uniforms.tDiffuse.value = blurPingTarget.texture;
+    verticalBlurMaterial.uniforms.resolution.value.set(halfWidth, halfHeight);
+    verticalBlurMaterial.uniforms.radius.value = blurRadius;
+    renderFullscreenQuad(verticalBlurMaterial, blurOutputTarget);
+
+    // Step 3: draw frosted panel sampling blurred texture
+    renderer.setRenderTarget(null);
+    renderer.autoClear = true;
+    renderer.clear(true, true, true);
+    panelMaterial.uniforms.tDiffuse.value = blurOutputTarget.texture;
+    updatePanelTransform();
+    camera.layers.set(PANEL_LAYER);
+    originalRender(scene, camera);
+
+    // Step 4: render chunk layer sharply on top
+    renderer.autoClear = false;
+    renderer.clearDepth();
+    camera.layers.set(CHUNK_LAYER);
+    originalRender(scene, camera);
+
+    // Restore renderer state
+    camera.layers.mask = previousMask;
+    renderer.autoClear = previousAutoClear;
+    renderer.setRenderTarget(previousTarget);
   }
 
-  /**
-   * Update render target and composer sizes when window resizes.
-   */
   function updateSize(newWidth: number, newHeight: number): void {
-    // Update cached dimensions
-    width = newWidth;
-    height = newHeight;
-    halfWidth = Math.floor(newWidth / 2);
-    halfHeight = Math.floor(newHeight / 2);
+    width = Math.max(1, newWidth);
+    height = Math.max(1, newHeight);
+    halfWidth = Math.max(1, Math.floor(width / 2));
+    halfHeight = Math.max(1, Math.floor(height / 2));
 
-    // Update composer size
-    composer.setSize(width, height);
+    backgroundTarget.setSize(halfWidth, halfHeight);
+    blurPingTarget.setSize(halfWidth, halfHeight);
+    blurOutputTarget.setSize(halfWidth, halfHeight);
 
-    // Update edges target size
-    edgesTarget.setSize(halfWidth, halfHeight);
-
-    // Update chunks target size
-    chunksTarget.setSize(width, height);
-
-    // Update blur shader resolutions
-    horizontalBlurPass.uniforms.resolution.value.set(halfWidth, halfHeight);
-    verticalBlurPass.uniforms.resolution.value.set(halfWidth, halfHeight);
+    horizontalBlurMaterial.uniforms.resolution.value.set(halfWidth, halfHeight);
+    verticalBlurMaterial.uniforms.resolution.value.set(halfWidth, halfHeight);
   }
 
-  /**
-   * Dispose all resources.
-   */
+  function updateCameras(): void {
+    // No-op in the new pipeline (uses main camera directly)
+  }
+
   function dispose(): void {
-    edgesTarget.dispose();
-    chunksTarget.dispose();
-    composer.dispose();
+    backgroundTarget.dispose();
+    blurPingTarget.dispose();
+    blurOutputTarget.dispose();
+    fullscreen.mesh.geometry.dispose();
+    (fullscreen.mesh.material as THREE.Material).dispose();
+    horizontalBlurMaterial.dispose();
+    verticalBlurMaterial.dispose();
+    panelGeometry.dispose();
+    panelMaterial.dispose();
+    scene.remove(panelMesh);
   }
 
   return {

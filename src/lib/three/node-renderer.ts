@@ -45,6 +45,7 @@ const LAYER_SPACING = 10000;
 
 export const KEYWORD_LAYER = 2;
 export const CHUNK_LAYER = 3;
+export const PANEL_LAYER = 4;
 
 export function getRenderOrder(layer: RenderLayer, offset = 0): number {
   return RENDER_LAYERS.indexOf(layer) * LAYER_SPACING + offset;
@@ -190,11 +191,15 @@ export function createNodeRenderer(options: NodeRendererOptions): NodeRenderer {
 
   function createNodeMesh(node: SimNode): THREE.Group {
     const clusterColors = getClusterColors();
+    const layerId = node.type === "chunk" ? CHUNK_LAYER : KEYWORD_LAYER;
 
     // Check cache first
     const cached = nodeCache.get(node.id);
     if (cached) {
       // Update existing mesh properties with color-based dimming
+      cached.group.layers.set(layerId);
+      cached.fill.layers.set(layerId);
+      cached.outline.layers.set(layerId);
       const originalFillColor = getNodeColor(node, pcaTransform, clusterColors, immediateParams.current.colorMixRatio, getNodeById);
       nodeColorCache.set(node.id, originalFillColor);
       updateNodeMeshColors(cached, originalFillColor, getNodeDimAmount(node.id), getBackgroundColor());
@@ -233,12 +238,15 @@ export function createNodeRenderer(options: NodeRendererOptions): NodeRenderer {
     const fillMesh = new THREE.Mesh(fillGeometry, fillMaterial);
 
     // Group both meshes
+    outlineMesh.layers.set(layerId);
+    fillMesh.layers.set(layerId);
+
     const group = new THREE.Group();
     group.add(outlineMesh);
     group.add(fillMesh);
     const isChunk = node.type === "chunk";
     group.renderOrder = getRenderOrder("nodes", isChunk ? LAYER_SPACING / 2 : 0);
-    group.layers.set(isChunk ? CHUNK_LAYER : KEYWORD_LAYER); // Render chunk nodes on their own layer above blur
+    group.layers.set(layerId); // Render chunk nodes on their own layer above blur
 
     // Set Z position for chunk nodes (behind keyword layer)
     const chunkNode = node as SimNode & { z?: number };
