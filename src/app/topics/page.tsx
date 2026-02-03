@@ -591,6 +591,7 @@ export default function TopicsPage() {
               >
                 <option value="d3">D3/SVG</option>
                 <option value="three">Three.js</option>
+                <option value="r3f">R3F/drei</option>
               </select>
             </label>
           </div>

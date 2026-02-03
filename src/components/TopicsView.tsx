@@ -8,7 +8,9 @@ import { useTopicsFilter } from "@/hooks/useTopicsFilter";
 import { useProjectCreation } from "@/hooks/useProjectCreation";
 import { useD3TopicsRenderer } from "@/hooks/useD3TopicsRenderer";
 import { useThreeTopicsRenderer } from "@/hooks/useThreeTopicsRenderer";
+import { useR3FTopicsRenderer } from "@/hooks/useR3FTopicsRenderer";
 import { useChunkLoading } from "@/hooks/useChunkLoading";
+import { R3FTopicsCanvas } from "@/components/topics-r3f/R3FTopicsCanvas";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 import { loadPCATransform, type PCATransform } from "@/lib/semantic-colors";
 import type { BaseRendererOptions } from "@/lib/renderer-types";
@@ -19,7 +21,7 @@ import type { ZoomPhaseConfig } from "@/lib/zoom-phase-config";
 // Types
 // ============================================================================
 
-export type RendererType = "d3" | "three";
+export type RendererType = "d3" | "three" | "r3f";
 
 export type { BaseRendererOptions };
 
@@ -160,10 +162,14 @@ export function TopicsView({
   const threeGetPosition = useRef<(id: string) => { x: number; y: number } | undefined>(() => undefined);
 
   const handleFilterClick = useStableCallback(() => {
-    const getPosition = rendererType === "d3" ? d3GetPosition.current : threeGetPosition.current;
-    const highlightedIds = rendererType === "d3"
-      ? d3RendererResult.highlightedIdsRef.current
-      : threeRendererResult.highlightedIdsRef.current;
+    const getPosition =
+      rendererType === "d3" ? d3GetPosition.current :
+      rendererType === "three" ? threeGetPosition.current :
+      r3fGetPosition.current;
+    const highlightedIds =
+      rendererType === "d3" ? d3RendererResult.highlightedIdsRef.current :
+      rendererType === "three" ? threeRendererResult.highlightedIdsRef.current :
+      r3fRendererResult.highlightedIdsRef.current;
 
     capturePositions(getPosition);
     applyFilter(highlightedIds);
@@ -210,9 +216,18 @@ export function TopicsView({
     blurEnabled,
   });
 
+  // R3F renderer hook
+  const r3fRendererResult = useR3FTopicsRenderer({
+    ...baseRendererOptions,
+    enabled: rendererType === "r3f",
+    containerRef,
+  });
+
   // Update position getter refs
   d3GetPosition.current = d3RendererResult.getNodePosition;
   threeGetPosition.current = threeRendererResult.getNodePosition;
+  const r3fGetPosition = useRef<(id: string) => { x: number; y: number } | undefined>(() => undefined);
+  r3fGetPosition.current = r3fRendererResult.getNodePosition;
 
   // Update cluster assignments when clustering changes (without restarting simulation)
   useEffect(() => {
@@ -284,6 +299,24 @@ export function TopicsView({
     d3RendererResult.immediateParamsRef.current.current.colorMixRatio = colorMixRatio;
     d3RendererResult.rendererRef.current.updateVisuals();
   }, [colorMixRatio, d3RendererResult.rendererRef, d3RendererResult.immediateParamsRef]);
+
+  if (rendererType === "r3f") {
+    return (
+      <div className="w-full h-full relative">
+        <R3FTopicsCanvas
+          nodes={activeNodes}
+          edges={activeEdges}
+          projectNodes={projectNodes}
+          colorMixRatio={colorMixRatio}
+          pcaTransform={pcaTransform}
+          onKeywordClick={handleKeywordClick}
+          onProjectClick={handleProjectClick}
+          onProjectDrag={handleProjectDrag}
+          onZoomChange={handleZoomChange}
+        />
+      </div>
+    );
+  }
 
   if (rendererType === "three") {
     return (

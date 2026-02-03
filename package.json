@@ -12,6 +12,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.5.0",
     "@supabase/supabase-js": "^2.89.0",
     "3d-force-graph": "^1.79.0",
     "chroma-js": "^3.2.0",
@@ -19,6 +21,7 @@
     "graphology": "^0.26.0",
     "graphology-communities-louvain": "^2.0.2",
     "graphology-metrics": "^2.4.0",
+    "maath": "^0.10.8",
     "mdast-util-from-markdown": "^2.0.2",
     "next": "16.1.1",
     "openai": "^6.15.0",
