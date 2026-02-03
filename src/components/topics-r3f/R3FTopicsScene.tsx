@@ -7,6 +7,8 @@ import { useState } from "react";
 import { CameraController } from "./CameraController";
 import { ForceSimulation } from "./ForceSimulation";
 import { KeywordNodes } from "./KeywordNodes";
+import { ChunkNodes } from "./ChunkNodes";
+import { TransmissionPanel } from "./TransmissionPanel";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 import type { PCATransform } from "@/lib/semantic-colors";
 import type { SimNode } from "@/lib/map-renderer";
@@ -15,8 +17,10 @@ export interface R3FTopicsSceneProps {
   nodes: KeywordNode[];
   edges: SimilarityEdge[];
   projectNodes: ProjectNode[];
+  chunkNodes: SimNode[];
   colorMixRatio: number;
   pcaTransform: PCATransform | null;
+  blurEnabled?: boolean;
   onKeywordClick?: (keyword: string) => void;
   onProjectClick?: (projectId: string) => void;
   onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
@@ -27,8 +31,10 @@ export function R3FTopicsScene({
   nodes,
   edges,
   projectNodes,
+  chunkNodes,
   colorMixRatio,
   pcaTransform,
+  blurEnabled = true,
   onKeywordClick,
   onProjectClick,
   onProjectDrag,
@@ -47,6 +53,13 @@ export function R3FTopicsScene({
         onSimulationReady={setSimNodes}
       />
 
+      {/* Chunk layer (furthest back, z < 0) */}
+      {chunkNodes.length > 0 && <ChunkNodes chunkNodes={chunkNodes} />}
+
+      {/* Frosted glass panel (between chunks and keywords) */}
+      <TransmissionPanel enabled={blurEnabled && chunkNodes.length > 0} />
+
+      {/* Keyword layer (front, z = 0) */}
       {simNodes.length > 0 && (
         <KeywordNodes
           simNodes={simNodes}

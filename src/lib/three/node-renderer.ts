@@ -5,7 +5,8 @@
 
 import * as THREE from "three";
 import { communityColorScale, groupNodesByCommunity } from "@/lib/hull-renderer";
-import { dimColor, colors } from "@/lib/colors";
+import { dimColor } from "@/lib/colors";
+import { getBackgroundColor } from "@/lib/theme";
 import type { SimNode, ImmediateParams } from "@/lib/map-renderer";
 import {
   pcaProject,
@@ -161,11 +162,6 @@ export function createNodeRenderer(options: NodeRendererOptions): NodeRenderer {
   // Current highlight state
   let currentHighlight: Set<string> | null = null;
   let currentBaseDim = 0.3;
-
-  function getBackgroundColor(): string {
-    const isDarkMode = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    return isDarkMode ? colors.background.dark : colors.background.light;
-  }
 
   function getNodeDimAmount(nodeId: string): number {
     if (currentHighlight === null) {

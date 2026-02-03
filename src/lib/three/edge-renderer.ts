@@ -7,7 +7,8 @@ import * as THREE from "three";
 import { Line2 } from "three/examples/jsm/lines/Line2.js";
 import { LineGeometry } from "three/examples/jsm/lines/LineGeometry.js";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
-import { blendColors, dimColor, colors } from "@/lib/colors";
+import { blendColors, dimColor } from "@/lib/colors";
+import { getBackgroundColor } from "@/lib/theme";
 import type { SimNode, SimLink, ImmediateParams } from "@/lib/map-renderer";
 import type { PCATransform, ClusterColorInfo } from "@/lib/semantic-colors";
 import { getNodeColor, getRenderOrder } from "./node-renderer";
@@ -131,11 +132,6 @@ export function createEdgeRenderer(options: EdgeRendererOptions): EdgeRenderer {
   // Current highlight state
   let currentHighlight: Set<string> | null = null;
   let currentBaseDim = 0.3;
-
-  function getBackgroundColor(): string {
-    const isDarkMode = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    return isDarkMode ? colors.background.dark : colors.background.light;
-  }
 
   function getLinkKey(link: SimLink): string {
     const sourceId = typeof link.source === "string" ? link.source : link.source.id;
