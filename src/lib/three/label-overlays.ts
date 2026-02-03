@@ -22,6 +22,12 @@ export interface LabelOverlayManager {
   updateChunkLabels: (nodes: SimNode[], parentColors: Map<string, string>) => void;
   /** Update label opacity for cross-fading between keyword and chunk labels */
   updateLabelOpacity: (scales: { keywordLabelOpacity: number; chunkLabelOpacity: number }) => void;
+  /** Sync the chunk preview overlay with current camera transform */
+  syncChunkPreview: () => void;
+  /** Track hovered chunk nodes for preview display */
+  setHoveredChunk: (node: SimNode | null) => void;
+  /** Toggle pinned (expanded) chunk preview */
+  togglePinnedChunk: (node: SimNode) => void;
   /** Clean up all DOM elements */
   destroy: () => void;
 }
@@ -71,10 +77,20 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
   chunkOverlay.style.zIndex = "2";
   container.appendChild(chunkOverlay);
 
+  const chunkPreview = document.createElement("div");
+  chunkPreview.className = "chunk-preview";
+  chunkPreview.style.zIndex = "3";
+  chunkPreview.style.display = "none";
+  container.appendChild(chunkPreview);
+
   // Caches for DOM elements
   const clusterLabelCache = new Map<number, HTMLDivElement>();
   const keywordLabelCache = new Map<string, HTMLDivElement>();
   const chunkLabelCache = new Map<string, HTMLDivElement>();
+
+  // Hover/pin state for chunk previews
+  let hoveredChunk: SimNode | null = null;
+  let pinnedChunk: SimNode | null = null;
 
   function updateClusterLabels(nodes: SimNode[]) {
     const rect = container.getBoundingClientRect();
@@ -356,7 +372,91 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     }
   }
 
+  function isChunkNode(node: SimNode | null): node is SimNode & { type: "chunk" } {
+    return !!node && node.type === "chunk";
+  }
+
+  function getChunkPreviewText(node: SimNode): string {
+    const chunkContent = (node as SimNode & { content?: string | null }).content;
+    const text = chunkContent?.trim() || node.label || "";
+    return text;
+  }
+
+  function hideChunkPreview(): void {
+    chunkPreview.style.display = "none";
+    chunkPreview.classList.remove("is-visible");
+    chunkPreview.classList.remove("is-expanded");
+  }
+
+  function updateChunkPreview(): void {
+    const target = hoveredChunk ?? pinnedChunk;
+    if (!isChunkNode(target)) {
+      hideChunkPreview();
+      return;
+    }
+    if (typeof target.x !== "number" || typeof target.y !== "number") {
+      hideChunkPreview();
+      return;
+    }
+
+    const text = getChunkPreviewText(target);
+    if (!text) {
+      hideChunkPreview();
+      return;
+    }
+
+    const screenPos = worldToScreen({ x: target.x, y: target.y });
+    if (!screenPos) {
+      hideChunkPreview();
+      return;
+    }
+
+    const rect = container.getBoundingClientRect();
+    const cameraZ = getCameraZ();
+    const fovRadians = CAMERA_FOV_DEGREES * Math.PI / 180;
+    const pixelsPerUnit = rect.height / (2 * cameraZ * Math.tan(fovRadians / 2));
+    const screenRadius = getNodeRadius(target) * pixelsPerUnit;
+    const anchorY = screenPos.y - screenRadius - 12;
+    const zoomScale = Math.min(1.15, 1500 / cameraZ);
+    const pinned = !!pinnedChunk && pinnedChunk.id === target.id;
+
+    chunkPreview.style.display = "block";
+    chunkPreview.classList.add("is-visible");
+    chunkPreview.classList.toggle("is-expanded", pinned);
+    chunkPreview.dataset.chunkId = target.id;
+    chunkPreview.style.left = `${screenPos.x}px`;
+    chunkPreview.style.top = `${anchorY}px`;
+    chunkPreview.style.fontSize = `${14 * zoomScale}px`;
+    chunkPreview.style.maxWidth = `${(pinned ? 420 : 320) * zoomScale}px`;
+    if (chunkPreview.textContent !== text) {
+      chunkPreview.textContent = text;
+    }
+  }
+
+  function setHoveredChunk(node: SimNode | null): void {
+    hoveredChunk = isChunkNode(node) ? node : null;
+    updateChunkPreview();
+  }
+
+  function togglePinnedChunk(node: SimNode): void {
+    if (!isChunkNode(node)) return;
+    if (pinnedChunk && pinnedChunk.id === node.id) {
+      pinnedChunk = null;
+    } else {
+      pinnedChunk = node;
+    }
+    updateChunkPreview();
+  }
+
+  function syncChunkPreview(): void {
+    if (chunkPreview.style.display !== "none") {
+      updateChunkPreview();
+    }
+  }
+
   function destroy() {
+    hoveredChunk = null;
+    pinnedChunk = null;
     // Remove cluster labels
     for (const labelEl of clusterLabelCache.values()) {
       labelEl.remove();
@@ -383,6 +483,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     if (chunkOverlay.parentNode === container) {
       container.removeChild(chunkOverlay);
     }
+    chunkPreview.remove();
   }
 
   return {
@@ -390,6 +491,9 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     updateKeywordLabels,
     updateChunkLabels,
     updateLabelOpacity,
+    syncChunkPreview,
+    setHoveredChunk,
+    togglePinnedChunk,
     destroy,
   };
 }

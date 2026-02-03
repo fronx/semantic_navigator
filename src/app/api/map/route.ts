@@ -67,6 +67,7 @@ export interface MapNode {
   type: "keyword" | "article" | "chunk" | "project";
   label: string;
   size?: number; // Content size (summary length) for scaling node radius
+  content?: string | null;
   // Community info for hub keywords (when clustered=true)
   communityId?: number;
   communityMembers?: string[]; // Labels of other keywords in the community

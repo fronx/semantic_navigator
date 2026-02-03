@@ -104,6 +104,47 @@ body {
   }
 }
 
+.chunk-preview {
+  position: absolute;
+  pointer-events: none;
+  max-width: 320px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #0f172a;
+  font-size: 14px;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  box-shadow:
+    0 20px 45px rgba(15, 23, 42, 0.25),
+    0 2px 8px rgba(15, 15, 15, 0.15);
+  transform: translate(-50%, -100%);
+  opacity: 0;
+  transition:
+    opacity 0.12s ease-out,
+    max-width 0.2s ease,
+    font-size 0.2s ease;
+}
+
+.chunk-preview.is-visible {
+  opacity: 1;
+}
+
+.chunk-preview.is-expanded {
+  max-width: 420px;
+  font-weight: 500;
+}
+
+@media (prefers-color-scheme: dark) {
+  .chunk-preview {
+    background: rgba(9, 9, 11, 0.9);
+    color: #f4f4f5;
+    box-shadow:
+      0 20px 45px rgba(0, 0, 0, 0.55),
+      0 2px 12px rgba(0, 0, 0, 0.35);
+  }
+}
+
 /* Cluster labels: centered at centroid, multi-line, bold */
 .cluster-label {
   position: absolute;

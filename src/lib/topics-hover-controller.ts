@@ -107,9 +107,8 @@ export function createHoverController(options: HoverControllerOptions): HoverCon
     const CHUNK_VISIBILITY_THRESHOLD = 0.01;
 
     if (chunkScale > CHUNK_VISIBILITY_THRESHOLD) {
-      // Chunks are visible - disable radius highlighting, apply equal dimming
-      highlightedIdsRef.current = new Set();
-      renderer.applyHighlight(new Set(), baseDim);
+      const chunkId = findChunkUnderCursor(screenX, screenY);
+      highlightedIdsRef.current = chunkId ? new Set([chunkId]) : new Set();
       return;
     }
 
@@ -132,6 +131,33 @@ export function createHoverController(options: HoverControllerOptions): HoverCon
       highlightedIdsRef.current = keywordHighlightedIds;
       renderer.applyHighlight(keywordHighlightedIds, baseDim);
     }
+  }
+
+  function findChunkUnderCursor(screenX: number, screenY: number): string | null {
+    const nodes = renderer.getNodes();
+    const worldPos = renderer.screenToWorld({ x: screenX, y: screenY });
+    const pixelsPerUnit = Math.max(renderer.getTransform().k, 1e-6);
+    const screenRadiusPx = 24; // about half a chunk dot at max zoom
+    const worldRadius = screenRadiusPx / pixelsPerUnit;
+
+    let closestId: string | null = null;
+    let minDist = Infinity;
+
+    for (const node of nodes) {
+      if (node.type !== "chunk") continue;
+      if (node.x === undefined || node.y === undefined) continue;
+
+      const dx = node.x - worldPos.x;
+      const dy = node.y - worldPos.y;
+      const dist = Math.hypot(dx, dy);
+
+      if (dist <= worldRadius && dist < minDist) {
+        minDist = dist;
+        closestId = node.id;
+      }
+    }
+
+    return closestId;
   }
 
   return {

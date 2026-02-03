@@ -220,6 +220,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     const graphNodes = graphData.nodes as SimNode[];
     labelManager.updateClusterLabels(graphNodes);
     labelManager.updateKeywordLabels(graphNodes, nodeDegrees);
+    labelManager.syncChunkPreview();
   }
 
   // ---------------------------------------------------------------------------
@@ -430,13 +431,17 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     scene,
     camera,
     container,
+    maxBlurRadius: zoomPhaseConfig.blur.maxRadius,
     getBlurRadius: () => {
       const cameraZ = cameraController.getCameraZ();
       const blurRange = zoomPhaseConfig.blur;
       const fadeOut = normalizeZoom(cameraZ, blurRange);
-      const strength = 1 - fadeOut;
-      if (strength <= 0.001) return 0;
-      return strength * zoomPhaseConfig.blur.maxRadius;
+      const positionalStrength = 1 - fadeOut;
+      if (positionalStrength <= 0.001) return 0;
+      const chunkScale = calculateScales(cameraZ, zoomPhaseConfig.chunkCrossfade).chunkScale;
+      const gatedStrength = positionalStrength * chunkScale;
+      if (gatedStrength <= 0.001) return 0;
+      return gatedStrength * zoomPhaseConfig.blur.maxRadius;
     },
     edgeRenderer,
     originalRender,
@@ -464,6 +469,10 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
 
   graph.onNodeClick((node: object) => {
     const n = node as SimNode;
+    if (n.type === "chunk") {
+      labelManager.togglePinnedChunk(n);
+      return;
+    }
     if (n.type === "keyword" && callbacks.onKeywordClick) {
       callbacks.onKeywordClick(n.label);
     } else if (n.type === "project") {
@@ -495,6 +504,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
 
   graph.onNodeHover((node: object | null) => {
     hoveredNode = node as SimNode | null;
+    labelManager.setHoveredChunk(hoveredNode);
   });
 
 

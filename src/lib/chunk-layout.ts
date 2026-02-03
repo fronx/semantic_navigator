@@ -15,6 +15,7 @@ export interface ChunkSimNode extends SimNode {
   type: "chunk";
   z: number;
   parentId: string; // Keyword ID
+  content: string;
 }
 
 /**
@@ -50,6 +51,7 @@ export function createChunkNodes(
         embedding: chunk.embedding,
         z: CHUNK_Z_DEPTH, // Behind keyword layer (from config)
         parentId: keywordId,
+        content: chunk.content,
         // Initial position: parent keyword X-Y coordinates
         x: parent.x,
         y: parent.y,
