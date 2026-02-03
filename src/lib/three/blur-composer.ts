@@ -3,6 +3,56 @@ import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import type { EdgeRenderer } from "./edge-renderer";
 import { KEYWORD_LAYER, CHUNK_LAYER, PANEL_LAYER } from "./node-renderer";
 
+// ============================================================================
+// Gaussian Blur Shaders
+// ============================================================================
+
+function createGaussianCoefficients(kernelRadius: number): number[] {
+  const coefficients: number[] = [];
+  const sigma = kernelRadius / 3;
+
+  for (let i = 0; i < kernelRadius; i++) {
+    coefficients.push(0.39894 * Math.exp(-0.5 * i * i / (sigma * sigma)) / sigma);
+  }
+
+  return coefficients;
+}
+
+const BLUR_KERNEL_RADIUS = 5;
+const blurCoefficients = createGaussianCoefficients(BLUR_KERNEL_RADIUS);
+
+const blurVertexShader = `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const blurFragmentShader = `
+  uniform sampler2D tDiffuse;
+  uniform vec2 resolution;
+  uniform vec2 direction;
+  uniform float kernel[${BLUR_KERNEL_RADIUS}];
+
+  varying vec2 vUv;
+
+  void main() {
+    vec2 invSize = 1.0 / resolution;
+    float weightSum = kernel[0];
+    vec4 color = texture2D(tDiffuse, vUv) * weightSum;
+
+    for (int i = 1; i < ${BLUR_KERNEL_RADIUS}; i++) {
+      vec2 offset = direction * float(i) * invSize;
+      color += texture2D(tDiffuse, vUv + offset) * kernel[i];
+      color += texture2D(tDiffuse, vUv - offset) * kernel[i];
+      weightSum += 2.0 * kernel[i];
+    }
+
+    gl_FragColor = color / weightSum;
+  }
+`;
+
 export interface BlurComposerOptions {
   renderer: THREE.WebGLRenderer;
   scene: THREE.Scene;
@@ -17,7 +67,7 @@ export interface BlurComposerOptions {
 }
 
 export interface BlurComposer {
-  render(): void;
+  render(enabled?: boolean): void;
   updateSize(width: number, height: number): void;
   updateCameras(): void;
   dispose(): void;
@@ -38,6 +88,81 @@ export function createBlurComposer(options: BlurComposerOptions): BlurComposer {
   const rect = container.getBoundingClientRect();
   let width = rect.width;
   let height = rect.height;
+
+  // ---------------------------------------------------------------------------
+  // Clone Camera for Blur Passes
+  // ---------------------------------------------------------------------------
+
+  // CRITICAL: Clone the camera for blur rendering so we NEVER modify the main camera's layers
+  // 3d-force-graph uses the main camera for raycasting, so touching its layers breaks hover detection
+  const blurCamera3D = (camera as THREE.PerspectiveCamera).clone();
+
+  // ---------------------------------------------------------------------------
+  // Blur Render Targets
+  // ---------------------------------------------------------------------------
+
+  const keywordsRenderTarget = new THREE.WebGLRenderTarget(width, height, {
+    minFilter: THREE.LinearFilter,
+    magFilter: THREE.LinearFilter,
+    format: THREE.RGBAFormat,
+    type: THREE.UnsignedByteType,
+  });
+
+  const blurRenderTargetH = new THREE.WebGLRenderTarget(width, height, {
+    minFilter: THREE.LinearFilter,
+    magFilter: THREE.LinearFilter,
+    format: THREE.RGBAFormat,
+    type: THREE.UnsignedByteType,
+  });
+
+  const blurRenderTargetV = new THREE.WebGLRenderTarget(width, height, {
+    minFilter: THREE.LinearFilter,
+    magFilter: THREE.LinearFilter,
+    format: THREE.RGBAFormat,
+    type: THREE.UnsignedByteType,
+  });
+
+  // ---------------------------------------------------------------------------
+  // Blur Materials
+  // ---------------------------------------------------------------------------
+
+  const blurMaterialH = new THREE.ShaderMaterial({
+    uniforms: {
+      tDiffuse: { value: null },
+      resolution: { value: new THREE.Vector2(width, height) },
+      direction: { value: new THREE.Vector2(1.0, 0.0) },
+      kernel: { value: blurCoefficients },
+    },
+    vertexShader: blurVertexShader,
+    fragmentShader: blurFragmentShader,
+  });
+
+  const blurMaterialV = new THREE.ShaderMaterial({
+    uniforms: {
+      tDiffuse: { value: null },
+      resolution: { value: new THREE.Vector2(width, height) },
+      direction: { value: new THREE.Vector2(0.0, 1.0) },
+      kernel: { value: blurCoefficients },
+    },
+    vertexShader: blurVertexShader,
+    fragmentShader: blurFragmentShader,
+  });
+
+  // Fullscreen quad for blur passes
+  const blurQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), blurMaterialH);
+  const blurScene = new THREE.Scene();
+  blurScene.add(blurQuad);
+  const blurCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+  // Fullscreen quad for displaying blurred result
+  const screenMaterial = new THREE.MeshBasicMaterial({ map: null });
+  const screenQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), screenMaterial);
+  const screenScene = new THREE.Scene();
+  screenScene.add(screenQuad);
+
+  // ---------------------------------------------------------------------------
+  // Panel Material (with blurred texture)
+  // ---------------------------------------------------------------------------
 
   const panelMaterial = new THREE.MeshPhysicalMaterial({
     color: new THREE.Color("#f3f4f6"),
@@ -100,49 +225,102 @@ export function createBlurComposer(options: BlurComposerOptions): BlurComposer {
     panelMaterial.envMapIntensity = THREE.MathUtils.lerp(0.05, 0.3, clamped);
   }
 
-  function render(): void {
+  function render(enabled = true): void {
     const blurRadius = getBlurRadius();
     const strength = maxBlurRadius > 0 ? Math.min(1, blurRadius / maxBlurRadius) : 0;
 
-    const previousMask = camera.layers.mask;
+    // CRITICAL: Sync cloned camera with main camera position/rotation
+    // NEVER touch main camera's layers - that breaks 3d-force-graph raycasting!
+    blurCamera3D.position.copy(camera.position);
+    blurCamera3D.quaternion.copy(camera.quaternion);
+    blurCamera3D.updateMatrixWorld();
+
     const previousAutoClear = renderer.autoClear;
     const previousTarget = renderer.getRenderTarget();
 
-    renderer.setRenderTarget(null);
-    renderer.autoClear = true;
-    renderer.clear(true, true, true);
+    // Step 1: Render keywords to texture (if blur is enabled and we need blur)
+    if (enabled && strength > 0.001) {
+      renderer.setRenderTarget(keywordsRenderTarget);
+      renderer.autoClear = true;
+      renderer.clear(true, true, true);
+      blurCamera3D.layers.set(0);
+      blurCamera3D.layers.enable(KEYWORD_LAYER);
+      originalRender(scene, blurCamera3D);
 
-    camera.layers.set(0);
-    camera.layers.enable(KEYWORD_LAYER);
-    originalRender(scene, camera);
+      // Step 2: Apply horizontal blur pass
+      blurMaterialH.uniforms.tDiffuse.value = keywordsRenderTarget.texture;
+      blurQuad.material = blurMaterialH;
+      renderer.setRenderTarget(blurRenderTargetH);
+      renderer.autoClear = true;
+      renderer.clear(true, true, true);
+      originalRender(blurScene, blurCamera);
 
-    if (strength > 0.001) {
+      // Step 3: Apply vertical blur pass
+      blurMaterialV.uniforms.tDiffuse.value = blurRenderTargetH.texture;
+      blurQuad.material = blurMaterialV;
+      renderer.setRenderTarget(blurRenderTargetV);
+      renderer.autoClear = true;
+      renderer.clear(true, true, true);
+      originalRender(blurScene, blurCamera);
+
+      // Step 4: Render to screen - show blurred keywords
+      renderer.setRenderTarget(null);
+      renderer.autoClear = true;
+      renderer.clear(true, true, true);
+
+      // Render the blurred texture as background
+      screenMaterial.map = blurRenderTargetV.texture;
+      screenMaterial.needsUpdate = true;
+      originalRender(screenScene, blurCamera);
+
+      // Step 5: Render panel on top
       panelMesh.visible = true;
       applyPanelStrength(strength);
       updatePanelTransform();
 
       renderer.autoClear = false;
       renderer.clearDepth();
-      camera.layers.set(PANEL_LAYER);
-      originalRender(scene, camera);
+      blurCamera3D.layers.set(PANEL_LAYER);
+      originalRender(scene, blurCamera3D);
     } else {
+      // No blur - render keywords normally
+      renderer.setRenderTarget(null);
+      renderer.autoClear = true;
+      renderer.clear(true, true, true);
+
+      blurCamera3D.layers.set(0);
+      blurCamera3D.layers.enable(KEYWORD_LAYER);
+      originalRender(scene, blurCamera3D);
+
       panelMesh.visible = false;
     }
 
+    // Step 6: Render chunks on top
     renderer.autoClear = false;
     renderer.clearDepth();
-    camera.layers.set(CHUNK_LAYER);
-    originalRender(scene, camera);
+    blurCamera3D.layers.set(CHUNK_LAYER);
+    originalRender(scene, blurCamera3D);
 
-    camera.layers.mask = previousMask;
+    // Restore render state
     renderer.autoClear = previousAutoClear;
     renderer.setRenderTarget(previousTarget);
+
+    // Main camera is NEVER touched - 3d-force-graph's raycasting works!
   }
 
   function updateSize(newWidth: number, newHeight: number): void {
     width = Math.max(1, newWidth);
     height = Math.max(1, newHeight);
     updateLineResolutions(width, height);
+
+    // Resize blur render targets
+    keywordsRenderTarget.setSize(width, height);
+    blurRenderTargetH.setSize(width, height);
+    blurRenderTargetV.setSize(width, height);
+
+    // Update blur shader resolutions
+    blurMaterialH.uniforms.resolution.value.set(width, height);
+    blurMaterialV.uniforms.resolution.value.set(width, height);
   }
 
   function updateCameras(): void {
@@ -153,6 +331,16 @@ export function createBlurComposer(options: BlurComposerOptions): BlurComposer {
     panelGeometry.dispose();
     panelMaterial.dispose();
     scene.remove(panelMesh);
+
+    // Dispose blur resources
+    keywordsRenderTarget.dispose();
+    blurRenderTargetH.dispose();
+    blurRenderTargetV.dispose();
+    blurMaterialH.dispose();
+    blurMaterialV.dispose();
+    blurQuad.geometry.dispose();
+    screenMaterial.dispose();
+    screenQuad.geometry.dispose();
   }
 
   return {

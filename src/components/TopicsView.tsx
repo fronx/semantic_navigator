@@ -87,6 +87,9 @@ export function TopicsView({
   // Camera Z tracking for scale interpolation
   const [cameraZ, setCameraZ] = useState<number | undefined>(undefined);
 
+  // Blur layer toggle for debugging
+  const [blurEnabled, setBlurEnabled] = useState(true);
+
   // Filter state management (click-to-filter, external filter, position preservation)
   const {
     activeNodes,
@@ -204,6 +207,7 @@ export function TopicsView({
     chunksByKeyword,
     cameraZ,
     zoomPhaseConfig,
+    blurEnabled,
   });
 
   // Update position getter refs
@@ -293,6 +297,17 @@ export function TopicsView({
             Loading chunks...
           </div>
         )}
+        <div className="absolute top-4 left-4 px-3 py-2 bg-white/90 text-black text-sm rounded-md shadow-lg">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={blurEnabled}
+              onChange={(e) => setBlurEnabled(e.target.checked)}
+              className="cursor-pointer"
+            />
+            <span>Enable blur layer</span>
+          </label>
+        </div>
       </div>
     );
   }

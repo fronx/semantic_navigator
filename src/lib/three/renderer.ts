@@ -35,7 +35,6 @@ import {
   DEFAULT_ZOOM_PHASE_CONFIG,
   cloneZoomPhaseConfig,
   type ZoomPhaseConfig,
-  normalizeZoom,
 } from "@/lib/zoom-phase-config";
 
 // Building blocks
@@ -45,7 +44,6 @@ import { createNodeRenderer, getNodeRadius, BASE_DOT_RADIUS, DOT_SCALE_FACTOR } 
 import { createEdgeRenderer } from "./edge-renderer";
 import { createLabelOverlayManager, computeNodeDegrees } from "./label-overlays";
 import { createHullRenderer } from "./hull-renderer";
-import { createBlurComposer } from "./blur-composer";
 
 // ============================================================================
 // Types
@@ -415,53 +413,8 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     console.warn('[Camera Init] Camera not available after graphData()');
   }
 
-  // ---------------------------------------------------------------------------
-  // Blur Composer Setup (post-processing for frosted glass edges)
-  // ---------------------------------------------------------------------------
-
-  const renderer = graph.renderer();
-  const scene = graph.scene();
-
-  // Capture original render function before interception
-  const originalRender = renderer.render.bind(renderer);
-
-  // Create blur composer for frosted glass edge effect
-  const blurComposer = createBlurComposer({
-    renderer,
-    scene,
-    camera,
-    container,
-    maxBlurRadius: zoomPhaseConfig.blur.maxRadius,
-    getBlurRadius: () => {
-      const cameraZ = cameraController.getCameraZ();
-      const blurRange = zoomPhaseConfig.blur;
-      const fadeOut = normalizeZoom(cameraZ, blurRange);
-      const positionalStrength = 1 - fadeOut;
-      if (positionalStrength <= 0.001) return 0;
-      const chunkScale = calculateScales(cameraZ, zoomPhaseConfig.chunkCrossfade).chunkScale;
-      const gatedStrength = positionalStrength * chunkScale;
-      if (gatedStrength <= 0.001) return 0;
-      return gatedStrength * zoomPhaseConfig.blur.maxRadius;
-    },
-    edgeRenderer,
-    originalRender,
-  });
-
-  // Intercept renderer.render to inject blur post-processing
-  renderer.render = () => {
-    blurComposer.updateCameras();
-    blurComposer.render();
-  };
-
-  // Handle window resizes
-  let resizeObserverRef: ResizeObserver | null = null;
-  if (typeof ResizeObserver !== 'undefined') {
-    resizeObserverRef = new ResizeObserver((entries) => {
-      const rect = entries[0].contentRect;
-      blurComposer.updateSize(rect.width, rect.height);
-    });
-    resizeObserverRef.observe(container);
-  }
+  // Raycaster and blur composer removed - layer-based approach was breaking hover detection
+  // All nodes now on default layer 0, raycaster works without modification
 
   // ---------------------------------------------------------------------------
   // Event Handlers
@@ -650,13 +603,6 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       destroyed = true;
       cameraController.cancelAnimation();
       if (earlyFitTimeout) clearTimeout(earlyFitTimeout);
-
-      // Cleanup blur composer and resize observer
-      if (resizeObserverRef) {
-        resizeObserverRef.disconnect();
-        resizeObserverRef = null;
-      }
-      blurComposer.dispose();
 
       inputHandler.destroy();
       nodeRenderer.dispose();
