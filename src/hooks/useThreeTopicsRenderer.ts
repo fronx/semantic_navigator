@@ -22,6 +22,7 @@ export interface UseThreeTopicsRendererOptions extends BaseRendererOptions {
   chunksByKeyword?: Map<string, ChunkNode[]>;
   cameraZ?: number;
   zoomPhaseConfig?: ZoomPhaseConfig;
+  blurEnabled?: boolean;
 }
 
 export interface UseThreeTopicsRendererResult {
@@ -62,6 +63,7 @@ export function useThreeTopicsRenderer(
     chunksByKeyword,
     cameraZ,
     zoomPhaseConfig,
+    blurEnabled = true,
   } = options;
 
   // Refs to expose to parent
@@ -151,6 +153,7 @@ export function useThreeTopicsRenderer(
             immediateParams,
             pcaTransform: pcaTransform ?? undefined,
             zoomPhaseConfig,
+            panelEnabled: blurEnabled,
             callbacks: {
               onKeywordClick,
               onProjectClick,
@@ -247,6 +250,12 @@ export function useThreeTopicsRenderer(
     if (!threeRendererRef.current || !zoomPhaseConfig) return;
     threeRendererRef.current.updateZoomPhases(zoomPhaseConfig);
   }, [zoomPhaseConfig]);
+
+  // Update panel enabled state dynamically without recreating renderer
+  useEffect(() => {
+    if (!threeRendererRef.current) return;
+    threeRendererRef.current.updatePanelEnabled(blurEnabled);
+  }, [blurEnabled]);
 
   // Get position for a node ID (for click-to-filter position capture)
   const getNodePosition = (id: string): { x: number; y: number } | undefined => {
