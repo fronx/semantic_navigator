@@ -20,6 +20,29 @@ import { getNodeColor, getRenderOrder } from "./node-renderer";
 const ARC_SEGMENTS = 20;
 
 // ============================================================================
+// Edge type detection
+// ============================================================================
+
+/**
+ * Check if an edge is a containment edge connecting a keyword to a chunk.
+ * Returns true if one endpoint is a keyword and the other is a chunk.
+ */
+function isChunkContainmentEdge(link: SimLink, nodeMap: Map<string, SimNode>): boolean {
+  const sourceId = typeof link.source === "string" ? link.source : link.source.id;
+  const targetId = typeof link.target === "string" ? link.target : link.target.id;
+
+  const sourceNode = nodeMap.get(sourceId);
+  const targetNode = nodeMap.get(targetId);
+
+  if (!sourceNode || !targetNode) return false;
+
+  return (
+    (sourceNode.type === "keyword" && targetNode.type === "chunk") ||
+    (sourceNode.type === "chunk" && targetNode.type === "keyword")
+  );
+}
+
+// ============================================================================
 // Edge color helper
 // ============================================================================
 
@@ -28,7 +51,8 @@ export function getEdgeColor(
   nodeMap: Map<string, SimNode>,
   pcaTransform?: PCATransform,
   clusterColors?: Map<number, ClusterColorInfo>,
-  colorMixRatio: number = 0
+  colorMixRatio: number = 0,
+  getNodeById?: (nodeId: string) => SimNode | undefined
 ): string {
   const sourceId = typeof link.source === "string" ? link.source : link.source.id;
   const targetId = typeof link.target === "string" ? link.target : link.target.id;
@@ -40,8 +64,8 @@ export function getEdgeColor(
     return "#888888";
   }
 
-  const sourceColor = getNodeColor(sourceNode, pcaTransform, clusterColors, colorMixRatio);
-  const targetColor = getNodeColor(targetNode, pcaTransform, clusterColors, colorMixRatio);
+  const sourceColor = getNodeColor(sourceNode, pcaTransform, clusterColors, colorMixRatio, getNodeById);
+  const targetColor = getNodeColor(targetNode, pcaTransform, clusterColors, colorMixRatio, getNodeById);
 
   return blendColors(sourceColor, targetColor);
 }
@@ -77,6 +101,8 @@ export interface EdgeRenderer {
   updateHighlight(highlightedIds: Set<string> | null, baseDim: number): void;
   /** Refresh all edge colors (e.g., when colorMixRatio changes) */
   refreshColors(): void;
+  /** Update opacity for chunk containment edges (used for semantic zoom) */
+  updateEdgeOpacity(chunkEdgeOpacity: number): void;
   /** Dispose all cached line objects */
   dispose(): void;
 }
@@ -97,6 +123,9 @@ export function createEdgeRenderer(options: EdgeRendererOptions): EdgeRenderer {
   // Cache for original edge colors (for dimming)
   const edgeColorCache = new Map<string, string>();
 
+  // Set of link keys that represent chunk containment edges
+  const chunkEdgeKeys = new Set<string>();
+
   // Current highlight state
   let currentHighlight: Set<string> | null = null;
   let currentBaseDim = 0.3;
@@ -115,12 +144,19 @@ export function createEdgeRenderer(options: EdgeRendererOptions): EdgeRenderer {
   function getColor(link: SimLink): string {
     const nodeMap = getNodeMap();
     const clusterColors = getClusterColors();
-    return getEdgeColor(link, nodeMap, pcaTransform, clusterColors, immediateParams.current.colorMixRatio);
+    return getEdgeColor(link, nodeMap, pcaTransform, clusterColors, immediateParams.current.colorMixRatio, (id) => nodeMap.get(id));
   }
 
   function createLinkObject(link: SimLink): Line2 {
     const key = getLinkKey(link);
     const edgeColor = getColor(link);
+    const nodeMap = getNodeMap();
+
+    // Check if this is a chunk containment edge
+    const isChunkEdge = isChunkContainmentEdge(link, nodeMap);
+    if (isChunkEdge) {
+      chunkEdgeKeys.add(key);
+    }
 
     // Check cache first
     const cached = linkCache.get(key);
@@ -129,7 +165,6 @@ export function createEdgeRenderer(options: EdgeRendererOptions): EdgeRenderer {
       const mat = cached.material as LineMaterial;
       mat.color.set(edgeColor);
       mat.opacity = immediateParams.current.edgeOpacity * 0.4;
-      mat.needsUpdate = true;
       return cached;
     }
 
@@ -266,7 +301,6 @@ export function createEdgeRenderer(options: EdgeRendererOptions): EdgeRenderer {
       const mat = linkObj.material as LineMaterial;
       const dimmedColor = dimAmount > 0 ? dimColor(originalColor, dimAmount, backgroundColor) : originalColor;
       mat.color.set(dimmedColor);
-      mat.needsUpdate = true;
     }
   }
 
@@ -280,12 +314,21 @@ export function createEdgeRenderer(options: EdgeRendererOptions): EdgeRenderer {
       const [sourceId, targetId] = key.split("->");
       const link = { source: sourceId, target: targetId } as SimLink;
 
-      const newColor = getEdgeColor(link, nodeMap, pcaTransform, clusterColors, colorMixRatio);
+      const newColor = getEdgeColor(link, nodeMap, pcaTransform, clusterColors, colorMixRatio, (id) => nodeMap.get(id));
       edgeColorCache.set(key, newColor);
 
       const mat = linkObj.material as LineMaterial;
       mat.color.set(newColor);
-      mat.needsUpdate = true;
+    }
+  }
+
+  function updateEdgeOpacity(chunkEdgeOpacity: number): void {
+    for (const key of chunkEdgeKeys) {
+      const linkObj = linkCache.get(key);
+      if (!linkObj) continue;
+
+      const mat = linkObj.material as LineMaterial;
+      mat.opacity = chunkEdgeOpacity;
     }
   }
 
@@ -296,6 +339,7 @@ export function createEdgeRenderer(options: EdgeRendererOptions): EdgeRenderer {
     }
     linkCache.clear();
     edgeColorCache.clear();
+    chunkEdgeKeys.clear();
   }
 
   return {
@@ -304,6 +348,7 @@ export function createEdgeRenderer(options: EdgeRendererOptions): EdgeRenderer {
     getColor,
     updateHighlight,
     refreshColors,
+    updateEdgeOpacity,
     dispose,
   };
 }

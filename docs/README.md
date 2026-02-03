@@ -21,6 +21,8 @@
 ### Investigations
 
 - [Search Performance Investigation](architecture/search-performance-investigation.md) - Root cause analysis of search timeouts (resolved: PostgreSQL query planner behavior with explicit null parameters)
+- [Chunk Node LOD Analysis](investigations/chunk-lod-analysis.md) - Performance analysis of Three.js chunk rendering with LOD optimization recommendations
+- [Camera Z-Scale Sync Bug](investigations/camera-z-scale-sync-bug.md) - Keywords disappearing on zoom stop due to delayed camera initialization and mismatched Z↔K conversions (resolved: synchronous camera setup + shared CAMERA_Z_SCALE_BASE constant)
 
 ### Architecture Decision Records (ADRs)
 
@@ -30,3 +32,4 @@
 - [ADR-010: Client-Side Clustering](architecture/adr/010-client-side-clustering.md) - Move Louvain clustering to client for graph topology consistency
 - [ADR-012: WebGL Memory Leak Fix](architecture/adr/012-webgl-memory-leak-fix.md) - Proper WebGL context disposal to prevent browser unresponsiveness
 - [ADR-013: Leiden Clustering with Precomputation](architecture/adr/013-leiden-clustering-precomputation.md) - Leiden algorithm for better peripheral cluster detection, with precomputed labels to reduce API costs
+- [ADR-014: Chunk-Based Level of Detail](architecture/adr/014-chunk-based-level-of-detail.md) - Zoom-based progressive disclosure of paragraph chunks with 3D layering and lazy loading

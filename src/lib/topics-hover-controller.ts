@@ -76,47 +76,83 @@ export function createHoverController(options: HoverControllerOptions): HoverCon
   const adjacency = buildAdjacencyMap(activeEdges);
   const embeddings = buildEmbeddingMap(activeNodes, (n) => `kw:${n.label}`);
 
+  // Throttle state for hover highlight computation
+  // Use requestAnimationFrame to batch updates at 60fps, giving simulation time to run
+  let rafId: number | null = null;
+  let pendingMousePos: { x: number; y: number } | null = null;
+
+  /**
+   * Compute and apply hover highlight for the given screen position.
+   * This is the expensive operation that we want to throttle.
+   */
+  function computeAndApplyHighlight(screenX: number, screenY: number) {
+    const { similarityThreshold, baseDim } = hoverConfigRef.current;
+
+    // Track cursor position for project creation
+    cursorScreenPosRef.current = { x: screenX, y: screenY };
+    cursorWorldPosRef.current = renderer.screenToWorld({ x: screenX, y: screenY });
+
+    // Skip hover highlighting if cursor is over a project node
+    if (renderer.isHoveringProject()) {
+      highlightedIdsRef.current = new Set();
+      renderer.applyHighlight(new Set(), baseDim);
+      return;
+    }
+
+    const nodes = renderer.getNodes();
+    const { keywordHighlightedIds, isEmptySpace } = computeHoverHighlight({
+      nodes,
+      screenCenter: { x: screenX, y: screenY },
+      screenRadius: containerHeight * screenRadiusFraction,
+      transform: renderer.getTransform(),
+      similarityThreshold,
+      embeddings,
+      adjacency,
+      screenToWorld: (screen) => renderer.screenToWorld(screen),
+    });
+
+    if (isEmptySpace) {
+      highlightedIdsRef.current = new Set();
+      renderer.applyHighlight(null, baseDim);
+    } else {
+      highlightedIdsRef.current = keywordHighlightedIds;
+      renderer.applyHighlight(keywordHighlightedIds, baseDim);
+    }
+  }
+
   return {
     handleMouseEnter() {
       isHoveringRef.current = true;
     },
 
     handleMouseMove(screenX: number, screenY: number) {
-      const { similarityThreshold, baseDim } = hoverConfigRef.current;
-
-      // Track cursor position for project creation
+      // Always update cursor position immediately (cheap operation)
       cursorScreenPosRef.current = { x: screenX, y: screenY };
       cursorWorldPosRef.current = renderer.screenToWorld({ x: screenX, y: screenY });
 
-      // Skip hover highlighting if cursor is over a project node
-      if (renderer.isHoveringProject()) {
-        highlightedIdsRef.current = new Set();
-        renderer.applyHighlight(new Set(), baseDim);
-        return;
-      }
+      // Throttle the expensive hover highlight computation using RAF
+      // Store the latest mouse position and schedule a single update
+      pendingMousePos = { x: screenX, y: screenY };
 
-      const nodes = renderer.getNodes();
-      const { keywordHighlightedIds, isEmptySpace } = computeHoverHighlight({
-        nodes,
-        screenCenter: { x: screenX, y: screenY },
-        screenRadius: containerHeight * screenRadiusFraction,
-        transform: renderer.getTransform(),
-        similarityThreshold,
-        embeddings,
-        adjacency,
-        screenToWorld: (screen) => renderer.screenToWorld(screen),
-      });
-
-      if (isEmptySpace) {
-        highlightedIdsRef.current = new Set();
-        renderer.applyHighlight(null, baseDim);
-      } else {
-        highlightedIdsRef.current = keywordHighlightedIds;
-        renderer.applyHighlight(keywordHighlightedIds, baseDim);
+      if (rafId === null) {
+        rafId = requestAnimationFrame(() => {
+          rafId = null;
+          if (pendingMousePos) {
+            computeAndApplyHighlight(pendingMousePos.x, pendingMousePos.y);
+            pendingMousePos = null;
+          }
+        });
       }
     },
 
     handleMouseLeave() {
+      // Cancel any pending hover highlight computation
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      pendingMousePos = null;
+
       const { baseDim } = hoverConfigRef.current;
       highlightedIdsRef.current = new Set();
       renderer.applyHighlight(new Set(), baseDim);

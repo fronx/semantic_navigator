@@ -7,7 +7,10 @@ import { useEffect, useRef } from "react";
 import { createThreeRenderer, type ThreeRenderer } from "@/lib/three";
 import { convertToThreeNodes } from "@/lib/topics-graph-nodes";
 import { createHoverController } from "@/lib/topics-hover-controller";
+import { createChunkNodes, applyConstrainedForces } from "@/lib/chunk-layout";
 import type { BaseRendererOptions } from "@/lib/renderer-types";
+import type { ChunkNode } from "@/lib/chunk-loader";
+import type { SimNode } from "@/lib/map-renderer";
 
 // ============================================================================
 // Types
@@ -15,6 +18,8 @@ import type { BaseRendererOptions } from "@/lib/renderer-types";
 
 export interface UseThreeTopicsRendererOptions extends BaseRendererOptions {
   containerRef: React.RefObject<HTMLDivElement | null>;
+  chunksByKeyword?: Map<string, ChunkNode[]>;
+  cameraZ?: number;
 }
 
 export interface UseThreeTopicsRendererResult {
@@ -52,6 +57,8 @@ export function useThreeTopicsRenderer(
     cursorWorldPosRef,
     cursorScreenPosRef,
     projectInteractionRef,
+    chunksByKeyword,
+    cameraZ,
   } = options;
 
   // Refs to expose to parent
@@ -87,6 +94,28 @@ export function useThreeTopicsRenderer(
       getSavedPosition,
     });
 
+    // Create chunk nodes if available
+    let allNodes = mapNodes;
+    let allLinks = mapLinks;
+    if (chunksByKeyword && chunksByKeyword.size > 0) {
+      const keywordSimNodes = mapNodes.filter(n => n.type === "keyword");
+      const { chunkNodes, containmentEdges } = createChunkNodes(keywordSimNodes, chunksByKeyword);
+
+      // Debug logging
+      console.log('[Chunk Zoom] Created', chunkNodes.length, 'chunk nodes from', chunksByKeyword.size, 'keywords');
+
+      // Apply constrained forces to position chunks around keywords
+      const keywordMap = new Map<string, SimNode>(keywordSimNodes.map(n => [n.id, n]));
+      const keywordRadius = 5; // Base keyword radius for constraint calculation
+      applyConstrainedForces(chunkNodes, keywordMap, keywordRadius);
+
+      // Combine keyword/project nodes with chunk nodes
+      allNodes = [...mapNodes, ...chunkNodes];
+      allLinks = [...mapLinks, ...containmentEdges];
+    } else {
+      console.log('[Chunk Zoom] No chunks to create. chunksByKeyword size:', chunksByKeyword?.size ?? 0);
+    }
+
     const immediateParams = {
       current: {
         dotScale: 1,
@@ -114,8 +143,8 @@ export function useThreeTopicsRenderer(
         try {
           threeRenderer = await createThreeRenderer({
             container,
-            nodes: mapNodes,
-            links: mapLinks,
+            nodes: allNodes,
+            links: allLinks,
             immediateParams,
             pcaTransform: pcaTransform ?? undefined,
             callbacks: {
@@ -201,7 +230,13 @@ export function useThreeTopicsRenderer(
     };
   // Note: projectNodes excluded from deps - we use projectNodesRef to avoid re-creating
   // the graph when project positions are updated via drag.
-  }, [enabled, activeNodes, activeEdges, colorMixRatio, hoverConfig.screenRadiusFraction, pcaTransform, getSavedPosition, onKeywordClick, onProjectClick, onProjectDrag, onZoomChange, onFilterClick, isHoveringRef, cursorWorldPosRef, cursorScreenPosRef, projectInteractionRef, containerRef]);
+  }, [enabled, activeNodes, activeEdges, colorMixRatio, hoverConfig.screenRadiusFraction, pcaTransform, getSavedPosition, onKeywordClick, onProjectClick, onProjectDrag, onZoomChange, onFilterClick, isHoveringRef, cursorWorldPosRef, cursorScreenPosRef, projectInteractionRef, containerRef, chunksByKeyword]);
+
+  // Update scales when camera Z position changes
+  useEffect(() => {
+    if (!threeRendererRef.current || cameraZ === undefined) return;
+    threeRendererRef.current.updateScales(cameraZ);
+  }, [cameraZ]);
 
   // Get position for a node ID (for click-to-filter position capture)
   const getNodePosition = (id: string): { x: number; y: number } | undefined => {

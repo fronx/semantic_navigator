@@ -8,6 +8,8 @@ import type * as THREE from "three";
 // Very narrow FOV (nearly orthographic) minimizes parallax between HTML labels and 3D nodes
 export const CAMERA_FOV_DEGREES = 10;
 const CAMERA_FOV_RADIANS = CAMERA_FOV_DEGREES * Math.PI / 180;
+/** Base value used to convert perspective camera Z to a pseudo-zoom scale (k = BASE / z) */
+export const CAMERA_Z_SCALE_BASE = 500;
 
 export interface CameraControllerOptions {
   /** Function to get the 3d-force-graph camera */
@@ -113,7 +115,7 @@ export function createCameraController(options: CameraControllerOptions): Camera
     if (onZoomEnd) {
       const camera = getCamera();
       if (camera) {
-        const k = 500 / camera.position.z;
+        const k = CAMERA_Z_SCALE_BASE / camera.position.z;
         onZoomEnd({ k, x: camera.position.x, y: camera.position.y });
       }
     }
@@ -138,8 +140,10 @@ export function createCameraController(options: CameraControllerOptions): Camera
 
     const oldZ = camera.position.z;
     const zoomSensitivity = camera.position.z * 0.003;
-    // Allow zooming out far enough to see large graphs at 50% screen height
-    const newZ = Math.max(50, Math.min(20000, oldZ + deltaY * zoomSensitivity));
+
+    // Use centralized camera range from chunk-zoom-config
+    const { CAMERA_Z_MIN, CAMERA_Z_MAX } = require('@/lib/chunk-zoom-config');
+    const newZ = Math.max(CAMERA_Z_MIN, Math.min(CAMERA_Z_MAX, oldZ + deltaY * zoomSensitivity));
 
     if (Math.abs(newZ - oldZ) < 0.01) return;
 
@@ -185,7 +189,8 @@ export function createCameraController(options: CameraControllerOptions): Camera
     const zForWidth = paddedWidth / (2 * Math.tan(CAMERA_FOV_RADIANS / 2) * aspect);
 
     // Use the larger Z (more zoomed out) to fit both dimensions
-    const newZ = Math.max(zForHeight, zForWidth, 50); // Min zoom of 50
+    const { CAMERA_Z_MIN } = require('@/lib/chunk-zoom-config');
+    const newZ = Math.max(zForHeight, zForWidth, CAMERA_Z_MIN);
 
     // Smoothly animate camera to new position
     const startX = camera.position.x;
@@ -217,7 +222,7 @@ export function createCameraController(options: CameraControllerOptions): Camera
         animationFrameId = null;
         // Notify after animation completes
         if (onZoomEnd) {
-          const k = 500 / newZ;
+          const k = CAMERA_Z_SCALE_BASE / newZ;
           onZoomEnd({ k, x: graphCenterX, y: graphCenterY });
         }
       }

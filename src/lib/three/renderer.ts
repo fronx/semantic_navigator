@@ -30,6 +30,7 @@ import {
   shouldFitAfterCooling,
   markInitialFitDone,
 } from "@/lib/auto-fit";
+import { calculateScales } from "@/lib/chunk-scale";
 
 // Building blocks
 import { createCameraController, CAMERA_FOV_DEGREES } from "./camera-controller";
@@ -59,6 +60,7 @@ export interface ThreeRenderer {
   updateClusters: (nodeToCluster: Map<string, number>) => void;
   updateClusterLabels: () => void;
   applyHighlight: (highlightedIds: Set<string> | null, baseDim: number) => void;
+  updateScales: (cameraZ: number) => void;
   getNodes: () => SimNode[];
   getTransform: () => { k: number; x: number; y: number };
   screenToWorld: (screen: { x: number; y: number }) => { x: number; y: number };
@@ -255,6 +257,11 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const graphAny = graph as any;
 
+  // Track last camera Z for optimization (only update scales when camera moves)
+  let lastCameraZ = -1;
+  const CAMERA_Z_THRESHOLD_RATIO = 0.01; // Only update if camera moved more than 1%
+  let hasChunks = false; // Cache whether we have chunks in the scene
+
   graphAny
     .d3AlphaDecay(0.002)
     .d3VelocityDecay(0.5)
@@ -262,7 +269,12 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     .cooldownTicks(Infinity)
     .onEngineTick(() => {
       const graphData = graph.graphData();
-      const nodes = graphData.nodes as Array<{ vx?: number; vy?: number }>;
+      const nodes = graphData.nodes as SimNode[];
+
+      // Cache chunk detection on first run
+      if (lastCameraZ === -1) {
+        hasChunks = nodes.some(n => n.type === "chunk");
+      }
 
       const { coolingJustStarted } = processSimulationTick(nodes, convergenceState, DEFAULT_CONVERGENCE_CONFIG);
 
@@ -286,13 +298,83 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
         setTimeout(() => { if (!destroyed) fitToNodesInternal(0.25); }, 0);
       }
 
+      // Update scales based on camera zoom (for keyword/chunk transition)
+      // OPTIMIZATION: Only update if camera has moved significantly
+      const cameraZ = cameraController.getCameraZ();
+      const threshold = Math.abs(cameraZ) * CAMERA_Z_THRESHOLD_RATIO;
+      const cameraMoved = Math.abs(cameraZ - lastCameraZ) > threshold;
+
+      // ALWAYS update on first tick to ensure correct initial state
+      const isFirstTick = lastCameraZ === -1;
+
+      if (cameraMoved || isFirstTick) {
+        lastCameraZ = cameraZ;
+
+        const perfStart = performance.now();
+        const scales = calculateScales(cameraZ);
+
+        // Debug logging for first few ticks
+        if (convergenceState.tickCount < 5 || isFirstTick) {
+          console.log('[Scale Init]', 'tick:', convergenceState.tickCount, 'cameraZ:', cameraZ.toFixed(0),
+            'hasChunks:', hasChunks, 'keywordScale:', scales.keywordScale.toFixed(3),
+            'chunkScale:', scales.chunkScale.toFixed(3));
+        }
+
+        // Only apply scaling if we have chunk nodes in the scene (cached)
+        if (hasChunks) {
+          const t1 = performance.now();
+          nodeRenderer.updateNodeScales({ keywordScale: scales.keywordScale, chunkScale: scales.chunkScale });
+          const t2 = performance.now();
+          edgeRenderer.updateEdgeOpacity(scales.chunkEdgeOpacity);
+          const t3 = performance.now();
+          labelManager.updateLabelOpacity({
+            keywordLabelOpacity: scales.keywordLabelOpacity,
+            chunkLabelOpacity: scales.chunkLabelOpacity,
+          });
+          const t4 = performance.now();
+
+          // Log performance occasionally
+          if (Math.random() < 0.05) {
+            console.log('[Chunk Perf]',
+              'Total:', (t4 - perfStart).toFixed(2), 'ms',
+              'Nodes:', (t2 - t1).toFixed(2), 'ms',
+              'Edges:', (t3 - t2).toFixed(2), 'ms',
+              'Labels:', (t4 - t3).toFixed(2), 'ms',
+              'Node count:', nodes.length);
+          }
+        } else {
+          // No chunks - keep keywords at full scale
+          nodeRenderer.updateNodeScales({ keywordScale: 1.0, chunkScale: 0.0 });
+          labelManager.updateLabelOpacity({
+            keywordLabelOpacity: 1.0,
+            chunkLabelOpacity: 0.0,
+          });
+        }
+      }
+
       hullRenderer.update();
       updateAllLabels();
     });
 
-  // Set initial data
+  // Set initial data (this starts the simulation and creates the camera)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   graph.graphData({ nodes: currentNodes as any, links: currentLinks as any });
+
+  // ---------------------------------------------------------------------------
+  // Camera Setup (IMMEDIATELY after graph initialization)
+  // ---------------------------------------------------------------------------
+
+  // Set initial camera position synchronously to avoid transient incorrect scales
+  const camera = graph.camera() as THREE.PerspectiveCamera;
+  if (camera) {
+    camera.fov = CAMERA_FOV_DEGREES;
+    camera.updateProjectionMatrix();
+    camera.position.set(0, 0, 10500);
+    camera.lookAt(0, 0, 0);
+    console.log('[Camera Init] Set position to Z=10500');
+  } else {
+    console.warn('[Camera Init] Camera not available after graphData()');
+  }
 
   // ---------------------------------------------------------------------------
   // Event Handlers
@@ -333,19 +415,6 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     hoveredNode = node as SimNode | null;
   });
 
-  // ---------------------------------------------------------------------------
-  // Camera Setup
-  // ---------------------------------------------------------------------------
-
-  setTimeout(() => {
-    const camera = graph.camera() as THREE.PerspectiveCamera;
-    if (camera) {
-      camera.fov = CAMERA_FOV_DEGREES;
-      camera.updateProjectionMatrix();
-      camera.position.set(0, 0, 10500);
-      camera.lookAt(0, 0, 0);
-    }
-  }, 100);
 
   // ---------------------------------------------------------------------------
   // Fit-to-Nodes
@@ -449,6 +518,16 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     applyHighlight(highlightedIds: Set<string> | null, baseDim: number) {
       nodeRenderer.updateHighlight(highlightedIds, baseDim);
       edgeRenderer.updateHighlight(highlightedIds, baseDim);
+    },
+
+    updateScales(cameraZ: number) {
+      const scales = calculateScales(cameraZ);
+      nodeRenderer.updateNodeScales({ keywordScale: scales.keywordScale, chunkScale: scales.chunkScale });
+      edgeRenderer.updateEdgeOpacity(scales.chunkEdgeOpacity);
+      labelManager.updateLabelOpacity({
+        keywordLabelOpacity: scales.keywordLabelOpacity,
+        chunkLabelOpacity: scales.chunkLabelOpacity,
+      });
     },
 
     getNodes() {

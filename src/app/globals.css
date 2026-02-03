@@ -68,11 +68,35 @@ body {
     0 0 3px #fff,
     0 0 3px #fff,
     0 0 3px #fff;
+  transition: opacity 0.15s ease-out;
 }
 
 @media (prefers-color-scheme: dark) {
   .keyword-label {
     color: #ededed;
+    text-shadow:
+      0 0 3px #0a0a0a,
+      0 0 3px #0a0a0a,
+      0 0 3px #0a0a0a;
+  }
+}
+
+/* Chunk labels: above nodes, smaller font, theme-aware glow, inherits color from parent */
+/* Note: font-size may be scaled dynamically based on zoom level */
+.chunk-label {
+  position: absolute;
+  font-size: 12px;
+  white-space: nowrap;
+  transform: translate(-50%, -100%);
+  text-shadow:
+    0 0 3px #fff,
+    0 0 3px #fff,
+    0 0 3px #fff;
+  transition: opacity 0.15s ease-out;
+}
+
+@media (prefers-color-scheme: dark) {
+  .chunk-label {
     text-shadow:
       0 0 3px #0a0a0a,
       0 0 3px #0a0a0a,

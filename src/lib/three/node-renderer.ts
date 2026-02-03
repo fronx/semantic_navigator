@@ -55,11 +55,24 @@ export function getNodeColor(
   node: SimNode,
   pcaTransform?: PCATransform,
   clusterColors?: Map<number, ClusterColorInfo>,
-  colorMixRatio: number = 0
+  colorMixRatio: number = 0,
+  getParentNode?: (nodeId: string) => SimNode | undefined
 ): string {
   // Projects have a distinct purple color
   if (node.type === "project") {
     return PROJECT_COLOR;
+  }
+
+  // Chunks inherit parent keyword color (no dimming)
+  if (node.type === "chunk" && getParentNode) {
+    const chunkNode = node as SimNode & { parentId?: string };
+    if (chunkNode.parentId) {
+      const parent = getParentNode(chunkNode.parentId);
+      if (parent) {
+        // Recursively get parent's color (without passing getParentNode to avoid infinite loops)
+        return getNodeColor(parent, pcaTransform, clusterColors, colorMixRatio);
+      }
+    }
   }
 
   // Use cluster-based color if available
@@ -80,12 +93,14 @@ export function getNodeColor(
   return "#9ca3af"; // grey-400 for unclustered
 }
 
-export function getNodeRadius(node: SimNode, dotScale: number): number {
+export function getNodeRadius(node: SimNode, dotScale: number, scale: number = 1.0): number {
   // Projects are larger than keywords
   if (node.type === "project") {
-    return 7 * dotScale; // Larger base radius for projects
+    return 7 * dotScale * scale; // Larger base radius for projects
   }
-  return BASE_DOT_RADIUS * dotScale;
+  // Chunks are slightly smaller than keywords
+  const baseRadius = node.type === "chunk" ? BASE_DOT_RADIUS * 0.8 : BASE_DOT_RADIUS;
+  return baseRadius * dotScale * scale;
 }
 
 // ============================================================================
@@ -97,6 +112,13 @@ export interface NodeRendererOptions {
   pcaTransform?: PCATransform;
   /** Get current cluster colors (computed externally and may change) */
   getClusterColors: () => Map<number, ClusterColorInfo>;
+  /** Get node by ID (used for chunk parent lookup) */
+  getNodeById?: (nodeId: string) => SimNode | undefined;
+}
+
+export interface ScaleValues {
+  keywordScale: number;
+  chunkScale: number;
 }
 
 export interface NodeRenderer {
@@ -110,6 +132,8 @@ export interface NodeRenderer {
   refreshColors(nodes: SimNode[]): void;
   /** Update cluster assignments and recompute colors */
   updateClusters(nodes: SimNode[], nodeToCluster: Map<string, number>): Map<number, ClusterColorInfo>;
+  /** Update node scales based on camera zoom (for keyword/chunk transition) */
+  updateNodeScales(scales: ScaleValues): void;
   /** Dispose all cached meshes and materials */
   dispose(): void;
 }
@@ -118,10 +142,11 @@ interface NodeMeshGroup {
   group: THREE.Group;
   fill: THREE.Mesh<THREE.CircleGeometry, THREE.MeshBasicMaterial>;
   outline: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
+  node: SimNode; // Store node reference for type checking and updates
 }
 
 export function createNodeRenderer(options: NodeRendererOptions): NodeRenderer {
-  const { immediateParams, pcaTransform, getClusterColors } = options;
+  const { immediateParams, pcaTransform, getClusterColors, getNodeById } = options;
 
   // Cache for node meshes to avoid recreating on every update
   const nodeCache = new Map<string, NodeMeshGroup>();
@@ -155,11 +180,9 @@ export function createNodeRenderer(options: NodeRendererOptions): NodeRenderer {
   ): void {
     const dimmedFillColor = dimAmount > 0 ? dimColor(originalFillColor, dimAmount, backgroundColor) : originalFillColor;
     cached.fill.material.color.set(dimmedFillColor);
-    cached.fill.material.needsUpdate = true;
 
     const dimmedOutlineColor = dimAmount > 0 ? dimColor(OUTLINE_COLOR, dimAmount, backgroundColor) : OUTLINE_COLOR;
     cached.outline.material.color.set(dimmedOutlineColor);
-    cached.outline.material.needsUpdate = true;
   }
 
   function createNodeMesh(node: SimNode): THREE.Group {
@@ -169,7 +192,7 @@ export function createNodeRenderer(options: NodeRendererOptions): NodeRenderer {
     const cached = nodeCache.get(node.id);
     if (cached) {
       // Update existing mesh properties with color-based dimming
-      const originalFillColor = getNodeColor(node, pcaTransform, clusterColors, immediateParams.current.colorMixRatio);
+      const originalFillColor = getNodeColor(node, pcaTransform, clusterColors, immediateParams.current.colorMixRatio, getNodeById);
       nodeColorCache.set(node.id, originalFillColor);
       updateNodeMeshColors(cached, originalFillColor, getNodeDimAmount(node.id), getBackgroundColor());
       return cached.group;
@@ -180,7 +203,7 @@ export function createNodeRenderer(options: NodeRendererOptions): NodeRenderer {
     const strokeWidth = (node.type === "project" ? 3 : 1.5) * DOT_SCALE_FACTOR * 0.3;
 
     // Store original fill color and compute dimmed colors
-    const originalFillColor = getNodeColor(node, pcaTransform, clusterColors, immediateParams.current.colorMixRatio);
+    const originalFillColor = getNodeColor(node, pcaTransform, clusterColors, immediateParams.current.colorMixRatio, getNodeById);
     nodeColorCache.set(node.id, originalFillColor);
 
     const dimAmount = getNodeDimAmount(node.id);
@@ -212,7 +235,13 @@ export function createNodeRenderer(options: NodeRendererOptions): NodeRenderer {
     group.add(fillMesh);
     group.renderOrder = getRenderOrder("nodes");
 
-    nodeCache.set(node.id, { group, fill: fillMesh, outline: outlineMesh });
+    // Set Z position for chunk nodes (behind keyword layer)
+    const chunkNode = node as SimNode & { z?: number };
+    if (node.type === "chunk" && chunkNode.z !== undefined) {
+      group.position.z = chunkNode.z;
+    }
+
+    nodeCache.set(node.id, { group, fill: fillMesh, outline: outlineMesh, node });
     return group;
   }
 
@@ -241,7 +270,7 @@ export function createNodeRenderer(options: NodeRendererOptions): NodeRenderer {
       const cached = nodeCache.get(node.id);
       if (!cached) continue;
 
-      const originalColor = getNodeColor(node, pcaTransform, clusterColors, immediateParams.current.colorMixRatio);
+      const originalColor = getNodeColor(node, pcaTransform, clusterColors, immediateParams.current.colorMixRatio, getNodeById);
       nodeColorCache.set(node.id, originalColor);
       updateNodeMeshColors(cached, originalColor, getNodeDimAmount(node.id), backgroundColor);
     }
@@ -256,6 +285,42 @@ export function createNodeRenderer(options: NodeRendererOptions): NodeRenderer {
 
     // Recompute and return cluster colors
     return computeClusterColors(groupNodesByCommunity(nodes), pcaTransform);
+  }
+
+  function updateNodeScales(scales: ScaleValues): void {
+    // Visibility threshold: nodes smaller than 1% are invisible, so skip rendering
+    const VISIBILITY_THRESHOLD = 0.01;
+
+    let keywordCount = 0, chunkCount = 0;
+    let keywordVisible = 0, chunkVisible = 0;
+
+    for (const cached of nodeCache.values()) {
+      const { node, group } = cached;
+
+      // Apply scale based on node type
+      if (node.type === "keyword") {
+        keywordCount++;
+        group.scale.setScalar(scales.keywordScale);
+        // Cull keywords when too small (optimization)
+        group.visible = scales.keywordScale >= VISIBILITY_THRESHOLD;
+        if (group.visible) keywordVisible++;
+      } else if (node.type === "chunk") {
+        chunkCount++;
+        group.scale.setScalar(scales.chunkScale);
+        // Cull chunks when too small (saves ~0.5-1ms per frame when zoomed out)
+        group.visible = scales.chunkScale >= VISIBILITY_THRESHOLD;
+        if (group.visible) chunkVisible++;
+      }
+      // Projects and articles don't scale (they're always visible)
+    }
+
+    // Debug: log visibility state occasionally
+    if (Math.random() < 0.1) {
+      console.log('[Node Visibility]',
+        'Keywords:', keywordVisible, '/', keywordCount,
+        'Chunks:', chunkVisible, '/', chunkCount,
+        'Scales:', 'kw=' + scales.keywordScale.toFixed(3), 'ch=' + scales.chunkScale.toFixed(3));
+    }
   }
 
   function dispose(): void {
@@ -275,6 +340,7 @@ export function createNodeRenderer(options: NodeRendererOptions): NodeRenderer {
     updateHighlight,
     refreshColors,
     updateClusters,
+    updateNodeScales,
     dispose,
   };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { type HoverHighlightConfig } from "@/hooks/useGraphHoverHighlight";
 import { useClusterLabels } from "@/hooks/useClusterLabels";
 import { useStableCallback } from "@/hooks/useStableRef";
@@ -8,9 +8,11 @@ import { useTopicsFilter } from "@/hooks/useTopicsFilter";
 import { useProjectCreation } from "@/hooks/useProjectCreation";
 import { useD3TopicsRenderer } from "@/hooks/useD3TopicsRenderer";
 import { useThreeTopicsRenderer } from "@/hooks/useThreeTopicsRenderer";
+import { useChunkLoading } from "@/hooks/useChunkLoading";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 import { loadPCATransform, type PCATransform } from "@/lib/semantic-colors";
 import type { BaseRendererOptions } from "@/lib/renderer-types";
+import { CAMERA_Z_SCALE_BASE } from "@/lib/three/camera-controller";
 
 // ============================================================================
 // Types
@@ -78,6 +80,9 @@ export function TopicsView({
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Camera Z tracking for scale interpolation
+  const [cameraZ, setCameraZ] = useState<number | undefined>(undefined);
+
   // Filter state management (click-to-filter, external filter, position preservation)
   const {
     activeNodes,
@@ -91,13 +96,30 @@ export function TopicsView({
     externalFilter,
   });
 
+  // Chunk loading for visible keywords
+  // Stabilize the Set to prevent unnecessary refetches
+  const visibleKeywordIds = useMemo(
+    () => new Set(activeNodes.map(n => n.id)),
+    [activeNodes]
+  );
+
+  const { chunksByKeyword, isLoading } = useChunkLoading({
+    visibleKeywordIds,
+    enabled: true,
+  });
+
   // Cursor tracking for project creation (press 'N' to create)
   const { isHoveringRef, cursorWorldPosRef, cursorScreenPosRef } = useProjectCreation({
     onCreateProject,
   });
 
   // Stable callbacks - won't trigger effect re-runs when parent re-renders
-  const handleZoomChange = useStableCallback(onZoomChange);
+  const handleZoomChange = useStableCallback((zoomScale: number) => {
+    if (rendererType === "three" && Number.isFinite(zoomScale) && zoomScale > 0) {
+      setCameraZ(CAMERA_Z_SCALE_BASE / zoomScale);
+    }
+    onZoomChange?.(zoomScale);
+  });
   const handleKeywordClick = useStableCallback(onKeywordClick);
   const handleProjectClick = useStableCallback(onProjectClick);
   const handleProjectDrag = useStableCallback(onProjectDrag);
@@ -175,6 +197,8 @@ export function TopicsView({
     ...baseRendererOptions,
     enabled: rendererType === "three",
     containerRef,
+    chunksByKeyword,
+    cameraZ,
   });
 
   // Update position getter refs
@@ -254,10 +278,17 @@ export function TopicsView({
 
   if (rendererType === "three") {
     return (
-      <div
-        ref={containerRef}
-        className="w-full h-full cursor-grab"
-      />
+      <div className="w-full h-full relative">
+        <div
+          ref={containerRef}
+          className="w-full h-full cursor-grab"
+        />
+        {isLoading && (
+          <div className="absolute top-4 right-4 px-3 py-2 bg-black/70 text-white text-sm rounded-md">
+            Loading chunks...
+          </div>
+        )}
+      </div>
     );
   }
 
