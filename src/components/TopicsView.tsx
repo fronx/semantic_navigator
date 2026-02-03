@@ -13,6 +13,7 @@ import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queri
 import { loadPCATransform, type PCATransform } from "@/lib/semantic-colors";
 import type { BaseRendererOptions } from "@/lib/renderer-types";
 import { CAMERA_Z_SCALE_BASE } from "@/lib/three/camera-controller";
+import type { ZoomPhaseConfig } from "@/lib/zoom-phase-config";
 
 // ============================================================================
 // Types
@@ -53,6 +54,8 @@ export interface TopicsViewProps {
   onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
   /** Callback when an error occurs (e.g., cluster label generation fails) */
   onError?: (message: string) => void;
+  /** Zoom phase configuration for semantic transitions */
+  zoomPhaseConfig?: ZoomPhaseConfig;
 }
 
 // ============================================================================
@@ -76,6 +79,7 @@ export function TopicsView({
   onCreateProject,
   onProjectDrag,
   onError,
+  zoomPhaseConfig,
 }: TopicsViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -199,6 +203,7 @@ export function TopicsView({
     containerRef,
     chunksByKeyword,
     cameraZ,
+    zoomPhaseConfig,
   });
 
   // Update position getter refs

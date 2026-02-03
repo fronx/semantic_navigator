@@ -11,6 +11,7 @@ import { createChunkNodes, applyConstrainedForces } from "@/lib/chunk-layout";
 import type { BaseRendererOptions } from "@/lib/renderer-types";
 import type { ChunkNode } from "@/lib/chunk-loader";
 import type { SimNode } from "@/lib/map-renderer";
+import type { ZoomPhaseConfig } from "@/lib/zoom-phase-config";
 
 // ============================================================================
 // Types
@@ -20,6 +21,7 @@ export interface UseThreeTopicsRendererOptions extends BaseRendererOptions {
   containerRef: React.RefObject<HTMLDivElement | null>;
   chunksByKeyword?: Map<string, ChunkNode[]>;
   cameraZ?: number;
+  zoomPhaseConfig?: ZoomPhaseConfig;
 }
 
 export interface UseThreeTopicsRendererResult {
@@ -59,6 +61,7 @@ export function useThreeTopicsRenderer(
     projectInteractionRef,
     chunksByKeyword,
     cameraZ,
+    zoomPhaseConfig,
   } = options;
 
   // Refs to expose to parent
@@ -147,6 +150,7 @@ export function useThreeTopicsRenderer(
             links: allLinks,
             immediateParams,
             pcaTransform: pcaTransform ?? undefined,
+            zoomPhaseConfig,
             callbacks: {
               onKeywordClick,
               onProjectClick,
@@ -237,6 +241,12 @@ export function useThreeTopicsRenderer(
     if (!threeRendererRef.current || cameraZ === undefined) return;
     threeRendererRef.current.updateScales(cameraZ);
   }, [cameraZ]);
+
+  // Update zoom phase config dynamically without recreating renderer
+  useEffect(() => {
+    if (!threeRendererRef.current || !zoomPhaseConfig) return;
+    threeRendererRef.current.updateZoomPhases(zoomPhaseConfig);
+  }, [zoomPhaseConfig]);
 
   // Get position for a node ID (for click-to-filter position capture)
   const getNodePosition = (id: string): { x: number; y: number } | undefined => {

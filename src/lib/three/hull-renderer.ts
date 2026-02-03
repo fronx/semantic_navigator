@@ -83,6 +83,7 @@ export function createHullRenderer(options: HullRendererOptions): HullRenderer {
 
     const mesh = new THREE.Mesh(shapeGeometry, material);
     mesh.renderOrder = getRenderOrder("edges", -2); // Behind edges and nodes
+    mesh.layers.set(0); // Render on layer 0 for blur with edges
     return mesh;
   }
 
@@ -122,6 +123,7 @@ export function createHullRenderer(options: HullRendererOptions): HullRenderer {
     line.computeLineDistances();
     line.renderOrder = getRenderOrder("edges", -1); // In front of fills, behind edges
     line.frustumCulled = false; // Disable frustum culling for hulls
+    line.layers.set(0); // Render on layer 0 for blur with edges
     return line;
   }
 

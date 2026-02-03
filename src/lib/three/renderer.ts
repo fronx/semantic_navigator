@@ -30,7 +30,13 @@ import {
   shouldFitAfterCooling,
   markInitialFitDone,
 } from "@/lib/auto-fit";
-import { calculateScales } from "@/lib/chunk-scale";
+import { calculateScales, type ScaleValues } from "@/lib/chunk-scale";
+import {
+  DEFAULT_ZOOM_PHASE_CONFIG,
+  cloneZoomPhaseConfig,
+  type ZoomPhaseConfig,
+  normalizeZoom,
+} from "@/lib/zoom-phase-config";
 
 // Building blocks
 import { createCameraController, CAMERA_FOV_DEGREES } from "./camera-controller";
@@ -39,6 +45,7 @@ import { createNodeRenderer, getNodeRadius, BASE_DOT_RADIUS, DOT_SCALE_FACTOR } 
 import { createEdgeRenderer } from "./edge-renderer";
 import { createLabelOverlayManager, computeNodeDegrees } from "./label-overlays";
 import { createHullRenderer } from "./hull-renderer";
+import { createBlurComposer } from "./blur-composer";
 
 // ============================================================================
 // Types
@@ -61,6 +68,7 @@ export interface ThreeRenderer {
   updateClusterLabels: () => void;
   applyHighlight: (highlightedIds: Set<string> | null, baseDim: number) => void;
   updateScales: (cameraZ: number) => void;
+  updateZoomPhases: (config: ZoomPhaseConfig) => void;
   getNodes: () => SimNode[];
   getTransform: () => { k: number; x: number; y: number };
   screenToWorld: (screen: { x: number; y: number }) => { x: number; y: number };
@@ -75,6 +83,7 @@ export interface ThreeRendererOptions {
   immediateParams: { current: ImmediateParams };
   callbacks: ThreeRendererCallbacks;
   pcaTransform?: PCATransform;
+  zoomPhaseConfig?: ZoomPhaseConfig;
 }
 
 // ============================================================================
@@ -89,7 +98,15 @@ const COLLISION_PADDING = 1;
 // ============================================================================
 
 export async function createThreeRenderer(options: ThreeRendererOptions): Promise<ThreeRenderer> {
-  const { container, nodes: initialNodes, links: initialLinks, immediateParams, callbacks, pcaTransform } = options;
+  const {
+    container,
+    nodes: initialNodes,
+    links: initialLinks,
+    immediateParams,
+    callbacks,
+    pcaTransform,
+    zoomPhaseConfig: initialZoomPhaseConfig,
+  } = options;
 
   // ---------------------------------------------------------------------------
   // Initialize 3d-force-graph
@@ -114,6 +131,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
   let nodeMap = new Map<string, SimNode>(currentNodes.map(n => [n.id, n]));
   let clusterColors = computeClusterColors(groupNodesByCommunity(currentNodes), pcaTransform);
   let currentColorMixRatio = immediateParams.current.colorMixRatio;
+  let zoomPhaseConfig = cloneZoomPhaseConfig(initialZoomPhaseConfig ?? DEFAULT_ZOOM_PHASE_CONFIG);
 
   // Curve directions for edge rendering
   let curveDirections = computeEdgeCurveDirections(currentNodes, currentLinks, immediateParams.current.curveMethod);
@@ -178,6 +196,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     getCameraZ: () => cameraController.getCameraZ(),
     getNodeRadius: (node) => getNodeRadius(node, immediateParams.current.dotScale) * DOT_SCALE_FACTOR,
     getClusterColors: () => clusterColors,
+    getKeywordLabelRange: () => zoomPhaseConfig.keywordLabels,
   });
 
   const hullRenderer = createHullRenderer({
@@ -262,6 +281,24 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
   const CAMERA_Z_THRESHOLD_RATIO = 0.01; // Only update if camera moved more than 1%
   let hasChunks = false; // Cache whether we have chunks in the scene
 
+  function applyScaleValues(scales: ScaleValues): void {
+    if (hasChunks) {
+      nodeRenderer.updateNodeScales({ keywordScale: scales.keywordScale, chunkScale: scales.chunkScale });
+      edgeRenderer.updateEdgeOpacity(scales.chunkEdgeOpacity);
+      labelManager.updateLabelOpacity({
+        keywordLabelOpacity: scales.keywordLabelOpacity,
+        chunkLabelOpacity: scales.chunkLabelOpacity,
+      });
+    } else {
+      nodeRenderer.updateNodeScales({ keywordScale: 1.0, chunkScale: 0.0 });
+      edgeRenderer.updateEdgeOpacity(0);
+      labelManager.updateLabelOpacity({
+        keywordLabelOpacity: 1.0,
+        chunkLabelOpacity: 0.0,
+      });
+    }
+  }
+
   graphAny
     .d3AlphaDecay(0.002)
     .d3VelocityDecay(0.5)
@@ -311,7 +348,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
         lastCameraZ = cameraZ;
 
         const perfStart = performance.now();
-        const scales = calculateScales(cameraZ);
+        const scales = calculateScales(cameraZ, zoomPhaseConfig.chunkCrossfade);
 
         // Debug logging for first few ticks
         if (convergenceState.tickCount < 5 || isFirstTick) {
@@ -374,6 +411,50 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     console.log('[Camera Init] Set position to Z=10500');
   } else {
     console.warn('[Camera Init] Camera not available after graphData()');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Blur Composer Setup (post-processing for frosted glass edges)
+  // ---------------------------------------------------------------------------
+
+  const renderer = graph.renderer();
+  const scene = graph.scene();
+
+  // Capture original render function before interception
+  const originalRender = renderer.render.bind(renderer);
+
+  // Create blur composer for frosted glass edge effect
+  const blurComposer = createBlurComposer({
+    renderer,
+    scene,
+    camera,
+    container,
+    getBlurRadius: () => {
+      const cameraZ = cameraController.getCameraZ();
+      const blurRange = zoomPhaseConfig.blur;
+      const fadeOut = normalizeZoom(cameraZ, blurRange);
+      const strength = 1 - fadeOut;
+      if (strength <= 0.001) return 0;
+      return strength * zoomPhaseConfig.blur.maxRadius;
+    },
+    edgeRenderer,
+    originalRender,
+  });
+
+  // Intercept renderer.render to inject blur post-processing
+  renderer.render = () => {
+    blurComposer.updateCameras();
+    blurComposer.render();
+  };
+
+  // Handle window resizes
+  let resizeObserverRef: ResizeObserver | null = null;
+  if (typeof ResizeObserver !== 'undefined') {
+    resizeObserverRef = new ResizeObserver((entries) => {
+      const rect = entries[0].contentRect;
+      blurComposer.updateSize(rect.width, rect.height);
+    });
+    resizeObserverRef.observe(container);
   }
 
   // ---------------------------------------------------------------------------
@@ -457,6 +538,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       edgeRenderer.dispose();
 
       currentNodes = nodes;
+      hasChunks = currentNodes.some(n => n.type === "chunk");
       currentLinks = links;
       nodeMap = new Map<string, SimNode>(currentNodes.map(n => [n.id, n]));
 
@@ -520,14 +602,17 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       edgeRenderer.updateHighlight(highlightedIds, baseDim);
     },
 
+    updateZoomPhases(config: ZoomPhaseConfig) {
+      zoomPhaseConfig = cloneZoomPhaseConfig(config);
+      lastCameraZ = -1;
+      const cameraZ = cameraController.getCameraZ();
+      const scales = calculateScales(cameraZ, zoomPhaseConfig.chunkCrossfade);
+      applyScaleValues(scales);
+    },
+
     updateScales(cameraZ: number) {
-      const scales = calculateScales(cameraZ);
-      nodeRenderer.updateNodeScales({ keywordScale: scales.keywordScale, chunkScale: scales.chunkScale });
-      edgeRenderer.updateEdgeOpacity(scales.chunkEdgeOpacity);
-      labelManager.updateLabelOpacity({
-        keywordLabelOpacity: scales.keywordLabelOpacity,
-        chunkLabelOpacity: scales.chunkLabelOpacity,
-      });
+      const scales = calculateScales(cameraZ, zoomPhaseConfig.chunkCrossfade);
+      applyScaleValues(scales);
     },
 
     getNodes() {
@@ -550,6 +635,13 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       destroyed = true;
       cameraController.cancelAnimation();
       if (earlyFitTimeout) clearTimeout(earlyFitTimeout);
+
+      // Cleanup blur composer and resize observer
+      if (resizeObserverRef) {
+        resizeObserverRef.disconnect();
+        resizeObserverRef = null;
+      }
+      blurComposer.dispose();
 
       inputHandler.destroy();
       nodeRenderer.dispose();

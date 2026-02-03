@@ -36,23 +36,23 @@ export interface LabelOverlayOptions {
   getNodeRadius: (node: SimNode) => number;
   /** Function to get current cluster colors (for label coloring) */
   getClusterColors: () => Map<number, ClusterColorInfo>;
+  /** Function to read current keyword label range thresholds */
+  getKeywordLabelRange: () => { start: number; full: number };
 }
-
-// ============================================================================
-// Constants
-// ============================================================================
-
-// Zoom thresholds for keyword label visibility (in camera Z units)
-// Adjusted for 10deg FOV (3x higher than 30deg FOV values due to increased camera distance)
-const KEYWORD_ZOOM_START = 5000; // Start showing labels when zooming in past this
-const KEYWORD_ZOOM_ALL = 1200;    // Show all labels when zoomed in past this
 
 // ============================================================================
 // Factory
 // ============================================================================
 
 export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOverlayManager {
-  const { container, worldToScreen, getCameraZ, getNodeRadius, getClusterColors } = options;
+  const {
+    container,
+    worldToScreen,
+    getCameraZ,
+    getNodeRadius,
+    getClusterColors,
+    getKeywordLabelRange,
+  } = options;
 
   // Create overlay for cluster labels
   const clusterOverlay = document.createElement("div");
@@ -147,6 +147,9 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
   function updateKeywordLabels(nodes: SimNode[], nodeDegrees: Map<string, number>) {
     const rect = container.getBoundingClientRect();
     const cameraZ = getCameraZ();
+    const keywordRange = getKeywordLabelRange();
+    const keywordStart = Math.max(keywordRange.start, keywordRange.full);
+    const keywordFull = Math.min(keywordRange.start, keywordRange.full);
 
     // Calculate the maximum degree for normalization
     let maxDegree = 1;
@@ -156,15 +159,15 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
 
     // Determine the degree threshold based on zoom level
     let degreeThreshold: number;
-    if (cameraZ >= KEYWORD_ZOOM_START) {
+    if (cameraZ >= keywordStart) {
       // Too zoomed out - no labels
       degreeThreshold = Infinity;
-    } else if (cameraZ <= KEYWORD_ZOOM_ALL) {
+    } else if (cameraZ <= keywordFull) {
       // Fully zoomed in - show all
       degreeThreshold = 0;
     } else {
       // Interpolate: higher zoom (lower z) = lower threshold
-      const t = (cameraZ - KEYWORD_ZOOM_ALL) / (KEYWORD_ZOOM_START - KEYWORD_ZOOM_ALL);
+      const t = (cameraZ - keywordFull) / (keywordStart - keywordFull);
       degreeThreshold = t * maxDegree;
     }
 

@@ -8,6 +8,9 @@ import { ProjectSelector, type Project } from "@/components/ProjectSelector";
 import { ProjectSidebar, type Project as SidebarProject } from "@/components/ProjectSidebar";
 import { InlineTitleInput } from "@/components/InlineTitleInput";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
+import { CAMERA_Z_MIN, CAMERA_Z_MAX } from "@/lib/chunk-zoom-config";
+import { DEFAULT_ZOOM_PHASE_CONFIG, sanitizeZoomPhaseConfig, type ZoomPhaseConfig } from "@/lib/zoom-phase-config";
+import { CAMERA_Z_SCALE_BASE } from "@/lib/three/camera-controller";
 
 /** Debounce a value - returns the value after it stops changing for `delay` ms */
 function useDebouncedValue<T>(value: T, delay: number): T {
@@ -52,6 +55,30 @@ function useLocalStorageState<T>(key: string, defaultValue: T): [T, (value: T) =
 interface TopicsData {
   nodes: KeywordNode[];
   edges: SimilarityEdge[];
+}
+
+const LOG_Z_MIN = Math.log10(CAMERA_Z_MIN);
+const LOG_Z_MAX = Math.log10(CAMERA_Z_MAX);
+
+function cameraZToSliderValue(z: number): number {
+  const clamped = Math.max(CAMERA_Z_MIN, Math.min(CAMERA_Z_MAX, z));
+  const ratio = (Math.log10(clamped) - LOG_Z_MIN) / (LOG_Z_MAX - LOG_Z_MIN);
+  return Math.round(ratio * 100);
+}
+
+function sliderValueToCameraZ(value: number): number {
+  const ratio = Math.max(0, Math.min(1, value / 100));
+  return Math.pow(10, LOG_Z_MIN + (LOG_Z_MAX - LOG_Z_MIN) * ratio);
+}
+
+function formatZoomMarker(z: number): string {
+  const zoomValue = Math.round(z).toLocaleString();
+  const kValue = (CAMERA_Z_SCALE_BASE / z).toFixed(2);
+  return `${zoomValue} (k≈${kValue}x)`;
+}
+
+function formatZoomWindow(far: number, near: number): string {
+  return `${formatZoomMarker(Math.max(far, near))} → ${formatZoomMarker(Math.min(far, near))}`;
 }
 
 // Convert linear slider (0-100) to logarithmic scale (0.01 to 10)
@@ -101,6 +128,29 @@ export default function TopicsPage() {
 
   // Renderer selection (persisted)
   const [rendererType, setRendererType, rendererReady] = useLocalStorageState<RendererType>("topics-rendererType", "d3");
+
+  // Zoom phase tuning (persisted)
+  const [zoomPhaseConfigRaw, setZoomPhaseConfig, zoomPhaseReady] = useLocalStorageState<ZoomPhaseConfig>(
+    "topics-zoomPhases",
+    DEFAULT_ZOOM_PHASE_CONFIG
+  );
+  const zoomPhaseConfig = useMemo(() => sanitizeZoomPhaseConfig(zoomPhaseConfigRaw), [zoomPhaseConfigRaw]);
+
+  useEffect(() => {
+    const rawString = JSON.stringify(zoomPhaseConfigRaw);
+    const sanitizedString = JSON.stringify(zoomPhaseConfig);
+    if (rawString !== sanitizedString) {
+      setZoomPhaseConfig(zoomPhaseConfig);
+    }
+  }, [zoomPhaseConfigRaw, zoomPhaseConfig, setZoomPhaseConfig]);
+
+  const updateZoomPhaseConfig = useCallback(
+    (mutator: (prev: ZoomPhaseConfig) => ZoomPhaseConfig) => {
+      const next = sanitizeZoomPhaseConfig(mutator(zoomPhaseConfig));
+      setZoomPhaseConfig(next);
+    },
+    [zoomPhaseConfig, setZoomPhaseConfig]
+  );
 
   // Project filtering
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -272,9 +322,59 @@ export default function TopicsPage() {
     }
   }, []);
 
+  const handleKeywordStartSlider = (value: number) => {
+    updateZoomPhaseConfig((prev) => ({
+      ...prev,
+      keywordLabels: { ...prev.keywordLabels, start: sliderValueToCameraZ(value) },
+    }));
+  };
+
+  const handleKeywordFullSlider = (value: number) => {
+    updateZoomPhaseConfig((prev) => ({
+      ...prev,
+      keywordLabels: { ...prev.keywordLabels, full: sliderValueToCameraZ(value) },
+    }));
+  };
+
+  const handleChunkFarSlider = (value: number) => {
+    updateZoomPhaseConfig((prev) => ({
+      ...prev,
+      chunkCrossfade: { ...prev.chunkCrossfade, far: sliderValueToCameraZ(value) },
+    }));
+  };
+
+  const handleChunkNearSlider = (value: number) => {
+    updateZoomPhaseConfig((prev) => ({
+      ...prev,
+      chunkCrossfade: { ...prev.chunkCrossfade, near: sliderValueToCameraZ(value) },
+    }));
+  };
+
+  const handleBlurFarSlider = (value: number) => {
+    updateZoomPhaseConfig((prev) => ({
+      ...prev,
+      blur: { ...prev.blur, far: sliderValueToCameraZ(value) },
+    }));
+  };
+
+  const handleBlurNearSlider = (value: number) => {
+    updateZoomPhaseConfig((prev) => ({
+      ...prev,
+      blur: { ...prev.blur, near: sliderValueToCameraZ(value) },
+    }));
+  };
+
+  const handleBlurStrengthSlider = (value: number) => {
+    updateZoomPhaseConfig((prev) => ({
+      ...prev,
+      blur: { ...prev.blur, maxRadius: value },
+    }));
+  };
+
   // Wait for all persisted settings to load before rendering
   const settingsReady = knnReady && contrastReady && zoomReady && clusterSensReady &&
-                        hoverSimReady && baseDimReady && colorMixReady && rendererReady;
+                        hoverSimReady && baseDimReady && colorMixReady && rendererReady &&
+                        zoomPhaseReady;
 
   // Fetch data with localStorage cache fallback
   useEffect(() => {
@@ -362,6 +462,10 @@ export default function TopicsPage() {
       </div>
     );
   }
+
+  const keywordWindowSummary = formatZoomWindow(zoomPhaseConfig.keywordLabels.start, zoomPhaseConfig.keywordLabels.full);
+  const chunkWindowSummary = formatZoomWindow(zoomPhaseConfig.chunkCrossfade.far, zoomPhaseConfig.chunkCrossfade.near);
+  const blurWindowSummary = formatZoomWindow(zoomPhaseConfig.blur.far, zoomPhaseConfig.blur.near);
 
   return (
     <div className="h-screen flex flex-col bg-zinc-50 dark:bg-zinc-950">
@@ -499,6 +603,116 @@ export default function TopicsPage() {
           </a>
         </div>
       </header>
+      <div className="px-3 pb-2 border-b bg-white dark:bg-zinc-900 dark:border-zinc-800 text-[11px] text-zinc-500 space-y-2">
+        <div className="flex flex-wrap items-center gap-4">
+          <span className="uppercase tracking-[0.08em] text-[10px] font-semibold text-zinc-400">Zoom Phases</span>
+          <span>Clusters → Keywords: {keywordWindowSummary}</span>
+          <span>Keyword Dots → Chunks: {chunkWindowSummary}</span>
+          <span>Blur ramp: {blurWindowSummary} · peak {zoomPhaseConfig.blur.maxRadius.toFixed(1)}px</span>
+        </div>
+        <div className="grid gap-3 md:grid-cols-3 text-[11px] text-zinc-600">
+          <div className="space-y-1">
+            <div className="text-[10px] uppercase tracking-[0.08em] text-zinc-500 font-semibold">Keyword labels</div>
+            <label className="flex items-center gap-2">
+              <span className="w-12 text-[10px] uppercase text-zinc-500">Start</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={cameraZToSliderValue(zoomPhaseConfig.keywordLabels.start)}
+                onChange={(e) => handleKeywordStartSlider(parseFloat(e.target.value))}
+                className="flex-1 h-3"
+              />
+              <span className="w-36 tabular-nums text-right text-zinc-500">{formatZoomMarker(zoomPhaseConfig.keywordLabels.start)}</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <span className="w-12 text-[10px] uppercase text-zinc-500">Full</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={cameraZToSliderValue(zoomPhaseConfig.keywordLabels.full)}
+                onChange={(e) => handleKeywordFullSlider(parseFloat(e.target.value))}
+                className="flex-1 h-3"
+              />
+              <span className="w-36 tabular-nums text-right text-zinc-500">{formatZoomMarker(zoomPhaseConfig.keywordLabels.full)}</span>
+            </label>
+          </div>
+          <div className="space-y-1">
+            <div className="text-[10px] uppercase tracking-[0.08em] text-zinc-500 font-semibold">Chunk crossfade</div>
+            <label className="flex items-center gap-2">
+              <span className="w-14 text-[10px] uppercase text-zinc-500">Fade out</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={cameraZToSliderValue(zoomPhaseConfig.chunkCrossfade.far)}
+                onChange={(e) => handleChunkFarSlider(parseFloat(e.target.value))}
+                className="flex-1 h-3"
+              />
+              <span className="w-36 tabular-nums text-right text-zinc-500">{formatZoomMarker(zoomPhaseConfig.chunkCrossfade.far)}</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <span className="w-14 text-[10px] uppercase text-zinc-500">Full</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={cameraZToSliderValue(zoomPhaseConfig.chunkCrossfade.near)}
+                onChange={(e) => handleChunkNearSlider(parseFloat(e.target.value))}
+                className="flex-1 h-3"
+              />
+              <span className="w-36 tabular-nums text-right text-zinc-500">{formatZoomMarker(zoomPhaseConfig.chunkCrossfade.near)}</span>
+            </label>
+          </div>
+          <div className="space-y-1">
+            <div className="text-[10px] uppercase tracking-[0.08em] text-zinc-500 font-semibold">Blur overlay</div>
+            <label className="flex items-center gap-2">
+              <span className="w-12 text-[10px] uppercase text-zinc-500">Fade out</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={cameraZToSliderValue(zoomPhaseConfig.blur.far)}
+                onChange={(e) => handleBlurFarSlider(parseFloat(e.target.value))}
+                className="flex-1 h-3"
+              />
+              <span className="w-36 tabular-nums text-right text-zinc-500">{formatZoomMarker(zoomPhaseConfig.blur.far)}</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <span className="w-12 text-[10px] uppercase text-zinc-500">Peak</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={cameraZToSliderValue(zoomPhaseConfig.blur.near)}
+                onChange={(e) => handleBlurNearSlider(parseFloat(e.target.value))}
+                className="flex-1 h-3"
+              />
+              <span className="w-36 tabular-nums text-right text-zinc-500">{formatZoomMarker(zoomPhaseConfig.blur.near)}</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <span className="w-12 text-[10px] uppercase text-zinc-500">Max</span>
+              <input
+                type="range"
+                min={0}
+                max={20}
+                step={0.5}
+                value={zoomPhaseConfig.blur.maxRadius}
+                onChange={(e) => handleBlurStrengthSlider(parseFloat(e.target.value))}
+                className="flex-1 h-3"
+              />
+              <span className="w-24 tabular-nums text-right text-zinc-500">{zoomPhaseConfig.blur.maxRadius.toFixed(1)} px</span>
+            </label>
+          </div>
+        </div>
+      </div>
 
       <main className="flex-1 relative overflow-hidden bg-white dark:bg-zinc-900 flex">
         <div className="flex-1 relative min-w-0 overflow-hidden">
@@ -524,6 +738,7 @@ export default function TopicsPage() {
             onCreateProject={handleCreateProject}
             onProjectDrag={handleProjectDrag}
             onError={notifyError}
+            zoomPhaseConfig={zoomPhaseConfig}
           />
 
           {/* Inline title input for project creation */}

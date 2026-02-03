@@ -17,10 +17,14 @@
 import {
   CHUNK_Z_TRANSITION_MIN,
   CHUNK_Z_TRANSITION_MAX,
-} from './chunk-zoom-config';
+} from "./chunk-zoom-config";
+import type { ZoomRange } from "./zoom-phase-config";
+import { normalizeZoom } from "./zoom-phase-config";
 
-const MIN_Z = CHUNK_Z_TRANSITION_MIN;  // Very close - chunks fully visible
-const MAX_Z = CHUNK_Z_TRANSITION_MAX;  // Far away - keywords fully visible
+const DEFAULT_RANGE: ZoomRange = {
+  near: CHUNK_Z_TRANSITION_MIN,
+  far: CHUNK_Z_TRANSITION_MAX,
+};
 
 // Debug: Set to true to log scale calculations
 const DEBUG_SCALES = false;
@@ -45,11 +49,12 @@ export interface ScaleValues {
  * Calculate scale values based on camera Z position
  *
  * @param cameraZ - Current camera Z distance (100 = close, 500 = far)
+ * @param range - Zoom range controlling the crossfade window
  * @returns Scale values for keywords, chunks, and their labels/edges
  */
-export function calculateScales(cameraZ: number): ScaleValues {
-  // Normalized interpolation factor: 0 = close (MIN_Z), 1 = far (MAX_Z)
-  const t = Math.max(0, Math.min(1, (cameraZ - MIN_Z) / (MAX_Z - MIN_Z)));
+export function calculateScales(cameraZ: number, range: ZoomRange = DEFAULT_RANGE): ScaleValues {
+  // Normalized interpolation factor: 0 = close (near), 1 = far
+  const t = normalizeZoom(cameraZ, range);
 
   // Inverse factor for chunk scaling
   const invT = 1 - t;

@@ -43,6 +43,9 @@ const RENDER_LAYERS = ["edges", "nodes"] as const;
 type RenderLayer = (typeof RENDER_LAYERS)[number];
 const LAYER_SPACING = 10000;
 
+export const KEYWORD_LAYER = 2;
+export const CHUNK_LAYER = 3;
+
 export function getRenderOrder(layer: RenderLayer, offset = 0): number {
   return RENDER_LAYERS.indexOf(layer) * LAYER_SPACING + offset;
 }
@@ -233,11 +236,13 @@ export function createNodeRenderer(options: NodeRendererOptions): NodeRenderer {
     const group = new THREE.Group();
     group.add(outlineMesh);
     group.add(fillMesh);
-    group.renderOrder = getRenderOrder("nodes");
+    const isChunk = node.type === "chunk";
+    group.renderOrder = getRenderOrder("nodes", isChunk ? LAYER_SPACING / 2 : 0);
+    group.layers.set(isChunk ? CHUNK_LAYER : KEYWORD_LAYER); // Render chunk nodes on their own layer above blur
 
     // Set Z position for chunk nodes (behind keyword layer)
     const chunkNode = node as SimNode & { z?: number };
-    if (node.type === "chunk" && chunkNode.z !== undefined) {
+    if (isChunk && chunkNode.z !== undefined) {
       group.position.z = chunkNode.z;
     }
 

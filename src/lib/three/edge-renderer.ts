@@ -103,6 +103,8 @@ export interface EdgeRenderer {
   refreshColors(): void;
   /** Update opacity for chunk containment edges (used for semantic zoom) */
   updateEdgeOpacity(chunkEdgeOpacity: number): void;
+  /** Get all Line2 objects (for LineMaterial resolution updates) */
+  getAllLineObjects(): Line2[];
   /** Dispose all cached line objects */
   dispose(): void;
 }
@@ -332,6 +334,10 @@ export function createEdgeRenderer(options: EdgeRendererOptions): EdgeRenderer {
     }
   }
 
+  function getAllLineObjects(): Line2[] {
+    return Array.from(linkCache.values());
+  }
+
   function dispose(): void {
     for (const line of linkCache.values()) {
       line.geometry.dispose();
@@ -349,6 +355,7 @@ export function createEdgeRenderer(options: EdgeRendererOptions): EdgeRenderer {
     updateHighlight,
     refreshColors,
     updateEdgeOpacity,
+    getAllLineObjects,
     dispose,
   };
 }
