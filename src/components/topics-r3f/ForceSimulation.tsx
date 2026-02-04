@@ -140,13 +140,18 @@ export function ForceSimulation({
       )
       .force("charge", d3.forceManyBody().strength(-200))
       .force("center", d3.forceCenter(0, 0))
-      .alphaTarget(0.3)
       .alphaDecay(0.01)
       .velocityDecay(0.5);
+
+    // Safety timeout: force stop after 20 seconds
+    const stopTimeout = setTimeout(() => {
+      simulation.stop();
+    }, 20000);
 
     simulationRef.current = simulation;
 
     return () => {
+      clearTimeout(stopTimeout);
       simulation.stop();
       simulationRef.current = null;
     };
