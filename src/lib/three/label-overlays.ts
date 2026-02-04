@@ -7,7 +7,7 @@ import type { SimNode } from "@/lib/map-renderer";
 import { computeClusterLabels } from "@/lib/cluster-labels";
 import { communityColorScale } from "@/lib/hull-renderer";
 import { clusterColorToCSS, type ClusterColorInfo } from "@/lib/semantic-colors";
-import { CAMERA_FOV_DEGREES } from "./camera-controller";
+import { CAMERA_FOV_DEGREES } from "./zoom-to-cursor";
 
 // ============================================================================
 // Types

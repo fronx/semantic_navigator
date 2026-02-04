@@ -5,7 +5,7 @@
 
 import * as d3 from "d3";
 import type { MapNode } from "@/app/api/map/route";
-import { colors, blendColors } from "@/lib/colors";
+import { colors } from "@/lib/colors";
 import { createHoverTooltip } from "@/lib/d3-utils";
 import { createHullRenderer, groupNodesByCommunity, communityColorScale, type HullData } from "@/lib/hull-renderer";
 import {
@@ -17,6 +17,8 @@ import {
   type PCATransform,
   type ClusterColorInfo,
 } from "@/lib/semantic-colors";
+import { getEdgeColor } from "@/lib/edge-colors";
+import { getNodeColor } from "@/lib/three/node-renderer";
 
 export interface SimNode extends d3.SimulationNodeDatum, MapNode {}
 
@@ -123,101 +125,6 @@ function getNodeRadius(d: SimNode, dotScale: number): number {
 }
 
 
-/**
- * Compute blended colors for articles/chunks based on connected keyword communities.
- */
-function computeBlendedColors(
-  _nodes: SimNode[],
-  links: SimLink[]
-): Map<string, string> {
-  // Build adjacency: article/chunk -> connected keywords
-  const nodeKeywords = new Map<string, SimNode[]>();
-  for (const link of links) {
-    const source = link.source as SimNode;
-    const target = link.target as SimNode;
-    if ((source.type === "article" || source.type === "chunk") && target.type === "keyword") {
-      if (!nodeKeywords.has(source.id)) nodeKeywords.set(source.id, []);
-      nodeKeywords.get(source.id)!.push(target);
-    } else if ((target.type === "article" || target.type === "chunk") && source.type === "keyword") {
-      if (!nodeKeywords.has(target.id)) nodeKeywords.set(target.id, []);
-      nodeKeywords.get(target.id)!.push(source);
-    }
-  }
-
-  // Blend colors
-  const blended = new Map<string, string>();
-  for (const [nodeId, keywords] of nodeKeywords) {
-    const communityColors = keywords
-      .filter((kw) => kw.communityId !== undefined)
-      .map((kw) => d3.color(communityColorScale(String(kw.communityId)))!);
-
-    if (communityColors.length > 0) {
-      const avgR = communityColors.reduce((sum, c) => sum + c.rgb().r, 0) / communityColors.length;
-      const avgG = communityColors.reduce((sum, c) => sum + c.rgb().g, 0) / communityColors.length;
-      const avgB = communityColors.reduce((sum, c) => sum + c.rgb().b, 0) / communityColors.length;
-      blended.set(nodeId, d3.rgb(avgR, avgG, avgB).formatHex());
-    }
-  }
-  return blended;
-}
-
-
-function getNodeColor(
-  d: SimNode,
-  blendedColors: Map<string, string>,
-  pcaTransform?: PCATransform,
-  clusterColors?: Map<number, ClusterColorInfo>,
-  colorMixRatio: number = 0
-): string {
-  // Projects have a distinct purple color
-  if (d.type === "project") {
-    return PROJECT_COLOR;
-  }
-
-  if (d.type === "article" || d.type === "chunk") {
-    return blendedColors.get(d.id) || (d.type === "article" ? colors.node.article : colors.node.chunk);
-  }
-
-  // Keyword: use cluster-based color if available
-  if (pcaTransform && d.embedding && d.embedding.length > 0 && d.communityId !== undefined && clusterColors) {
-    const clusterInfo = clusterColors.get(d.communityId);
-    if (clusterInfo) {
-      return nodeColorFromCluster(d.embedding, clusterInfo, pcaTransform, colorMixRatio);
-    }
-    // Fallback: use node's own embedding if not in cluster color map
-    const [x, y] = pcaProject(d.embedding, pcaTransform);
-    return coordinatesToHSL(x, y);
-  }
-
-  // Fallback to legacy color scale
-  if (d.communityId !== undefined) {
-    return communityColorScale(String(d.communityId));
-  }
-  return "#9ca3af"; // grey-400 for unclustered keywords
-}
-
-/**
- * Compute edge color by blending source and target node colors.
- */
-function getEdgeColor(
-  link: SimLink,
-  blendedColors: Map<string, string>,
-  pcaTransform?: PCATransform,
-  clusterColors?: Map<number, ClusterColorInfo>,
-  colorMixRatio: number = 0
-): string {
-  const source = link.source as SimNode;
-  const target = link.target as SimNode;
-
-  if (!source || !target) {
-    return colors.edge.default;
-  }
-
-  const sourceColor = getNodeColor(source, blendedColors, pcaTransform, clusterColors, colorMixRatio);
-  const targetColor = getNodeColor(target, blendedColors, pcaTransform, clusterColors, colorMixRatio);
-
-  return blendColors(sourceColor, targetColor);
-}
 
 /**
  * Compute curve directions for edges based on selected method.
@@ -424,7 +331,7 @@ export function createRenderer(options: RendererOptions): MapRenderer {
   // Mutable state for dynamic updates
   let currentNodes = initialNodes;
   let currentLinks = initialLinks;
-  let blendedColors = computeBlendedColors(currentNodes, currentLinks);
+  let nodeMap = new Map(currentNodes.map(n => [n.id, n]));
   let edgeCurveDirections: Map<SimLink, number> | null = null;
   let communitiesMap = groupNodesByCommunity(currentNodes);
   let clusterColors = computeClusterColors(communitiesMap, pcaTransform);
@@ -457,14 +364,13 @@ export function createRenderer(options: RendererOptions): MapRenderer {
 
   // Helper to set up node visuals and event handlers
   function setupNodeGroup(
-    selection: d3.Selection<SVGGElement, SimNode, SVGGElement, unknown>,
-    colors: Map<string, string>
+    selection: d3.Selection<SVGGElement, SimNode, SVGGElement, unknown>
   ) {
     // Draw circles
     selection
       .append("circle")
       .attr("r", (d) => getNodeRadius(d, immediateParams.current.dotScale) * visualScale)
-      .attr("fill", (d) => getNodeColor(d, colors, pcaTransform, clusterColors, immediateParams.current.colorMixRatio))
+      .attr("fill", (d) => getNodeColor(d, pcaTransform, clusterColors, immediateParams.current.colorMixRatio))
       .attr("stroke", (d) => d.type === "project" ? "#fff" : "#fff")
       .attr("stroke-width", (d) => (d.type === "project" ? 3 : 1.5) * visualScale)
       // Projects have a subtle glow effect via CSS filter
@@ -550,7 +456,7 @@ export function createRenderer(options: RendererOptions): MapRenderer {
     .join("path")
     .attr("fill", "none")
     .attr("stroke-width", 3 * visualScale)
-    .attr("stroke", (d) => getEdgeColor(d, blendedColors, pcaTransform, clusterColors, immediateParams.current.colorMixRatio));
+    .attr("stroke", (d) => getEdgeColor(d, nodeMap, pcaTransform, clusterColors, immediateParams.current.colorMixRatio));
 
   // Initial node selection
   let nodeSelection = nodeGroup
@@ -558,7 +464,7 @@ export function createRenderer(options: RendererOptions): MapRenderer {
     .data(currentNodes, (d) => d.id)
     .join("g");
 
-  setupNodeGroup(nodeSelection, blendedColors);
+  setupNodeGroup(nodeSelection);
 
   // Track current curve method to detect changes
   let currentCurveMethod: CurveMethod | null = null;
@@ -684,11 +590,11 @@ export function createRenderer(options: RendererOptions): MapRenderer {
     // Update node colors (for colorMixRatio changes)
     nodeSelection
       .select("circle")
-      .attr("fill", (d) => getNodeColor(d, blendedColors, pcaTransform, clusterColors, params.colorMixRatio));
+      .attr("fill", (d) => getNodeColor(d, pcaTransform, clusterColors, params.colorMixRatio));
 
     // Update edge opacity and colors
     linkGroup.attr("stroke-opacity", params.edgeOpacity * 0.4);
-    linkSelection.attr("stroke", (d) => getEdgeColor(d, blendedColors, pcaTransform, clusterColors, params.colorMixRatio));
+    linkSelection.attr("stroke", (d) => getEdgeColor(d, nodeMap, pcaTransform, clusterColors, params.colorMixRatio));
 
     // Update edge curves
     linkSelection.attr("d", (d) => computeCurvedPath(d, params.edgeCurve, edgeCurveDirections?.get(d) ?? 1));
@@ -702,7 +608,7 @@ export function createRenderer(options: RendererOptions): MapRenderer {
     // Update internal state
     currentNodes = newNodes;
     currentLinks = newLinks;
-    blendedColors = computeBlendedColors(currentNodes, currentLinks);
+    nodeMap = new Map(currentNodes.map(n => [n.id, n]));
     edgeCurveDirections = null; // Will recompute on next tick
     communitiesMap = groupNodesByCommunity(currentNodes);
 
@@ -721,9 +627,9 @@ export function createRenderer(options: RendererOptions): MapRenderer {
         (enter) => enter.append("path")
           .attr("fill", "none")
           .attr("stroke-width", 3 * visualScale)
-          .attr("stroke", (d) => getEdgeColor(d, blendedColors, pcaTransform, clusterColors, immediateParams.current.colorMixRatio)),
+          .attr("stroke", (d) => getEdgeColor(d, nodeMap, pcaTransform, clusterColors, immediateParams.current.colorMixRatio)),
         (update) => update
-          .attr("stroke", (d) => getEdgeColor(d, blendedColors, pcaTransform, clusterColors, immediateParams.current.colorMixRatio)),
+          .attr("stroke", (d) => getEdgeColor(d, nodeMap, pcaTransform, clusterColors, immediateParams.current.colorMixRatio)),
         (exit) => exit.remove()
       );
 
@@ -734,7 +640,7 @@ export function createRenderer(options: RendererOptions): MapRenderer {
       .join(
         (enter) => {
           const g = enter.append("g");
-          setupNodeGroup(g, blendedColors);
+          setupNodeGroup(g);
           return g;
         },
         (update) => update,
@@ -783,16 +689,16 @@ export function createRenderer(options: RendererOptions): MapRenderer {
   // Recompute cluster colors and communities from current node properties
   // Call this after updating node.communityId without changing the graph structure
   function refreshClusters() {
-    blendedColors = computeBlendedColors(currentNodes, currentLinks);
+    nodeMap = new Map(currentNodes.map(n => [n.id, n]));
     communitiesMap = groupNodesByCommunity(currentNodes);
     clusterColors = computeClusterColors(communitiesMap, pcaTransform);
     hullRenderer.updateCommunities(communitiesMap);
 
     // Update node circle colors based on new communityId values
-    nodeSelection.select("circle").attr("fill", (d) => getNodeColor(d, blendedColors, pcaTransform, clusterColors, immediateParams.current.colorMixRatio));
+    nodeSelection.select("circle").attr("fill", (d) => getNodeColor(d, pcaTransform, clusterColors, immediateParams.current.colorMixRatio));
 
     // Update edge colors based on new node colors
-    linkSelection.attr("stroke", (d) => getEdgeColor(d, blendedColors, pcaTransform, clusterColors, immediateParams.current.colorMixRatio));
+    linkSelection.attr("stroke", (d) => getEdgeColor(d, nodeMap, pcaTransform, clusterColors, immediateParams.current.colorMixRatio));
   }
 
   return {

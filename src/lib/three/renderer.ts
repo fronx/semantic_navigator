@@ -38,7 +38,8 @@ import {
 } from "@/lib/zoom-phase-config";
 
 // Building blocks
-import { createCameraController, CAMERA_FOV_DEGREES } from "./camera-controller";
+import { createCameraController } from "./camera-controller";
+import { CAMERA_FOV_DEGREES } from "./zoom-to-cursor";
 import { createInputHandler } from "./input-handler";
 import { createNodeRenderer, getNodeRadius, BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "./node-renderer";
 import { createEdgeRenderer } from "./edge-renderer";

@@ -3,7 +3,7 @@
  * Converts screen-space delta to world-space delta based on camera position.
  */
 
-import { CAMERA_FOV_DEGREES } from "./camera-controller";
+import { CAMERA_FOV_DEGREES } from "./zoom-to-cursor";
 
 const CAMERA_FOV_RADIANS = CAMERA_FOV_DEGREES * Math.PI / 180;
 

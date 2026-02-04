@@ -3,8 +3,8 @@
  * Calculates new camera position to keep the point under cursor fixed during zoom.
  */
 
-import { CAMERA_FOV_DEGREES } from "./camera-controller";
-
+// Very narrow FOV (nearly orthographic) minimizes parallax between HTML labels and 3D nodes
+export const CAMERA_FOV_DEGREES = 10;
 const CAMERA_FOV_RADIANS = CAMERA_FOV_DEGREES * Math.PI / 180;
 
 export interface ZoomToCursorParams {

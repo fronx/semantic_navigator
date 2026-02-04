@@ -4,10 +4,8 @@
  */
 
 import type * as THREE from "three";
-import { calculateZoomToCursor } from "./zoom-to-cursor";
+import { calculateZoomToCursor, CAMERA_FOV_DEGREES } from "./zoom-to-cursor";
 
-// Very narrow FOV (nearly orthographic) minimizes parallax between HTML labels and 3D nodes
-export const CAMERA_FOV_DEGREES = 10;
 const CAMERA_FOV_RADIANS = CAMERA_FOV_DEGREES * Math.PI / 180;
 /** Base value used to convert perspective camera Z to a pseudo-zoom scale (k = BASE / z) */
 export const CAMERA_Z_SCALE_BASE = 500;
