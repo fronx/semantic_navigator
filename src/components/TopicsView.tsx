@@ -242,7 +242,6 @@ export function TopicsView({
     chunksByKeyword,
     cameraZ,
     zoomPhaseConfig,
-    blurEnabled,
   });
 
   // R3F renderer hook

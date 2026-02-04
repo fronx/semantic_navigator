@@ -68,7 +68,6 @@ export interface ThreeRenderer {
   applyHighlight: (highlightedIds: Set<string> | null, baseDim: number) => void;
   updateScales: (cameraZ: number) => void;
   updateZoomPhases: (config: ZoomPhaseConfig) => void;
-  updatePanelEnabled: (enabled: boolean) => void;
   getNodes: () => SimNode[];
   getTransform: () => { k: number; x: number; y: number };
   screenToWorld: (screen: { x: number; y: number }) => { x: number; y: number };
@@ -85,7 +84,6 @@ export interface ThreeRendererOptions {
   callbacks: ThreeRendererCallbacks;
   pcaTransform?: PCATransform;
   zoomPhaseConfig?: ZoomPhaseConfig;
-  panelEnabled?: boolean;
 }
 
 // ============================================================================
@@ -108,7 +106,6 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     callbacks,
     pcaTransform,
     zoomPhaseConfig: initialZoomPhaseConfig,
-    panelEnabled = true,
   } = options;
 
   // ---------------------------------------------------------------------------
@@ -135,7 +132,6 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
   let clusterColors = computeClusterColors(groupNodesByCommunity(currentNodes), pcaTransform);
   let currentColorMixRatio = immediateParams.current.colorMixRatio;
   let zoomPhaseConfig = cloneZoomPhaseConfig(initialZoomPhaseConfig ?? DEFAULT_ZOOM_PHASE_CONFIG);
-  let currentPanelEnabled = panelEnabled;
 
   // Curve directions for edge rendering
   let curveDirections = computeEdgeCurveDirections(currentNodes, currentLinks, immediateParams.current.curveMethod);
@@ -294,7 +290,6 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
         keywordLabelOpacity: scales.keywordLabelOpacity,
         chunkLabelOpacity: scales.chunkLabelOpacity,
       });
-      updatePanelVisibility(scales.chunkScale);
     } else {
       nodeRenderer.updateNodeScales({ keywordScale: 1.0, chunkScale: 0.0 });
       edgeRenderer.updateEdgeOpacity(0);
@@ -302,7 +297,6 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
         keywordLabelOpacity: 1.0,
         chunkLabelOpacity: 0.0,
       });
-      updatePanelVisibility(0);
     }
   }
 
@@ -422,49 +416,6 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
 
   // Raycaster and blur composer removed - layer-based approach was breaking hover detection
   // All nodes now on default layer 0, raycaster works without modification
-
-  // ---------------------------------------------------------------------------
-  // Frosted Glass Panel (simple mesh in 3D space)
-  // ---------------------------------------------------------------------------
-
-  const scene = graph.scene();
-  const panelGeometry = new THREE.PlaneGeometry(20000, 20000);
-  const panelMaterial = new THREE.MeshPhysicalMaterial({
-    color: new THREE.Color("#f3f4f6"),
-    transparent: true,
-    opacity: 0.0,
-    transmission: 0.0,
-    thickness: 0.2,
-    roughness: 0.4,
-    metalness: 0.0,
-    ior: 1.45,
-    side: THREE.DoubleSide,
-    depthTest: true,
-    depthWrite: false,
-  });
-  const panelMesh = new THREE.Mesh(panelGeometry, panelMaterial);
-  panelMesh.position.z = 25; // Between keywords (z=0) and chunks (z=50)
-  panelMesh.visible = false;
-  scene.add(panelMesh);
-
-  function updatePanelVisibility(chunkScale: number): void {
-    // Panel becomes visible as chunks fade in (chunkScale goes from 0 to 1)
-    const strength = THREE.MathUtils.clamp(chunkScale, 0, 1);
-
-    // Hide panel if disabled via checkbox or if strength is too low
-    if (!currentPanelEnabled || strength < 0.01) {
-      panelMesh.visible = false;
-    } else {
-      panelMesh.visible = true;
-      // Fade in opacity and transmission as chunks appear
-      panelMaterial.opacity = THREE.MathUtils.lerp(0.0, 0.7, strength);
-      panelMaterial.transmission = THREE.MathUtils.lerp(0.0, 0.95, strength);
-
-      // Make panel camera-facing (billboard effect)
-      const cam = camera as THREE.PerspectiveCamera;
-      panelMesh.quaternion.copy(cam.quaternion);
-    }
-  }
 
   // ---------------------------------------------------------------------------
   // Event Handlers
@@ -629,14 +580,6 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       applyScaleValues(scales);
     },
 
-    updatePanelEnabled(enabled: boolean) {
-      currentPanelEnabled = enabled;
-      // Immediately update panel visibility without waiting for next scale update
-      const cameraZ = cameraController.getCameraZ();
-      const scales = calculateScales(cameraZ, zoomPhaseConfig.chunkCrossfade);
-      updatePanelVisibility(scales.chunkScale);
-    },
-
     getNodes() {
       return currentNodes;
     },
@@ -667,11 +610,6 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
       edgeRenderer.dispose();
       hullRenderer.dispose();
       labelManager.destroy();
-
-      // Dispose frosted glass panel
-      panelGeometry.dispose();
-      panelMaterial.dispose();
-      scene.remove(panelMesh);
 
       // Dispose WebGL resources
       try {
