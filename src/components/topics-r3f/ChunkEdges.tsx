@@ -168,7 +168,8 @@ export function ChunkEdges({
   }
 
   return (
-    <line ref={lineRef} geometry={geometry} renderOrder={-2}>
+    // @ts-expect-error - R3F's <line> element is Three.js Line, not SVGLineElement
+    <line ref={lineRef} geometry={geometry} renderOrder={-2} frustumCulled={false}>
       <lineBasicMaterial vertexColors transparent opacity={0} depthTest={false} />
     </line>
   );

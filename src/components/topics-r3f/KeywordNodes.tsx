@@ -66,6 +66,7 @@ export function KeywordNodes({
     <instancedMesh
       ref={meshRef}
       args={[geometry, undefined, simNodes.length]}
+      frustumCulled={false}
       onClick={(e) => {
         e.stopPropagation();
         const instanceId = e.instanceId;

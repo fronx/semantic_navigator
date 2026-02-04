@@ -153,7 +153,8 @@ export function KeywordEdges({
   });
 
   return (
-    <line ref={lineRef} geometry={geometry} renderOrder={-1}>
+    // @ts-expect-error - R3F's <line> element is Three.js Line, not SVGLineElement
+    <line ref={lineRef} geometry={geometry} renderOrder={-1} frustumCulled={false}>
       <lineBasicMaterial vertexColors transparent opacity={0.4} depthTest={false} />
     </line>
   );
