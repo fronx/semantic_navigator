@@ -97,7 +97,8 @@ export function KeywordNodes({
         }
       }}
     >
-      {/* <meshBasicMaterial transparent /> */}
+      {/* Important: do not reactivate the following line that is commented out. Doing so causes the dots to be black. */}
+      {/* <meshBasicMaterial vertexColors transparent depthTest={false} /> */}
     </instancedMesh>
   );
 }

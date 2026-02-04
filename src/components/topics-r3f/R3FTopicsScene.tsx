@@ -21,12 +21,13 @@ import type { PCATransform } from "@/lib/semantic-colors";
 import type { SimNode, SimLink } from "@/lib/map-renderer";
 import type { ZoomPhaseConfig } from "@/lib/zoom-phase-config";
 import type { LabelRefs } from "./R3FLabelContext";
+import type { ChunkNode } from "@/lib/chunk-loader";
 
 export interface R3FTopicsSceneProps {
   nodes: KeywordNode[];
   edges: SimilarityEdge[];
   projectNodes: ProjectNode[];
-  chunkNodes: SimNode[];
+  chunksByKeyword?: Map<string, ChunkNode[]>;
   colorMixRatio: number;
   pcaTransform: PCATransform | null;
   blurEnabled?: boolean;
@@ -35,6 +36,8 @@ export interface R3FTopicsSceneProps {
   panelDistanceRatio: number;
   panelThickness: number;
   zoomPhaseConfig: ZoomPhaseConfig;
+  /** Z-depth offset for chunk nodes (negative = behind keywords) */
+  chunkZDepth?: number;
   onKeywordClick?: (keyword: string) => void;
   onProjectClick?: (projectId: string) => void;
   onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
@@ -47,7 +50,7 @@ export function R3FTopicsScene({
   nodes,
   edges,
   projectNodes,
-  chunkNodes,
+  chunksByKeyword,
   colorMixRatio,
   pcaTransform,
   blurEnabled = true,
@@ -55,14 +58,30 @@ export function R3FTopicsScene({
   panelDistanceRatio,
   panelThickness,
   zoomPhaseConfig,
+  chunkZDepth = -150,
   onKeywordClick,
   onProjectClick,
   onProjectDrag,
   onZoomChange,
   labelRefs,
 }: R3FTopicsSceneProps) {
-  // Simulation nodes shared between ForceSimulation and KeywordNodes
+  // Simulation nodes shared between ForceSimulation and rendering components
+  // Contains both keywords and chunks, positioned by d3-force
   const [simNodes, setSimNodes] = useState<SimNode[]>([]);
+
+  // Extract keyword and chunk nodes from simulation results
+  const { keywordNodes, chunkNodes } = useMemo(() => {
+    const keywords = simNodes.filter(n => n.type === "keyword");
+    const chunks = simNodes.filter(n => n.type === "chunk");
+
+    console.log('[R3F Scene] Simulation nodes:', {
+      total: simNodes.length,
+      keywords: keywords.length,
+      chunks: chunks.length,
+    });
+
+    return { keywordNodes: keywords, chunkNodes: chunks };
+  }, [simNodes]);
 
   // Update labelRefs when simNodes change (for label rendering)
   useEffect(() => {
@@ -96,6 +115,7 @@ export function R3FTopicsScene({
       <ForceSimulation
         nodes={nodes}
         edges={edges}
+        chunksByKeyword={chunksByKeyword}
         onSimulationReady={setSimNodes}
       />
 
@@ -107,6 +127,7 @@ export function R3FTopicsScene({
           colorMixRatio={colorMixRatio}
           pcaTransform={pcaTransform}
           zoomRange={zoomPhaseConfig.chunkCrossfade}
+          chunkZDepth={chunkZDepth}
         />
       )}
 
@@ -117,10 +138,10 @@ export function R3FTopicsScene({
         thickness={panelThickness}
       />
 
-      {/* Chunk containment edges (keyword → chunk) - fade with zoom */}
-      {false && simNodes.length > 0 && chunkNodes.length > 0 && (
+      {/* Chunk containment edges (keyword → chunk) */}
+      {keywordNodes.length > 0 && chunkNodes.length > 0 && (
         <ChunkEdges
-          simNodes={simNodes}
+          simNodes={keywordNodes}
           chunkNodes={chunkNodes}
           curveIntensity={0.25}
           curveDirections={curveDirections}
@@ -130,9 +151,9 @@ export function R3FTopicsScene({
       )}
 
       {/* Keyword similarity edges - constant opacity */}
-      {simNodes.length > 0 && edges.length > 0 && (
+      {keywordNodes.length > 0 && edges.length > 0 && (
         <KeywordEdges
-          simNodes={simNodes}
+          simNodes={keywordNodes}
           edges={edges as SimLink[]}
           curveIntensity={0.25}
           curveDirections={curveDirections}
@@ -143,9 +164,9 @@ export function R3FTopicsScene({
       )}
 
       {/* Keyword layer (front, z = 0) */}
-      {simNodes.length > 0 && (
+      {keywordNodes.length > 0 && (
         <KeywordNodes
-          simNodes={simNodes}
+          simNodes={keywordNodes}
           colorMixRatio={colorMixRatio}
           pcaTransform={pcaTransform}
           zoomRange={zoomPhaseConfig.chunkCrossfade}

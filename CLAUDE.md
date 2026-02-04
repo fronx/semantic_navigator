@@ -38,7 +38,7 @@ npx tsc --noEmit     # Type check
 
 ## Architecture
 
-Semantic Navigator is a knowledge base tool that imports markdown files, atomizes them into a hierarchy (article > section > paragraph), and enables semantic search via embeddings.
+Semantic Navigator is a knowledge base tool that imports markdown files, atomizes them into semantic chunks (article > chunk), and enables semantic search via embeddings.
 
 ### Data Flow
 
@@ -51,17 +51,16 @@ Semantic Navigator is a knowledge base tool that imports markdown files, atomize
 
 **Node Types** (stored in `nodes` table):
 - `article`: Top-level document. Has `summary` only, no `content`.
-- `section`: Header-delimited section. Has `summary` only, no `content`.
-- `paragraph`: Leaf node. Has both `content` and optionally `summary` (for long paragraphs).
+- `chunk`: Semantic text segment. Has both `content` and optionally `summary`. May have `chunk_type` (e.g., "problem statement", "worked example") and `heading_context` (breadcrumb path like `["Introduction", "Background"]`).
 
 **Edge Types**:
-- `containment_edges`: Parent-child hierarchy (article → sections → paragraphs)
+- `containment_edges`: Parent-child hierarchy (article → chunks)
 - `backlink_edges`: Wiki-links between articles
 
 **Keywords** (stored in `keywords` table):
-- Each paragraph has extracted keywords for enhanced search
+- Each chunk has extracted keywords for enhanced search
 - Keywords have their own embeddings (`vector(1536)`) for semantic matching
-- Linked to paragraph nodes via `node_id` foreign key
+- Linked to nodes (chunk or article) via `node_id` foreign key; `node_type` denormalized for efficient filtering
 - Used in both search (similarity matching) and the Map view (article clustering)
 
 **Keyword Communities** (stored in `keyword_communities` table):
@@ -163,17 +162,16 @@ npx supabase db reset  # Resets LOCAL database only (safe)
 
 ### Traversing the Hierarchy
 
-To find an article from a keyword or paragraph:
-1. Keywords link to paragraphs via `keywords.node_id`
-2. Paragraphs link to sections/articles via `containment_edges.child_id` → `parent_id`
-3. May need 1-2 hops: paragraph → section → article, or paragraph → article directly
+To find an article from a keyword or chunk:
+1. Keywords link to nodes via `keywords.node_id` (can be article or chunk)
+2. Chunks link to articles via `containment_edges.child_id` → `parent_id`
+3. Single hop: chunk → article (flat hierarchy)
 
-Example pattern (used in `/api/map`):
+Example pattern:
 ```sql
--- Get parent of a paragraph
-SELECT parent_id FROM containment_edges WHERE child_id = <paragraph_id>
--- Check if parent is article (node_type = 'article') or section
--- If section, query again to get the article
+-- Get parent article of a chunk
+SELECT parent_id FROM containment_edges WHERE child_id = <chunk_id>
+-- parent_id will be the article (no intermediate sections)
 ```
 
 ## Styling

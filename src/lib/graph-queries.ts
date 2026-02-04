@@ -55,6 +55,8 @@ export interface KeywordBackboneOptions {
   communityLevel?: number;
   /** Number of nearest neighbors to connect each keyword to (default: 1) */
   nearestNeighbors?: number;
+  /** Node type to query ('article' or 'chunk', default: 'chunk') */
+  nodeType?: 'article' | 'chunk';
 }
 
 /** Default options for getKeywordBackbone */
@@ -63,6 +65,7 @@ export const DEFAULT_BACKBONE_OPTIONS: Required<KeywordBackboneOptions> = {
   minSimilarity: 0.3,
   communityLevel: 3,
   nearestNeighbors: 1,
+  nodeType: 'chunk',
 };
 
 /** Supabase query batch size to avoid payload limits */
@@ -89,6 +92,7 @@ export async function getKeywordBackbone(
     minSimilarity,
     communityLevel,
     nearestNeighbors,
+    nodeType,
   } = { ...DEFAULT_BACKBONE_OPTIONS, ...options };
 
   // Use existing RPC that finds cross-article keyword connections
@@ -183,7 +187,7 @@ export async function getKeywordBackbone(
 
   // Add community colors
   if (communityLevel >= 0 && nodes.length > 0) {
-    await addCommunityIds(supabase, nodes, communityLevel);
+    await addCommunityIds(supabase, nodes, communityLevel, nodeType);
   }
 
   return { nodes, edges };
@@ -273,7 +277,8 @@ async function computeNearestNeighborEdges(
 async function addCommunityIds(
   supabase: SupabaseClient,
   nodes: KeywordNode[],
-  level: number
+  level: number,
+  nodeType: 'article' | 'chunk'
 ): Promise<void> {
   const labels = nodes.map((n) => n.label);
     const communityByKeyword = new Map<string, number>();
@@ -285,7 +290,7 @@ async function addCommunityIds(
     const { data: kwData } = await supabase
       .from("keywords")
       .select("id, keyword")
-      .eq("node_type", "article")
+      .eq("node_type", nodeType)
       .in("keyword", batch);
 
     if (!kwData || kwData.length === 0) continue;

@@ -15,12 +15,13 @@ import type { SimNode } from "@/lib/map-renderer";
 import type { ZoomPhaseConfig } from "@/lib/zoom-phase-config";
 import type { LabelOverlayManager } from "@/lib/label-overlays";
 import type { CameraState, LabelRefs, LabelsOverlayHandle } from "./R3FLabelContext";
+import type { ChunkNode } from "@/lib/chunk-loader";
 
 export interface R3FTopicsCanvasProps {
   nodes: KeywordNode[];
   edges: SimilarityEdge[];
   projectNodes?: ProjectNode[];
-  chunkNodes?: SimNode[];
+  chunksByKeyword?: Map<string, ChunkNode[]>;
   colorMixRatio: number;
   pcaTransform: PCATransform | null;
   blurEnabled?: boolean;
@@ -29,6 +30,7 @@ export interface R3FTopicsCanvasProps {
   panelDistanceRatio: number;
   panelThickness: number;
   zoomPhaseConfig: ZoomPhaseConfig;
+  chunkZDepth?: number;
   onKeywordClick?: (keyword: string) => void;
   onProjectClick?: (projectId: string) => void;
   onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
@@ -40,7 +42,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     nodes,
     edges,
     projectNodes = [],
-    chunkNodes = [],
+    chunksByKeyword,
     colorMixRatio,
     pcaTransform,
     blurEnabled = true,
@@ -48,6 +50,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     panelDistanceRatio,
     panelThickness,
     zoomPhaseConfig,
+    chunkZDepth,
     onKeywordClick,
     onProjectClick,
     onProjectDrag,
@@ -104,7 +107,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
             nodes={nodes}
             edges={edges}
             projectNodes={projectNodes}
-            chunkNodes={chunkNodes}
+            chunksByKeyword={chunksByKeyword}
             colorMixRatio={colorMixRatio}
             pcaTransform={pcaTransform}
             blurEnabled={blurEnabled}
@@ -112,6 +115,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
             panelDistanceRatio={panelDistanceRatio}
             panelThickness={panelThickness}
             zoomPhaseConfig={zoomPhaseConfig}
+            chunkZDepth={chunkZDepth}
             onKeywordClick={onKeywordClick}
             onProjectClick={onProjectClick}
             onProjectDrag={onProjectDrag}

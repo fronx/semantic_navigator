@@ -143,6 +143,8 @@ export interface ControlSidebarProps {
   updateZoomPhaseConfig: (mutator: (prev: ZoomPhaseConfig) => ZoomPhaseConfig) => void;
   toggleSection: (section: string) => void;
   cameraZ?: number;
+  chunkZDepth?: number;
+  onChunkZDepthChange?: (value: number) => void;
 }
 
 export function ControlSidebar({
@@ -151,6 +153,8 @@ export function ControlSidebar({
   updateZoomPhaseConfig,
   toggleSection,
   cameraZ,
+  chunkZDepth = -150,
+  onChunkZDepthChange,
 }: ControlSidebarProps) {
   const section = (title: string) => ({
     title,
@@ -319,6 +323,15 @@ export function ControlSidebar({
                       chunkCrossfade: { ...prev.chunkCrossfade, near: z },
                     }))
                   }
+                />
+                <Slider
+                  label="Z-depth"
+                  value={chunkZDepth}
+                  onChange={(value) => onChunkZDepthChange?.(value)}
+                  min={-1000}
+                  max={1000}
+                  step={10}
+                  format={(value) => value.toFixed(0)}
                 />
               </div>
 

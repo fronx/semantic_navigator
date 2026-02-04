@@ -335,6 +335,8 @@ export default function TopicsPage() {
           updateZoomPhaseConfig={updateZoomPhaseConfig}
           toggleSection={toggleSection}
           cameraZ={currentCameraZ}
+          chunkZDepth={settings.chunkZDepth}
+          onChunkZDepthChange={(value) => update("chunkZDepth", value)}
         />
         <div className="flex-1 relative min-w-0 overflow-hidden">
           <TopicsView
@@ -367,6 +369,7 @@ export default function TopicsPage() {
             zoomPhaseConfig={settings.zoomPhaseConfig}
             blurEnabled={settings.blurEnabled}
             showKNNEdges={settings.showKNNEdges}
+            chunkZDepth={settings.chunkZDepth}
           />
 
           {creatingAt && (

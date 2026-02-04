@@ -66,6 +66,8 @@ export interface TopicsViewProps {
   blurEnabled?: boolean;
   /** Whether to show k-NN edges (usually hidden, only affect force simulation) */
   showKNNEdges?: boolean;
+  /** Z-depth offset for chunk nodes (negative = behind keywords) */
+  chunkZDepth?: number;
 }
 
 // ============================================================================
@@ -92,6 +94,7 @@ export function TopicsView({
   zoomPhaseConfig,
   blurEnabled = true,
   showKNNEdges = false,
+  chunkZDepth = -150,
 }: TopicsViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -200,6 +203,7 @@ export function TopicsView({
     hoverConfig,
     pcaTransform,
     getSavedPosition,
+    chunkZDepth,
     onKeywordClick: handleKeywordClick,
     onProjectClick: handleProjectClick,
     onProjectDrag: handleProjectDrag,
@@ -341,33 +345,6 @@ export function TopicsView({
     d3RendererResult.rendererRef.current.updateVisuals();
   }, [colorMixRatio, d3RendererResult.rendererRef, d3RendererResult.immediateParamsRef]);
 
-  // Create chunk nodes for R3F renderer (similar to Three.js renderer)
-  const r3fChunkNodes = useMemo((): SimNode[] => {
-    if (rendererType !== "r3f" || !chunksByKeyword || chunksByKeyword.size === 0) {
-      return [];
-    }
-
-    // Convert keyword nodes to SimNodes (we need positions for chunk layout)
-    const { mapNodes } = convertToThreeNodes({
-      keywordNodes: activeNodes,
-      edges: activeEdges,
-      projectNodes: projectNodesRef.current,
-      width: 1000,
-      height: 1000,
-      getSavedPosition: () => undefined,
-    });
-
-    const keywordSimNodes = mapNodes.filter(n => n.type === "keyword");
-    const { chunkNodes } = createChunkNodes(keywordSimNodes, chunksByKeyword);
-
-    // Apply constrained forces to position chunks around keywords
-    const keywordMap = new Map<string, SimNode>(keywordSimNodes.map(n => [n.id, n]));
-    const keywordRadius = 5;
-    applyConstrainedForces(chunkNodes, keywordMap, keywordRadius);
-
-    return chunkNodes;
-  }, [rendererType, activeNodes, activeEdges, chunksByKeyword, projectNodesRef]);
-
   if (rendererType === "r3f") {
     return (
       <div className="w-full h-full relative">
@@ -376,7 +353,7 @@ export function TopicsView({
           nodes={activeNodes}
           edges={activeEdges}
           projectNodes={projectNodes}
-          chunkNodes={r3fChunkNodes}
+          chunksByKeyword={chunksByKeyword}
           colorMixRatio={colorMixRatio}
           pcaTransform={pcaTransform}
           blurEnabled={blurEnabled}
@@ -384,6 +361,7 @@ export function TopicsView({
           panelDistanceRatio={panelDistanceRatio}
           panelThickness={panelThickness}
           zoomPhaseConfig={zoomPhaseConfig ?? DEFAULT_ZOOM_PHASE_CONFIG}
+          chunkZDepth={chunkZDepth}
           onKeywordClick={handleKeywordClick}
           onProjectClick={handleProjectClick}
           onProjectDrag={handleProjectDrag}

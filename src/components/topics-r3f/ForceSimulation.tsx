@@ -7,17 +7,23 @@ import { useEffect, useRef } from "react";
 import * as d3 from "d3";
 import type { KeywordNode, SimilarityEdge } from "@/lib/graph-queries";
 import type { SimNode } from "@/lib/map-renderer";
+import type { ChunkNode } from "@/lib/chunk-loader";
+import type { ChunkSimNode } from "@/lib/chunk-layout";
+import { CHUNK_Z_DEPTH } from "@/lib/chunk-zoom-config";
 
 export interface ForceSimulationProps {
   nodes: KeywordNode[];
   edges: SimilarityEdge[];
-  /** Callback to get simulation nodes (for KeywordNodes component) */
+  /** Chunk data organized by keyword ID */
+  chunksByKeyword?: Map<string, ChunkNode[]>;
+  /** Callback to get simulation nodes (keywords + chunks) */
   onSimulationReady?: (simNodes: SimNode[]) => void;
 }
 
 export function ForceSimulation({
   nodes,
   edges,
+  chunksByKeyword,
   onSimulationReady,
 }: ForceSimulationProps) {
   const simulationRef = useRef<d3.Simulation<SimNode, undefined> | null>(null);
@@ -27,7 +33,7 @@ export function ForceSimulation({
     // Convert keyword nodes to simulation nodes
     // At z=10500 with FOV 10°, visible height ≈ 1837 units
     // Use moderate initial spread - simulation will tighten it
-    const simNodes: SimNode[] = nodes.map((n) => ({
+    const keywordSimNodes: SimNode[] = nodes.map((n) => ({
       id: n.id,
       type: "keyword" as const,
       label: n.label,
@@ -40,17 +46,70 @@ export function ForceSimulation({
       y: Math.random() * 1000 - 500,
     }));
 
+    // Build keyword map for chunk parent lookup
+    const keywordMap = new Map<string, SimNode>(keywordSimNodes.map((n) => [n.id, n]));
+
+    // Create chunk simulation nodes
+    const chunkSimNodes: ChunkSimNode[] = [];
+    const containmentLinks: Array<{ source: string; target: string }> = [];
+
+    if (chunksByKeyword) {
+      for (const [keywordId, chunks] of chunksByKeyword) {
+        const parent = keywordMap.get(keywordId);
+        if (!parent) continue;
+
+        for (const chunk of chunks) {
+          const chunkNode: ChunkSimNode = {
+            id: chunk.id,
+            type: "chunk",
+            label: chunk.summary || chunk.content.slice(0, 50) + "...",
+            size: chunk.content.length,
+            embedding: chunk.embedding,
+            z: CHUNK_Z_DEPTH,
+            parentId: keywordId,
+            content: chunk.content,
+            communityId: undefined,
+            communityMembers: undefined,
+            hullLabel: undefined,
+            // Start at parent position (simulation will spread them)
+            x: parent.x,
+            y: parent.y,
+          };
+
+          chunkSimNodes.push(chunkNode);
+
+          // Create containment edge (keyword → chunk)
+          containmentLinks.push({
+            source: keywordId,
+            target: chunk.id,
+          });
+        }
+      }
+    }
+
+    // Combine all simulation nodes
+    const simNodes: SimNode[] = [...keywordSimNodes, ...chunkSimNodes];
     simNodesRef.current = simNodes;
 
     // Notify parent about simulation nodes
     onSimulationReady?.(simNodes);
 
-    // Convert edges to links (d3-force expects source/target to be node references or IDs)
-    const links = edges.map((e) => ({
+    // Convert edges to links (similarity edges between keywords)
+    const similarityLinks = edges.map((e) => ({
       source: e.source,
       target: e.target,
       similarity: e.similarity,
+      type: "similarity" as const,
     }));
+
+    // Combine similarity and containment links
+    const links = [
+      ...similarityLinks,
+      ...containmentLinks.map((e) => ({
+        ...e,
+        type: "containment" as const,
+      })),
+    ];
 
     // Create force simulation
     const simulation = d3
@@ -61,10 +120,20 @@ export function ForceSimulation({
           .forceLink(links)
           .id((d: any) => d.id)
           .distance((d: any) => {
+            // Containment edges are short (keep chunks close to keywords)
+            if (d.type === "containment") {
+              return 15;
+            }
+            // Similarity edges vary by semantic similarity
             const sim = d.similarity ?? 0.5;
             return 40 + (1 - sim) * 150;
           })
           .strength((d: any) => {
+            // Containment edges are strong springs
+            if (d.type === "containment") {
+              return 0.8;
+            }
+            // Similarity edges vary by semantic similarity
             const sim = d.similarity ?? 0.5;
             return 0.2 + sim * 0.8;
           })
@@ -81,7 +150,7 @@ export function ForceSimulation({
       simulation.stop();
       simulationRef.current = null;
     };
-  }, [nodes, edges, onSimulationReady]);
+  }, [nodes, edges, chunksByKeyword, onSimulationReady]);
 
   // No visual output - this just drives the simulation
   return null;

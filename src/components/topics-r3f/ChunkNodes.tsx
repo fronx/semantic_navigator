@@ -23,6 +23,8 @@ export interface ChunkNodesProps {
   colorMixRatio: number;
   pcaTransform: PCATransform | null;
   zoomRange: ZoomRange;
+  /** Z-depth offset for chunks (negative = behind keywords) */
+  chunkZDepth?: number;
 }
 
 export function ChunkNodes({
@@ -31,6 +33,7 @@ export function ChunkNodes({
   colorMixRatio,
   pcaTransform,
   zoomRange,
+  chunkZDepth = CHUNK_Z_DEPTH,
 }: ChunkNodesProps) {
   const { camera } = useThree();
   const meshRef = useRef<THREE.InstancedMesh>(null);
@@ -63,13 +66,29 @@ export function ChunkNodes({
     meshRef.current.visible = chunkScale >= VISIBILITY_THRESHOLD;
     if (!meshRef.current.visible) return;
 
+    // Debug first few chunks
+    if (Math.random() < 0.01 && chunkNodes.length > 0) {
+      console.log('[ChunkNodes Debug]', JSON.stringify({
+        totalChunks: chunkNodes.length,
+        chunkZDepth,
+        first3Chunks: chunkNodes.slice(0, 3).map(n => ({
+          id: n.id,
+          x: n.x,
+          y: n.y,
+          parentId: (n as ChunkSimNode).parentId,
+        })),
+        simNodesCount: simNodes.length,
+        keywordMapSize: keywordMap.size,
+      }, null, 2));
+    }
+
     for (let i = 0; i < chunkNodes.length; i++) {
       const node = chunkNodes[i] as ChunkSimNode;
 
       // Position at parent keyword's location but on a different Z plane
       const x = node.x ?? 0;
       const y = node.y ?? 0;
-      const z = CHUNK_Z_DEPTH; // Behind keywords (negative z)
+      const z = chunkZDepth; // Behind keywords (negative z)
 
       // Compose matrix with position and scale
       positionRef.current.set(x, y, z);
@@ -86,10 +105,26 @@ export function ChunkNodes({
           undefined,
           colorMixRatio
         );
+
+        // Debug first chunk color
+        if (i === 0 && Math.random() < 0.01) {
+          console.log('[ChunkNodes Color Debug]', JSON.stringify({
+            chunkId: node.id,
+            parentId: node.parentId,
+            parentFound: !!parentNode,
+            parentLabel: parentNode?.label,
+            computedColor: color,
+            colorRGB: colorRef.current.set(color).toArray(),
+          }, null, 2));
+        }
+
         colorRef.current.set(color);
       } else {
         // Fallback gray if parent not found
         colorRef.current.set("#e0e0e0");
+        if (i === 0 && Math.random() < 0.1) {
+          console.log('[ChunkNodes] Parent not found for chunk:', node.id, 'parentId:', node.parentId);
+        }
       }
       meshRef.current.setColorAt(i, colorRef.current);
     }
@@ -104,7 +139,8 @@ export function ChunkNodes({
 
   return (
     <instancedMesh ref={meshRef} args={[geometry, undefined, chunkNodes.length]} frustumCulled={false}>
-      <meshBasicMaterial vertexColors transparent depthTest={false} />
+      {/* Important: do not reactivate the following line that is commented out. Doing so causes the dots to be black. */}
+      {/* <meshBasicMaterial vertexColors transparent depthTest={false} /> */}
     </instancedMesh>
   );
 }

@@ -80,13 +80,16 @@ export function getNodeColor(
     }
   }
 
-  // Use cluster-based color if available
-  if (pcaTransform && node.embedding && node.embedding.length > 0 && node.communityId !== undefined && clusterColors) {
-    const clusterInfo = clusterColors.get(node.communityId);
-    if (clusterInfo) {
-      return nodeColorFromCluster(node.embedding, clusterInfo, pcaTransform, colorMixRatio);
+  // Use embedding-based colors if available (PCA projection or cluster-based)
+  if (pcaTransform && node.embedding && node.embedding.length > 0) {
+    // Try cluster-based color if communityId exists
+    if (node.communityId !== undefined && clusterColors) {
+      const clusterInfo = clusterColors.get(node.communityId);
+      if (clusterInfo) {
+        return nodeColorFromCluster(node.embedding, clusterInfo, pcaTransform, colorMixRatio);
+      }
     }
-    // Fallback: use node's own embedding if not in cluster color map
+    // Fallback: PCA-based semantic color from embedding
     const [x, y] = pcaProject(node.embedding, pcaTransform);
     return coordinatesToHSL(x, y);
   }

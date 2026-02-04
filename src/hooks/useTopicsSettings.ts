@@ -22,6 +22,7 @@ export interface TopicsSettings {
   rendererType: RendererType;
   blurEnabled: boolean;
   showKNNEdges: boolean;
+  chunkZDepth: number;
 
   // UI state
   sidebarCollapsed: boolean;
@@ -41,6 +42,7 @@ const DEFAULT_SETTINGS: TopicsSettings = {
   rendererType: "d3",
   blurEnabled: true,
   showKNNEdges: true,
+  chunkZDepth: -150,
   sidebarCollapsed: false,
   sectionStates: {
     Renderer: true,

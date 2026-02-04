@@ -21,6 +21,8 @@ export interface BaseRendererOptions {
   hoverConfig: HoverHighlightConfig;
   pcaTransform: PCATransform | null;
   getSavedPosition: (id: string) => { x: number; y: number } | undefined;
+  /** Z-depth offset for chunk nodes (negative = behind keywords) */
+  chunkZDepth?: number;
   // Stable callbacks
   onKeywordClick?: (keyword: string) => void;
   onProjectClick?: (projectId: string) => void;
