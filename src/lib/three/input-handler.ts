@@ -7,6 +7,7 @@ import type { CameraController } from "./camera-controller";
 import type { AutoFitState } from "@/lib/auto-fit";
 import { markUserInteraction } from "@/lib/auto-fit";
 import type { SimNode } from "@/lib/map-renderer";
+import { createPanHandler } from "./pan-handler";
 
 export interface InputHandlerOptions {
   container: HTMLElement;
@@ -44,11 +45,6 @@ export function createInputHandler(options: InputHandlerOptions): InputHandler {
     onLabelsUpdate,
   } = options;
 
-  // Pan state
-  let isPanning = false;
-  let lastMouseX = 0;
-  let lastMouseY = 0;
-
   // Drag vs click detection
   let startMouseX = 0;
   let startMouseY = 0;
@@ -62,55 +58,42 @@ export function createInputHandler(options: InputHandlerOptions): InputHandler {
   // Zoom debounce
   let zoomEndTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  const handleMouseDown = (event: MouseEvent) => {
-    // Only pan on left click
-    if (event.button !== 0) return;
-    // Don't pan if already dragging a project node
-    if (isDraggingProjectNode) return;
+  // Create shared pan handler
+  const cleanupPanHandler = createPanHandler({
+    canvas: container,
+    getCameraZ: () => cameraController.getCameraZ(),
+    onPan: (worldDeltaX, worldDeltaY, mouseX, mouseY) => {
+      // Check if movement exceeds drag threshold
+      const dx = Math.abs(mouseX - startMouseX);
+      const dy = Math.abs(mouseY - startMouseY);
+      if (dx > DRAG_THRESHOLD || dy > DRAG_THRESHOLD) {
+        wasDrag = true;
+      }
 
-    // If hovering over a project node, let 3d-force-graph handle it
-    const hoveredNode = getHoveredNode();
-    if (hoveredNode?.type === "project") {
-      return;
-    }
-
-    isPanning = true;
-    lastMouseX = event.clientX;
-    lastMouseY = event.clientY;
-    startMouseX = event.clientX;
-    startMouseY = event.clientY;
-    wasDrag = false;
-    container.style.cursor = "grabbing";
-  };
-
-  const handleMouseMove = (event: MouseEvent) => {
-    if (!isPanning) return;
-
-    // Check if movement exceeds drag threshold
-    const dx = Math.abs(event.clientX - startMouseX);
-    const dy = Math.abs(event.clientY - startMouseY);
-    if (dx > DRAG_THRESHOLD || dy > DRAG_THRESHOLD) {
-      wasDrag = true;
-    }
-
-    const deltaX = event.clientX - lastMouseX;
-    const deltaY = event.clientY - lastMouseY;
-    lastMouseX = event.clientX;
-    lastMouseY = event.clientY;
-
-    cameraController.pan(deltaX, deltaY);
-    onLabelsUpdate();
-  };
-
-  const handleMouseUp = () => {
-    if (isPanning) {
-      isPanning = false;
-      container.style.cursor = "grab";
+      cameraController.applyWorldPan(worldDeltaX, worldDeltaY);
+      onLabelsUpdate();
+    },
+    onPanStart: (mouseX, mouseY) => {
+      startMouseX = mouseX;
+      startMouseY = mouseY;
+      wasDrag = false;
+    },
+    onPanEnd: () => {
       markUserInteraction(autoFitState);
       cameraController.notifyZoomChange();
       onZoomEnd?.();
-    }
-  };
+    },
+    shouldStartPan: (event) => {
+      // Don't pan if already dragging a project node
+      if (isDraggingProjectNode) return false;
+
+      // If hovering over a project node, let 3d-force-graph handle it
+      const hoveredNode = getHoveredNode();
+      if (hoveredNode?.type === "project") return false;
+
+      return true;
+    },
+  });
 
   // Suppress click events that were actually drags
   const handleClick = (event: MouseEvent) => {
@@ -148,11 +131,7 @@ export function createInputHandler(options: InputHandlerOptions): InputHandler {
     }, 150);
   };
 
-  // Attach event listeners
-  container.addEventListener("mousedown", handleMouseDown);
-  container.addEventListener("mousemove", handleMouseMove);
-  container.addEventListener("mouseup", handleMouseUp);
-  container.addEventListener("mouseleave", handleMouseUp);
+  // Attach event listeners (pan handled by shared handler)
   container.addEventListener("click", handleClick, true); // capture phase
   container.addEventListener("wheel", handleWheel, { passive: false });
 
@@ -171,10 +150,7 @@ export function createInputHandler(options: InputHandlerOptions): InputHandler {
 
     destroy() {
       if (zoomEndTimeout) clearTimeout(zoomEndTimeout);
-      container.removeEventListener("mousedown", handleMouseDown);
-      container.removeEventListener("mousemove", handleMouseMove);
-      container.removeEventListener("mouseup", handleMouseUp);
-      container.removeEventListener("mouseleave", handleMouseUp);
+      cleanupPanHandler(); // Cleanup shared pan handler
       container.removeEventListener("click", handleClick, true);
       container.removeEventListener("wheel", handleWheel);
     },

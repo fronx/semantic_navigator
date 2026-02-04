@@ -34,8 +34,8 @@ export interface CameraController {
   getTransform(): { k: number; x: number; y: number };
   /** Animate camera to fit all nodes in view */
   fitToNodes(nodes: Array<{ x?: number; y?: number }>, padding?: number): void;
-  /** Pan camera by screen delta */
-  pan(screenDeltaX: number, screenDeltaY: number): void;
+  /** Apply world-space pan deltas directly */
+  applyWorldPan(worldDeltaX: number, worldDeltaY: number): void;
   /** Zoom camera with cursor position (NDC coordinates -1 to +1) */
   zoom(deltaY: number, cursorNDC: { x: number; y: number }): void;
   /** Notify zoom change (calls onZoomEnd callback) */
@@ -122,17 +122,12 @@ export function createCameraController(options: CameraControllerOptions): Camera
     }
   }
 
-  function pan(screenDeltaX: number, screenDeltaY: number): void {
+  function applyWorldPan(worldDeltaX: number, worldDeltaY: number): void {
     const camera = getCamera();
     if (!camera) return;
 
-    const viewport = getViewport();
-    const rect = container.getBoundingClientRect();
-    const pixelsPerUnit = rect.height / viewport.height;
-
-    // Move camera (invert because dragging "grabs" the canvas)
-    camera.position.x -= screenDeltaX / pixelsPerUnit;
-    camera.position.y += screenDeltaY / pixelsPerUnit; // Y is inverted in screen coords
+    camera.position.x += worldDeltaX;
+    camera.position.y += worldDeltaY;
   }
 
   function zoom(deltaY: number, cursorNDC: { x: number; y: number }): void {
@@ -250,7 +245,7 @@ export function createCameraController(options: CameraControllerOptions): Camera
     getCameraZ,
     getTransform,
     fitToNodes,
-    pan,
+    applyWorldPan,
     zoom,
     notifyZoomChange,
     cancelAnimation,

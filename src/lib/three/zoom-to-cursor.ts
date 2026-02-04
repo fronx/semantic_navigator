@@ -3,8 +3,8 @@
  * Calculates new camera position to keep the point under cursor fixed during zoom.
  */
 
-// Camera FOV constant (must match CAMERA_FOV_DEGREES in camera-controller.ts)
-const CAMERA_FOV_DEGREES = 10;
+import { CAMERA_FOV_DEGREES } from "./camera-controller";
+
 const CAMERA_FOV_RADIANS = CAMERA_FOV_DEGREES * Math.PI / 180;
 
 export interface ZoomToCursorParams {

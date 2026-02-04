@@ -2,18 +2,60 @@
  * Camera controller with OrbitControls.
  * Narrow FOV (10°) for orthogonal-like perspective.
  * Implements zoom-to-cursor behavior matching Three.js renderer.
+ * Implements manual pan for maximum code sharing with Three.js renderer.
  */
 
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, type RefObject } from "react";
 import { OrbitControls } from "@react-three/drei";
 import { useThree } from "@react-three/fiber";
 import type { OrbitControls as OrbitControlsType } from "three-stdlib";
+import type { Camera, WebGLRenderer } from "three";
 import { CAMERA_Z_SCALE_BASE } from "@/lib/three/camera-controller";
 import { CAMERA_Z_MIN, CAMERA_Z_MAX } from "@/lib/chunk-zoom-config";
 import { calculateZoomToCursor } from "@/lib/three/zoom-to-cursor";
+import { createPanHandler } from "@/lib/three/pan-handler";
 
 export interface CameraControllerProps {
   onZoomChange?: (zoomScale: number) => void;
+}
+
+/**
+ * Custom hook to handle pan events with shared pan handler.
+ * Updates camera position and OrbitControls target, triggers zoom change callback.
+ */
+function usePanHandler(
+  camera: Camera,
+  gl: WebGLRenderer,
+  controlsRef: RefObject<OrbitControlsType | null>,
+  onZoomChange?: (zoomScale: number) => void
+) {
+  useEffect(() => {
+    const canvas = gl.domElement;
+
+    const cleanupPanHandler = createPanHandler({
+      canvas,
+      getCameraZ: () => camera.position.z,
+      onPan: (worldDeltaX, worldDeltaY) => {
+        // Update camera position
+        camera.position.x += worldDeltaX;
+        camera.position.y += worldDeltaY;
+
+        // Update OrbitControls target to match (keeps controls in sync)
+        if (controlsRef.current) {
+          controlsRef.current.target.set(camera.position.x, camera.position.y, 0);
+          controlsRef.current.update();
+        }
+
+        // Notify zoom change (for state updates)
+        if (onZoomChange) {
+          const zoomScale = CAMERA_Z_SCALE_BASE / camera.position.z;
+          onZoomChange(zoomScale);
+        }
+      },
+    });
+
+    return cleanupPanHandler;
+  }, [camera, gl, controlsRef, onZoomChange]);
 }
 
 export function CameraController({ onZoomChange }: CameraControllerProps) {
@@ -29,6 +71,9 @@ export function CameraController({ onZoomChange }: CameraControllerProps) {
       onZoomChange(zoomScale);
     }
   };
+
+  // Handle pan events with shared handler
+  usePanHandler(camera, gl, controlsRef, onZoomChange);
 
   // Implement zoom-to-cursor behavior
   useEffect(() => {
@@ -91,18 +136,12 @@ export function CameraController({ onZoomChange }: CameraControllerProps) {
     <OrbitControls
       ref={controlsRef}
       enableRotate={false}
+      enablePan={false}  // Disable OrbitControls pan (we handle it manually)
       enableDamping
       dampingFactor={0.05}
-      zoomSpeed={0.5}
-      panSpeed={0.5}
       minDistance={CAMERA_Z_MIN}  // Match our zoom limits
       maxDistance={CAMERA_Z_MAX}  // Match our zoom limits
       enableZoom={false}  // Disable built-in zoom (we handle it manually)
-      mouseButtons={{
-        LEFT: 0,  // LEFT mouse = pan (match D3/Three.js renderers)
-        MIDDLE: 1,  // MIDDLE mouse = zoom (disabled, using wheel instead)
-        RIGHT: 2,  // RIGHT mouse = rotate (disabled anyway)
-      }}
       onChange={handleChange}
     />
   );
