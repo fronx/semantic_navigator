@@ -6,6 +6,8 @@
  */
 
 import { useFrame, useThree } from "@react-three/fiber";
+import { calculateScales } from "@/lib/chunk-scale";
+import { DEFAULT_ZOOM_PHASE_CONFIG } from "@/lib/zoom-phase-config";
 import type { LabelRefs } from "./R3FLabelContext";
 
 export interface LabelsUpdaterProps {
@@ -24,10 +26,11 @@ export function LabelsUpdater({ labelRefs }: LabelsUpdaterProps) {
 
   useFrame(() => {
     // Update camera state ref (read by LabelsOverlay's worldToScreen)
+    const cameraZ = camera.position.z;
     cameraStateRef.current = {
       x: camera.position.x,
       y: camera.position.y,
-      z: camera.position.z,
+      z: cameraZ,
     };
 
     // Trigger label updates
@@ -37,6 +40,16 @@ export function LabelsUpdater({ labelRefs }: LabelsUpdaterProps) {
 
     manager.updateClusterLabels(nodes);
     manager.updateKeywordLabels(nodes, nodeDegreesRef.current);
+
+    // Build parent color map for chunk labels
+    // Note: Chunk nodes will receive color from their parent keywords via label manager
+    const parentColors = new Map<string, string>();
+    manager.updateChunkLabels(nodes, parentColors);
+
+    // Update label opacity based on zoom level (fades chunk labels in/out)
+    const scales = calculateScales(cameraZ, DEFAULT_ZOOM_PHASE_CONFIG.chunkCrossfade);
+    manager.updateLabelOpacity(scales);
+
     manager.syncChunkPreview();
   });
 

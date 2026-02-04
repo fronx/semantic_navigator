@@ -104,6 +104,53 @@ body {
   }
 }
 
+/* Chunk content labels: full paragraph text displayed when zoomed in */
+/* Shows at camera Z <= 1800, replaces short .chunk-label with multi-line content */
+.chunk-content-label {
+  position: absolute;
+  transform: translate(-50%, -100%);
+
+  /* Sizing and wrapping */
+  max-width: 180px;
+  max-height: 200px;
+  font-size: 10px;
+  line-height: 1.4;
+
+  /* Text handling - preserve paragraph structure */
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  overflow: hidden;
+  text-overflow: clip;
+
+  /* Readability over graph edges */
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(8px);
+  box-shadow:
+    0 4px 12px rgba(15, 23, 42, 0.12),
+    0 1px 3px rgba(15, 15, 15, 0.08);
+
+  /* Smooth transitions */
+  transition: opacity 0.15s ease-out;
+
+  /* Performance */
+  pointer-events: none;
+  will-change: opacity, transform;
+}
+
+@media (prefers-color-scheme: dark) {
+  .chunk-content-label {
+    background: rgba(9, 9, 11, 0.85);
+    color: #f4f4f5;
+    box-shadow:
+      0 4px 12px rgba(0, 0, 0, 0.3),
+      0 1px 3px rgba(0, 0, 0, 0.2);
+  }
+}
+
 .chunk-preview {
   position: absolute;
   pointer-events: none;

@@ -5,6 +5,7 @@
  */
 
 import type { SimNode } from "@/lib/map-renderer";
+import type { ChunkSimNode } from "@/lib/chunk-layout";
 import { computeClusterLabels } from "@/lib/cluster-labels";
 import { communityColorScale } from "@/lib/hull-renderer";
 import { clusterColorToCSS, type ClusterColorInfo } from "@/lib/semantic-colors";
@@ -274,11 +275,17 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     const rect = container.getBoundingClientRect();
     const cameraZ = getCameraZ();
 
+    // Determine if we should show full content based on zoom
+    const showFullContent = cameraZ <= 1800;
+
     // Font size scales with zoom: smaller when zoomed out
-    // Base size matches chunk-label styling (12px, smaller than keyword labels)
+    // Base size: 21px for short labels, 10px for full content (reduced to 2-2.5x smaller)
     // Adjusted for 10deg FOV (3x higher baseline due to increased camera distance)
-    const baseFontSize = 21; // 12px * 1.75 for 10deg FOV adjustment
+    const baseFontSize = showFullContent ? 10 : 21;
     const zoomScale = Math.min(1, 1500 / cameraZ);
+
+    // Max-width for content labels (only used when showFullContent is true)
+    const baseMaxWidth = 200;
 
     // Track which nodes we've processed (for cleanup)
     const seenNodes = new Set<string>();
@@ -286,6 +293,14 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     for (const node of nodes) {
       // Only show labels for chunk nodes
       if (node.type !== "chunk") continue;
+
+      // Skip if not zoomed in enough to show full content
+      // We only want multi-line content labels, not short single-line labels
+      if (!showFullContent) {
+        const existing = chunkLabelCache.get(node.id);
+        if (existing) existing.style.display = "none";
+        continue;
+      }
 
       seenNodes.add(node.id);
 
@@ -307,9 +322,15 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
       let labelEl = chunkLabelCache.get(node.id);
       if (!labelEl) {
         labelEl = document.createElement("div");
-        labelEl.className = "chunk-label";
+        // Don't set className here - will be set below based on zoom
         chunkOverlay.appendChild(labelEl);
         chunkLabelCache.set(node.id, labelEl);
+      }
+
+      // Update CSS class based on zoom level (only if changed)
+      const targetClass = showFullContent ? "chunk-content-label" : "chunk-label";
+      if (labelEl.className !== targetClass) {
+        labelEl.className = targetClass;
       }
 
       // Calculate offset from node center (above the dot)
@@ -325,14 +346,29 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
       labelEl.style.top = `${screenPos.y - screenRadius - 8}px`;
       labelEl.style.fontSize = `${baseFontSize * zoomScale}px`;
 
+      // Apply max-width only for content labels
+      if (showFullContent) {
+        labelEl.style.maxWidth = `${baseMaxWidth * zoomScale}px`;
+      } else {
+        // Clear max-width for single-line labels (only if previously set)
+        if (labelEl.style.maxWidth) {
+          labelEl.style.maxWidth = "";
+        }
+      }
+
       // Use parent keyword color if available
       const color = parentColors.get(node.id);
       if (color) {
         labelEl.style.color = color;
       }
 
-      if (labelEl.textContent !== node.label) {
-        labelEl.textContent = node.label;
+      // Display full content when zoomed in, otherwise short label
+      const targetContent = showFullContent
+        ? ((node as ChunkSimNode).content || node.label)
+        : node.label;
+
+      if (labelEl.textContent !== targetContent) {
+        labelEl.textContent = targetContent;
       }
     }
 
