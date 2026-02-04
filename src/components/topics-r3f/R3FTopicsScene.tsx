@@ -3,13 +3,14 @@
  * Orchestrates all child components (camera, simulation, nodes, edges, labels).
  */
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { CameraController } from "./CameraController";
 import { ForceSimulation } from "./ForceSimulation";
 import { KeywordNodes } from "./KeywordNodes";
 import { ChunkNodes } from "./ChunkNodes";
 import { TransmissionPanel } from "./TransmissionPanel";
 import { KeywordEdges } from "./KeywordEdges";
+import { ChunkEdges } from "./ChunkEdges";
 import { useEdgeCurveDirections } from "@/hooks/useEdgeCurveDirections";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 import type { PCATransform } from "@/lib/semantic-colors";
@@ -49,8 +50,29 @@ export function R3FTopicsScene({
   // Simulation nodes shared between ForceSimulation and KeywordNodes
   const [simNodes, setSimNodes] = useState<SimNode[]>([]);
 
-  // Compute curve directions (cached, only updates when nodes/edges change)
-  const curveDirections = useEdgeCurveDirections(simNodes, edges as SimLink[]);
+  // Create containment edges (keyword → chunk) from chunk parentId
+  const containmentEdges = useMemo(() => {
+    const edges: SimLink[] = [];
+    for (const chunk of chunkNodes) {
+      const parentId = (chunk as any).parentId;
+      if (parentId) {
+        edges.push({
+          source: parentId,
+          target: chunk.id,
+        });
+      }
+    }
+    return edges;
+  }, [chunkNodes]);
+
+  // Combine all edges for curve direction calculation
+  const allEdges = useMemo(
+    () => [...(edges as SimLink[]), ...containmentEdges],
+    [edges, containmentEdges]
+  );
+
+  // Compute curve directions for all edges (cached, only updates when nodes/edges change)
+  const curveDirections = useEdgeCurveDirections(simNodes, allEdges);
 
   return (
     <>
@@ -72,7 +94,19 @@ export function R3FTopicsScene({
         thickness={panelThickness}
       />
 
-      {/* Edges - single merged geometry for performance */}
+      {/* Chunk containment edges (keyword → chunk) - fade with zoom */}
+      {simNodes.length > 0 && chunkNodes.length > 0 && (
+        <ChunkEdges
+          simNodes={simNodes}
+          chunkNodes={chunkNodes}
+          curveIntensity={0.25}
+          curveDirections={curveDirections}
+          colorMixRatio={colorMixRatio}
+          pcaTransform={pcaTransform ?? undefined}
+        />
+      )}
+
+      {/* Keyword similarity edges - constant opacity */}
       {simNodes.length > 0 && edges.length > 0 && (
         <KeywordEdges
           simNodes={simNodes}
