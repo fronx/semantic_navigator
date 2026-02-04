@@ -65,7 +65,7 @@ export const DEFAULT_BACKBONE_OPTIONS: Required<KeywordBackboneOptions> = {
   minSimilarity: 0.3,
   communityLevel: 3,
   nearestNeighbors: 1,
-  nodeType: 'chunk',
+  nodeType: 'article', // Must match get_article_keyword_graph RPC filter (migration 017)
 };
 
 /** Supabase query batch size to avoid payload limits */
