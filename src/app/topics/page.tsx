@@ -44,9 +44,6 @@ export default function TopicsPage() {
   // Track cluster count for debug display
   const [clusterCount, setClusterCount] = useState(0);
 
-  // Frozen resolution for when dynamic clustering is disabled
-  const [frozenResolution, setFrozenResolution] = useState<number | null>(null);
-
   // Derive cluster resolution from zoom + slider
   // Resolution determines cluster granularity (higher = more clusters)
   // Use quadratic scaling: visible area decreases with zoom², so cluster count should increase quadratically
@@ -56,22 +53,20 @@ export default function TopicsPage() {
   const nodeCount = data?.nodes.length ?? 100;
   const maxResolution = Math.max(2, nodeCount / 15); // Allow up to ~32 clusters with 489 nodes
 
-  // Calculate dynamic resolution based on current zoom
-  const dynamicResolution = Math.max(0.05, Math.min(maxResolution, Math.pow(zoomScale, 2) * settings.clusterSensitivity * 50));
+  // Precomputed resolutions available (must match what's in the database)
+  const PRECOMPUTED_RESOLUTIONS = [0.1, 0.3, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0];
 
-  // When dynamic clustering is toggled off, freeze the current resolution
-  useEffect(() => {
-    if (!settings.dynamicClustering && frozenResolution === null) {
-      // Turning off for the first time - freeze current resolution
-      setFrozenResolution(dynamicResolution);
-    } else if (settings.dynamicClustering && frozenResolution !== null) {
-      // Turning back on - clear frozen state
-      setFrozenResolution(null);
-    }
-  }, [settings.dynamicClustering, dynamicResolution, frozenResolution]);
+  // Calculate raw resolution based on mode:
+  // - Dynamic mode: resolution changes with zoom AND cluster sensitivity
+  // - Static mode: resolution only changes with cluster sensitivity slider (zoom ignored)
+  const rawResolution = settings.dynamicClustering
+    ? Math.max(0.1, Math.min(4.0, Math.pow(zoomScale, 2) * settings.clusterSensitivity))
+    : Math.max(0.1, Math.min(4.0, settings.clusterSensitivity));
 
-  // Use frozen resolution when dynamic clustering is off, otherwise use dynamic
-  const effectiveResolution = settings.dynamicClustering ? dynamicResolution : (frozenResolution ?? dynamicResolution);
+  // Snap to nearest precomputed resolution to avoid client-side clustering fallback
+  const effectiveResolution = PRECOMPUTED_RESOLUTIONS.reduce((prev, curr) =>
+    Math.abs(curr - rawResolution) < Math.abs(prev - rawResolution) ? curr : prev
+  );
 
   const debouncedClusterResolution = useDebouncedValue(effectiveResolution, 300);
 
