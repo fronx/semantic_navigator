@@ -18,7 +18,7 @@ import { loadPCATransform, type PCATransform } from "@/lib/semantic-colors";
 import type { BaseRendererOptions } from "@/lib/renderer-types";
 import type { SimNode } from "@/lib/map-renderer";
 import { CAMERA_Z_SCALE_BASE } from "@/lib/three/camera-controller";
-import type { ZoomPhaseConfig } from "@/lib/zoom-phase-config";
+import { DEFAULT_ZOOM_PHASE_CONFIG, type ZoomPhaseConfig } from "@/lib/zoom-phase-config";
 import { calculatePanelRatio, calculatePanelThickness } from "@/lib/transmission-panel-config";
 
 // ============================================================================
@@ -62,6 +62,10 @@ export interface TopicsViewProps {
   onError?: (message: string) => void;
   /** Zoom phase configuration for semantic transitions */
   zoomPhaseConfig?: ZoomPhaseConfig;
+  /** Whether blur layer is enabled (Three.js/R3F only) */
+  blurEnabled?: boolean;
+  /** Whether to show k-NN edges (usually hidden, only affect force simulation) */
+  showKNNEdges?: boolean;
 }
 
 // ============================================================================
@@ -86,18 +90,14 @@ export function TopicsView({
   onProjectDrag,
   onError,
   zoomPhaseConfig,
+  blurEnabled = true,
+  showKNNEdges = false,
 }: TopicsViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Camera Z tracking for scale interpolation
   const [cameraZ, setCameraZ] = useState<number | undefined>(undefined);
-
-  // Blur layer toggle for debugging
-  const [blurEnabled, setBlurEnabled] = useState(true);
-
-  // k-NN edge visibility toggle (k-NN edges only affect force, usually hidden)
-  const [showKNNEdges, setShowKNNEdges] = useState(false);
 
   // Calculate panel distance ratio automatically based on camera zoom level
   // This creates a fade effect: keywords blur out at medium distance, clear up when close
@@ -106,13 +106,6 @@ export function TopicsView({
   // Calculate panel material thickness (controls blur strength)
   // Thickness ramps from 0 (no blur) to 20 (full blur) as camera approaches threshold
   const panelThickness = cameraZ !== undefined ? calculatePanelThickness(cameraZ) : 0;
-
-  // Calculate absolute panel Z position for debug display
-  // panel.z = camera.z * ratio (0% = at keywords z=0, 100% = at camera)
-  const panelZ = cameraZ !== undefined ? cameraZ * panelDistanceRatio : undefined;
-
-  // UI panel collapse state
-  const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
 
   // Filter state management (click-to-filter, external filter, position preservation)
   const {
@@ -363,6 +356,7 @@ export function TopicsView({
           showKNNEdges={showKNNEdges}
           panelDistanceRatio={panelDistanceRatio}
           panelThickness={panelThickness}
+          zoomPhaseConfig={zoomPhaseConfig ?? DEFAULT_ZOOM_PHASE_CONFIG}
           onKeywordClick={handleKeywordClick}
           onProjectClick={handleProjectClick}
           onProjectDrag={handleProjectDrag}
@@ -373,51 +367,6 @@ export function TopicsView({
             Loading chunks...
           </div>
         )}
-        <div className="absolute top-4 left-4 bg-white/90 dark:bg-black/70 text-black dark:text-white text-sm rounded-md shadow-lg">
-          <button
-            onClick={() => setIsPanelCollapsed(!isPanelCollapsed)}
-            className="w-full px-3 py-2 text-left font-medium hover:bg-black/5 dark:hover:bg-white/5 flex items-center justify-between"
-          >
-            <span>Controls</span>
-            <span className="text-xs">{isPanelCollapsed ? "▼" : "▲"}</span>
-          </button>
-          {!isPanelCollapsed && (
-            <div className="px-3 pb-2 pt-1 space-y-3 border-t border-black/10 dark:border-white/10">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={blurEnabled}
-                  onChange={(e) => setBlurEnabled(e.target.checked)}
-                  className="cursor-pointer"
-                />
-                <span>Enable blur layer</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={showKNNEdges}
-                  onChange={(e) => setShowKNNEdges(e.target.checked)}
-                  className="cursor-pointer"
-                />
-                <span>Show k-NN edges</span>
-              </label>
-              <div className="pt-2 border-t border-black/10 dark:border-white/10 space-y-1">
-                <div className="text-xs font-mono">
-                  Camera Z: {cameraZ !== undefined ? cameraZ.toFixed(0) : "—"}
-                </div>
-                <div className="text-xs font-mono">
-                  Panel ratio: {(panelDistanceRatio * 100).toFixed(0)}%
-                </div>
-                <div className="text-xs font-mono">
-                  Panel Z: {panelZ !== undefined ? panelZ.toFixed(0) : "—"}
-                </div>
-                <div className="text-xs font-mono">
-                  Panel thickness: {panelThickness.toFixed(1)}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
       </div>
     );
   }
@@ -434,28 +383,6 @@ export function TopicsView({
             Loading chunks...
           </div>
         )}
-        <div className="absolute top-4 left-4 bg-white/90 dark:bg-black/70 text-black dark:text-white text-sm rounded-md shadow-lg">
-          <button
-            onClick={() => setIsPanelCollapsed(!isPanelCollapsed)}
-            className="w-full px-3 py-2 text-left font-medium hover:bg-black/5 dark:hover:bg-white/5 flex items-center justify-between"
-          >
-            <span>Controls</span>
-            <span className="text-xs">{isPanelCollapsed ? "▼" : "▲"}</span>
-          </button>
-          {!isPanelCollapsed && (
-            <div className="px-3 pb-2 pt-1 border-t border-black/10 dark:border-white/10">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={blurEnabled}
-                  onChange={(e) => setBlurEnabled(e.target.checked)}
-                  className="cursor-pointer"
-                />
-                <span>Enable blur layer</span>
-              </label>
-            </div>
-          )}
-        </div>
       </div>
     );
   }

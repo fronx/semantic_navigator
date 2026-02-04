@@ -15,6 +15,7 @@ import { useEdgeCurveDirections } from "@/hooks/useEdgeCurveDirections";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 import type { PCATransform } from "@/lib/semantic-colors";
 import type { SimNode, SimLink } from "@/lib/map-renderer";
+import type { ZoomPhaseConfig } from "@/lib/zoom-phase-config";
 
 export interface R3FTopicsSceneProps {
   nodes: KeywordNode[];
@@ -28,6 +29,7 @@ export interface R3FTopicsSceneProps {
   showKNNEdges?: boolean;
   panelDistanceRatio: number;
   panelThickness: number;
+  zoomPhaseConfig: ZoomPhaseConfig;
   onKeywordClick?: (keyword: string) => void;
   onProjectClick?: (projectId: string) => void;
   onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
@@ -45,6 +47,7 @@ export function R3FTopicsScene({
   showKNNEdges = false,
   panelDistanceRatio,
   panelThickness,
+  zoomPhaseConfig,
   onKeywordClick,
   onProjectClick,
   onProjectDrag,
@@ -104,7 +107,15 @@ export function R3FTopicsScene({
       />
 
       {/* Chunk layer (furthest back, z < 0) */}
-      {chunkNodes.length > 0 && <ChunkNodes chunkNodes={chunkNodes} />}
+      {chunkNodes.length > 0 && (
+        <ChunkNodes
+          chunkNodes={chunkNodes}
+          simNodes={simNodes}
+          colorMixRatio={colorMixRatio}
+          pcaTransform={pcaTransform}
+          zoomRange={zoomPhaseConfig.chunkCrossfade}
+        />
+      )}
 
       {/* Frosted glass panel (between chunks and keywords) */}
       <TransmissionPanel
@@ -144,6 +155,7 @@ export function R3FTopicsScene({
           simNodes={simNodes}
           colorMixRatio={colorMixRatio}
           pcaTransform={pcaTransform}
+          zoomRange={zoomPhaseConfig.chunkCrossfade}
           onKeywordClick={onKeywordClick}
         />
       )}

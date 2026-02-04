@@ -11,6 +11,7 @@ import { getBackgroundColor, watchThemeChanges } from "@/lib/theme";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 import type { PCATransform } from "@/lib/semantic-colors";
 import type { SimNode } from "@/lib/map-renderer";
+import type { ZoomPhaseConfig } from "@/lib/zoom-phase-config";
 
 export interface R3FTopicsCanvasProps {
   nodes: KeywordNode[];
@@ -24,6 +25,7 @@ export interface R3FTopicsCanvasProps {
   showKNNEdges?: boolean;
   panelDistanceRatio: number;
   panelThickness: number;
+  zoomPhaseConfig: ZoomPhaseConfig;
   onKeywordClick?: (keyword: string) => void;
   onProjectClick?: (projectId: string) => void;
   onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
@@ -41,6 +43,7 @@ export function R3FTopicsCanvas({
   showKNNEdges = false,
   panelDistanceRatio,
   panelThickness,
+  zoomPhaseConfig,
   onKeywordClick,
   onProjectClick,
   onProjectDrag,
@@ -81,6 +84,7 @@ export function R3FTopicsCanvas({
         showKNNEdges={showKNNEdges}
         panelDistanceRatio={panelDistanceRatio}
         panelThickness={panelThickness}
+        zoomPhaseConfig={zoomPhaseConfig}
         onKeywordClick={onKeywordClick}
         onProjectClick={onProjectClick}
         onProjectDrag={onProjectDrag}
