@@ -62,6 +62,9 @@ export function KeywordEdges({
     const geom = new THREE.BufferGeometry();
     geom.setAttribute("position", new THREE.BufferAttribute(new Float32Array(totalVertices * 3), 3));
     geom.setAttribute("color", new THREE.BufferAttribute(new Float32Array(totalVertices * 3), 3));
+    // Set a manual bounding sphere to prevent Three.js from computing it
+    // (our NaN break vertices would cause the computed radius to be NaN)
+    geom.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 10000);
     return geom;
   }, [visibleEdges.length]);
 
