@@ -14,6 +14,7 @@ import { groupNodesByCommunity } from "@/lib/hull-renderer";
 import { computeClusterColors } from "@/lib/semantic-colors";
 
 const EDGE_SEGMENTS = 16;
+const VERTICES_PER_EDGE = EDGE_SEGMENTS + 1;
 
 export interface KeywordEdgesProps {
   simNodes: SimNode[];
@@ -31,55 +32,44 @@ export function KeywordEdges({
   curveDirections,
   colorMixRatio,
   pcaTransform,
-}: KeywordEdgesProps) {
-  const geometryRef = useRef<THREE.BufferGeometry>(null);
-  const colorRef = useRef(new THREE.Color());
+}: KeywordEdgesProps): React.JSX.Element {
+  const lineRef = useRef<THREE.Line>(null);
+  const tempColor = useRef(new THREE.Color());
 
-  // Build node lookup map
   const nodeMap = useMemo(
     () => new Map(simNodes.map((n) => [n.id, n])),
     [simNodes]
   );
 
-  // Compute cluster colors from simNodes
   const clusterColors = useMemo(() => {
     if (!pcaTransform) return undefined;
     return computeClusterColors(groupNodesByCommunity(simNodes), pcaTransform);
   }, [simNodes, pcaTransform]);
 
-  // Create geometry once - allocate space for all edges
   const geometry = useMemo(() => {
-    const totalVertices = edges.length * (EDGE_SEGMENTS + 1);
-    const positions = new Float32Array(totalVertices * 3);
-    const colors = new Float32Array(totalVertices * 3);
-
+    const totalVertices = edges.length * VERTICES_PER_EDGE;
     const geom = new THREE.BufferGeometry();
-    geom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    geom.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-
+    geom.setAttribute("position", new THREE.BufferAttribute(new Float32Array(totalVertices * 3), 3));
+    geom.setAttribute("color", new THREE.BufferAttribute(new Float32Array(totalVertices * 3), 3));
     return geom;
   }, [edges.length]);
 
-  // Update positions and colors every frame
   useFrame(() => {
-    if (!geometryRef.current) return;
+    const line = lineRef.current;
+    if (!line) return;
 
-    const posArray = geometryRef.current.attributes.position.array as Float32Array;
-    const colArray = geometryRef.current.attributes.color.array as Float32Array;
+    const posArray = line.geometry.attributes.position.array as Float32Array;
+    const colArray = line.geometry.attributes.color.array as Float32Array;
 
-    edges.forEach((edge, edgeIndex) => {
-      // Get source/target nodes
+    for (let edgeIndex = 0; edgeIndex < edges.length; edgeIndex++) {
+      const edge = edges[edgeIndex];
       const sourceId = typeof edge.source === "string" ? edge.source : edge.source.id;
       const targetId = typeof edge.target === "string" ? edge.target : edge.target.id;
       const sourceNode = nodeMap.get(sourceId);
       const targetNode = nodeMap.get(targetId);
-      if (!sourceNode || !targetNode) return;
+      if (!sourceNode || !targetNode) continue;
 
-      // Get curve direction for this edge
-      const edgeKey = `${sourceId}->${targetId}`;
-      const direction = curveDirections.get(edgeKey) ?? 1;
-
-      // Compute arc points using shared logic
+      const direction = curveDirections.get(`${sourceId}->${targetId}`) ?? 1;
       const arcPoints = computeArcPoints(
         { x: sourceNode.x ?? 0, y: sourceNode.y ?? 0 },
         { x: targetNode.x ?? 0, y: targetNode.y ?? 0 },
@@ -88,42 +78,27 @@ export function KeywordEdges({
         EDGE_SEGMENTS
       );
 
-      // Write positions to buffer
-      const offset = edgeIndex * (EDGE_SEGMENTS + 1) * 3;
-      arcPoints.forEach((p, i) => {
-        posArray[offset + i * 3] = p.x;
-        posArray[offset + i * 3 + 1] = p.y;
-        posArray[offset + i * 3 + 2] = 0;
-      });
+      const baseOffset = edgeIndex * VERTICES_PER_EDGE * 3;
+      for (let i = 0; i < arcPoints.length; i++) {
+        const idx = baseOffset + i * 3;
+        posArray[idx] = arcPoints[i].x;
+        posArray[idx + 1] = arcPoints[i].y;
+        posArray[idx + 2] = 0;
+      }
 
-      // Get edge color using shared logic
-      const colorStr = getEdgeColor(
-        edge,
-        nodeMap,
-        pcaTransform,
-        clusterColors,
-        colorMixRatio
-      );
-      colorRef.current.set(colorStr);
+      tempColor.current.set(getEdgeColor(edge, nodeMap, pcaTransform, clusterColors, colorMixRatio));
+      for (let i = 0; i < arcPoints.length; i++) {
+        tempColor.current.toArray(colArray, baseOffset + i * 3);
+      }
+    }
 
-      // Write colors to buffer (per-vertex, all same color)
-      arcPoints.forEach((_, i) => {
-        colorRef.current.toArray(colArray, offset + i * 3);
-      });
-    });
-
-    geometryRef.current.attributes.position.needsUpdate = true;
-    geometryRef.current.attributes.color.needsUpdate = true;
+    line.geometry.attributes.position.needsUpdate = true;
+    line.geometry.attributes.color.needsUpdate = true;
   });
 
   return (
-    <lineSegments ref={geometryRef} geometry={geometry} renderOrder={-1}>
-      <lineBasicMaterial
-        vertexColors
-        transparent
-        opacity={0.4}
-        depthTest={false}
-      />
-    </lineSegments>
+    <line ref={lineRef} geometry={geometry} renderOrder={-1}>
+      <lineBasicMaterial vertexColors transparent opacity={0.4} depthTest={false} />
+    </line>
   );
 }

@@ -23,17 +23,22 @@ import { computeArcPoints } from "@/lib/edge-curves";
 const ARC_SEGMENTS = 20;
 
 // ============================================================================
-// Edge type detection
+// Helpers
 // ============================================================================
+
+/** Extract source/target IDs from a SimLink (handles both string and object forms) */
+function getLinkIds(link: SimLink): { sourceId: string; targetId: string } {
+  return {
+    sourceId: typeof link.source === "string" ? link.source : link.source.id,
+    targetId: typeof link.target === "string" ? link.target : link.target.id,
+  };
+}
 
 /**
  * Check if an edge is a containment edge connecting a keyword to a chunk.
- * Returns true if one endpoint is a keyword and the other is a chunk.
  */
 function isChunkContainmentEdge(link: SimLink, nodeMap: Map<string, SimNode>): boolean {
-  const sourceId = typeof link.source === "string" ? link.source : link.source.id;
-  const targetId = typeof link.target === "string" ? link.target : link.target.id;
-
+  const { sourceId, targetId } = getLinkIds(link);
   const sourceNode = nodeMap.get(sourceId);
   const targetNode = nodeMap.get(targetId);
 
@@ -108,8 +113,7 @@ export function createEdgeRenderer(options: EdgeRendererOptions): EdgeRenderer {
   let currentBaseDim = 0.3;
 
   function getLinkKey(link: SimLink): string {
-    const sourceId = typeof link.source === "string" ? link.source : link.source.id;
-    const targetId = typeof link.target === "string" ? link.target : link.target.id;
+    const { sourceId, targetId } = getLinkIds(link);
     return `${sourceId}->${targetId}`;
   }
 
@@ -224,18 +228,20 @@ export function createEdgeRenderer(options: EdgeRendererOptions): EdgeRenderer {
       const originalColor = edgeColorCache.get(linkKey);
       if (!originalColor) continue;
 
-      // Parse linkKey to get source and target IDs
       const [sourceId, targetId] = linkKey.split("->");
-      const bothHighlighted = (highlightedIds?.has(sourceId) ?? false) && (highlightedIds?.has(targetId) ?? false);
+      const bothHighlighted = highlightedIds?.has(sourceId) && highlightedIds?.has(targetId);
 
-      // Edges are "highlighted" only if both endpoints are
-      const dimAmount = highlightedIds === null ? currentBaseDim :
-                        highlightedIds.size > 0 ? (bothHighlighted ? 0 : currentBaseDim) :
-                        0;
+      // Determine dim amount based on highlight state
+      let dimAmount = 0;
+      if (highlightedIds === null) {
+        dimAmount = currentBaseDim;
+      } else if (highlightedIds.size > 0 && !bothHighlighted) {
+        dimAmount = currentBaseDim;
+      }
 
       const mat = linkObj.material as LineMaterial;
-      const dimmedColor = dimAmount > 0 ? dimColor(originalColor, dimAmount, backgroundColor) : originalColor;
-      mat.color.set(dimmedColor);
+      const finalColor = dimAmount > 0 ? dimColor(originalColor, dimAmount, backgroundColor) : originalColor;
+      mat.color.set(finalColor);
     }
   }
 

@@ -9,9 +9,11 @@ import { ForceSimulation } from "./ForceSimulation";
 import { KeywordNodes } from "./KeywordNodes";
 import { ChunkNodes } from "./ChunkNodes";
 import { TransmissionPanel } from "./TransmissionPanel";
+import { KeywordEdges } from "./KeywordEdges";
+import { useEdgeCurveDirections } from "@/hooks/useEdgeCurveDirections";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 import type { PCATransform } from "@/lib/semantic-colors";
-import type { SimNode } from "@/lib/map-renderer";
+import type { SimNode, SimLink } from "@/lib/map-renderer";
 
 export interface R3FTopicsSceneProps {
   nodes: KeywordNode[];
@@ -47,6 +49,9 @@ export function R3FTopicsScene({
   // Simulation nodes shared between ForceSimulation and KeywordNodes
   const [simNodes, setSimNodes] = useState<SimNode[]>([]);
 
+  // Compute curve directions (cached, only updates when nodes/edges change)
+  const curveDirections = useEdgeCurveDirections(simNodes, edges as SimLink[]);
+
   return (
     <>
       <CameraController onZoomChange={onZoomChange} />
@@ -66,6 +71,18 @@ export function R3FTopicsScene({
         distanceRatio={panelDistanceRatio}
         thickness={panelThickness}
       />
+
+      {/* Edges - single merged geometry for performance */}
+      {simNodes.length > 0 && edges.length > 0 && (
+        <KeywordEdges
+          simNodes={simNodes}
+          edges={edges as SimLink[]}
+          curveIntensity={0.25}
+          curveDirections={curveDirections}
+          colorMixRatio={colorMixRatio}
+          pcaTransform={pcaTransform ?? undefined}
+        />
+      )}
 
       {/* Keyword layer (front, z = 0) */}
       {simNodes.length > 0 && (
