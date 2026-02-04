@@ -96,6 +96,9 @@ export function TopicsView({
   // Blur layer toggle for debugging
   const [blurEnabled, setBlurEnabled] = useState(true);
 
+  // k-NN edge visibility toggle (k-NN edges only affect force, usually hidden)
+  const [showKNNEdges, setShowKNNEdges] = useState(false);
+
   // Calculate panel distance ratio automatically based on camera zoom level
   // This creates a fade effect: keywords blur out at medium distance, clear up when close
   const panelDistanceRatio = cameraZ !== undefined ? calculatePanelRatio(cameraZ) : 0.5;
@@ -357,6 +360,7 @@ export function TopicsView({
           colorMixRatio={colorMixRatio}
           pcaTransform={pcaTransform}
           blurEnabled={blurEnabled}
+          showKNNEdges={showKNNEdges}
           panelDistanceRatio={panelDistanceRatio}
           panelThickness={panelThickness}
           onKeywordClick={handleKeywordClick}
@@ -387,6 +391,15 @@ export function TopicsView({
                   className="cursor-pointer"
                 />
                 <span>Enable blur layer</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showKNNEdges}
+                  onChange={(e) => setShowKNNEdges(e.target.checked)}
+                  className="cursor-pointer"
+                />
+                <span>Show k-NN edges</span>
               </label>
               <div className="pt-2 border-t border-black/10 dark:border-white/10 space-y-1">
                 <div className="text-xs font-mono">

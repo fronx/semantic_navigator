@@ -26,6 +26,8 @@ export interface SimLink extends d3.SimulationLinkDatum<SimNode> {
   source: SimNode | string;
   target: SimNode | string;
   similarity?: number;
+  /** True if this is a k-NN connectivity edge (should not be rendered, only affects force) */
+  isKNN?: boolean;
 }
 
 export interface RendererCallbacks {

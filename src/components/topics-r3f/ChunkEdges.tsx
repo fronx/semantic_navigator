@@ -93,6 +93,11 @@ export function ChunkEdges({
     const cameraZ = camera.position.z;
     const opacity = calculateChunkEdgeOpacity(cameraZ);
 
+    // Debug: log occasionally
+    if (Math.random() < 0.01) {
+      console.log(`ChunkEdges: cameraZ=${cameraZ.toFixed(1)}, opacity=${opacity.toFixed(3)}`);
+    }
+
     // Update material opacity
     const material = line.material as THREE.LineBasicMaterial;
     material.opacity = opacity;

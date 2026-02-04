@@ -20,6 +20,8 @@ export interface R3FTopicsCanvasProps {
   colorMixRatio: number;
   pcaTransform: PCATransform | null;
   blurEnabled?: boolean;
+  /** Show k-NN connectivity edges (usually hidden, only affect force simulation) */
+  showKNNEdges?: boolean;
   panelDistanceRatio: number;
   panelThickness: number;
   onKeywordClick?: (keyword: string) => void;
@@ -36,6 +38,7 @@ export function R3FTopicsCanvas({
   colorMixRatio,
   pcaTransform,
   blurEnabled = true,
+  showKNNEdges = false,
   panelDistanceRatio,
   panelThickness,
   onKeywordClick,
@@ -75,6 +78,7 @@ export function R3FTopicsCanvas({
         colorMixRatio={colorMixRatio}
         pcaTransform={pcaTransform}
         blurEnabled={blurEnabled}
+        showKNNEdges={showKNNEdges}
         panelDistanceRatio={panelDistanceRatio}
         panelThickness={panelThickness}
         onKeywordClick={onKeywordClick}

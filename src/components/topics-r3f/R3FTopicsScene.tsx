@@ -24,6 +24,8 @@ export interface R3FTopicsSceneProps {
   colorMixRatio: number;
   pcaTransform: PCATransform | null;
   blurEnabled?: boolean;
+  /** Show k-NN connectivity edges (usually hidden, only affect force simulation) */
+  showKNNEdges?: boolean;
   panelDistanceRatio: number;
   panelThickness: number;
   onKeywordClick?: (keyword: string) => void;
@@ -40,6 +42,7 @@ export function R3FTopicsScene({
   colorMixRatio,
   pcaTransform,
   blurEnabled = true,
+  showKNNEdges = false,
   panelDistanceRatio,
   panelThickness,
   onKeywordClick,
@@ -50,29 +53,45 @@ export function R3FTopicsScene({
   // Simulation nodes shared between ForceSimulation and KeywordNodes
   const [simNodes, setSimNodes] = useState<SimNode[]>([]);
 
-  // Create containment edges (keyword → chunk) from chunk parentId
-  const containmentEdges = useMemo(() => {
-    const edges: SimLink[] = [];
-    for (const chunk of chunkNodes) {
-      const parentId = (chunk as any).parentId;
-      if (parentId) {
-        edges.push({
-          source: parentId,
-          target: chunk.id,
-        });
+  // Compute curve directions ONLY for similarity edges
+  const curveDirections = useEdgeCurveDirections(simNodes, edges as SimLink[]);
+
+  // Debug: check for duplicate and bidirectional edges
+  if (edges.length > 0 && Math.random() < 0.1) {
+    const edgeKeys = new Set<string>();
+    const duplicates: string[] = [];
+    const bidirectional: string[] = [];
+    let knnCount = 0;
+
+    for (const edge of edges as SimLink[]) {
+      const sourceId = typeof edge.source === "string" ? edge.source : (edge.source as any).id;
+      const targetId = typeof edge.target === "string" ? edge.target : (edge.target as any).id;
+      const key = `${sourceId}->${targetId}`;
+      const reverseKey = `${targetId}->${sourceId}`;
+
+      if (edge.isKNN) knnCount++;
+
+      // Check for exact duplicate
+      if (edgeKeys.has(key)) {
+        duplicates.push(key);
       }
+
+      // Check for bidirectional edge
+      if (edgeKeys.has(reverseKey)) {
+        bidirectional.push(`${sourceId}<->${targetId}`);
+      }
+
+      edgeKeys.add(key);
     }
-    return edges;
-  }, [chunkNodes]);
 
-  // Combine all edges for curve direction calculation
-  const allEdges = useMemo(
-    () => [...(edges as SimLink[]), ...containmentEdges],
-    [edges, containmentEdges]
-  );
-
-  // Compute curve directions for all edges (cached, only updates when nodes/edges change)
-  const curveDirections = useEdgeCurveDirections(simNodes, allEdges);
+    if (duplicates.length > 0) {
+      console.warn(`Duplicate edges found:`, duplicates);
+    }
+    if (bidirectional.length > 0) {
+      console.warn(`Bidirectional edges found (both A->B and B->A):`, bidirectional.slice(0, 10));
+    }
+    console.log(`Total edges: ${edges.length}, Unique: ${edgeKeys.size}, Bidirectional pairs: ${bidirectional.length}, k-NN edges: ${knnCount}`);
+  }
 
   return (
     <>
@@ -95,7 +114,7 @@ export function R3FTopicsScene({
       />
 
       {/* Chunk containment edges (keyword → chunk) - fade with zoom */}
-      {simNodes.length > 0 && chunkNodes.length > 0 && (
+      {false && simNodes.length > 0 && chunkNodes.length > 0 && (
         <ChunkEdges
           simNodes={simNodes}
           chunkNodes={chunkNodes}
@@ -115,6 +134,7 @@ export function R3FTopicsScene({
           curveDirections={curveDirections}
           colorMixRatio={colorMixRatio}
           pcaTransform={pcaTransform ?? undefined}
+          showKNNEdges={showKNNEdges}
         />
       )}
 
