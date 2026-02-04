@@ -23,6 +23,7 @@ export interface TopicsSettings {
   blurEnabled: boolean;
   showKNNEdges: boolean;
   chunkZDepth: number;
+  dynamicClustering: boolean;
 
   // UI state
   sidebarCollapsed: boolean;
@@ -43,6 +44,7 @@ const DEFAULT_SETTINGS: TopicsSettings = {
   blurEnabled: true,
   showKNNEdges: true,
   chunkZDepth: -150,
+  dynamicClustering: true,
   sidebarCollapsed: false,
   sectionStates: {
     Renderer: true,

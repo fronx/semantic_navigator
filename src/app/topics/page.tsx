@@ -41,10 +41,38 @@ export default function TopicsPage() {
   // Zoom scale (not persisted - derived from camera position)
   const [zoomScale, setZoomScale] = useState(1);
 
+  // Track cluster count for debug display
+  const [clusterCount, setClusterCount] = useState(0);
+
+  // Frozen resolution for when dynamic clustering is disabled
+  const [frozenResolution, setFrozenResolution] = useState<number | null>(null);
+
   // Derive cluster resolution from zoom + slider
+  // Resolution determines cluster granularity (higher = more clusters)
+  // Use quadratic scaling: visible area decreases with zoom², so cluster count should increase quadratically
+  // - Zoomed out (zoomScale ~0.03): ~7 clusters
+  // - Medium zoom (zoomScale ~0.1): ~20-24 clusters
+  // - Zoomed in (zoomScale ~1): ~32+ clusters
   const nodeCount = data?.nodes.length ?? 100;
-  const maxResolution = Math.max(2, nodeCount / 30);
-  const effectiveResolution = Math.max(0.3, Math.min(maxResolution, zoomScale * settings.clusterSensitivity));
+  const maxResolution = Math.max(2, nodeCount / 15); // Allow up to ~32 clusters with 489 nodes
+
+  // Calculate dynamic resolution based on current zoom
+  const dynamicResolution = Math.max(0.05, Math.min(maxResolution, Math.pow(zoomScale, 2) * settings.clusterSensitivity * 50));
+
+  // When dynamic clustering is toggled off, freeze the current resolution
+  useEffect(() => {
+    if (!settings.dynamicClustering && frozenResolution === null) {
+      // Turning off for the first time - freeze current resolution
+      setFrozenResolution(dynamicResolution);
+    } else if (settings.dynamicClustering && frozenResolution !== null) {
+      // Turning back on - clear frozen state
+      setFrozenResolution(null);
+    }
+  }, [settings.dynamicClustering, dynamicResolution, frozenResolution]);
+
+  // Use frozen resolution when dynamic clustering is off, otherwise use dynamic
+  const effectiveResolution = settings.dynamicClustering ? dynamicResolution : (frozenResolution ?? dynamicResolution);
+
   const debouncedClusterResolution = useDebouncedValue(effectiveResolution, 300);
 
   // Project filtering
@@ -337,6 +365,13 @@ export default function TopicsPage() {
           cameraZ={currentCameraZ}
           chunkZDepth={settings.chunkZDepth}
           onChunkZDepthChange={(value) => update("chunkZDepth", value)}
+          clusterResolutionDebug={{
+            zoomScale,
+            effectiveResolution,
+            debouncedResolution: debouncedClusterResolution,
+            nodeCount,
+            clusterCount,
+          }}
         />
         <div className="flex-1 relative min-w-0 overflow-hidden">
           <TopicsView
@@ -347,6 +382,7 @@ export default function TopicsPage() {
             contrast={settings.contrast}
             clusterResolution={debouncedClusterResolution}
             colorMixRatio={settings.colorMixRatio}
+            onClusterCountChange={setClusterCount}
             hoverConfig={{
               similarityThreshold: settings.hoverSimilarity,
               baseDim: settings.baseDim,

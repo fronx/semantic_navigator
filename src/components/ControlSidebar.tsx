@@ -145,6 +145,13 @@ export interface ControlSidebarProps {
   cameraZ?: number;
   chunkZDepth?: number;
   onChunkZDepthChange?: (value: number) => void;
+  clusterResolutionDebug?: {
+    zoomScale: number;
+    effectiveResolution: number;
+    debouncedResolution: number;
+    nodeCount: number;
+    clusterCount: number;
+  };
 }
 
 export function ControlSidebar({
@@ -155,6 +162,7 @@ export function ControlSidebar({
   cameraZ,
   chunkZDepth = -150,
   onChunkZDepthChange,
+  clusterResolutionDebug,
 }: ControlSidebarProps) {
   const section = (title: string) => ({
     title,
@@ -205,6 +213,11 @@ export function ControlSidebar({
               label="Show k-NN edges"
               checked={settings.showKNNEdges}
               onChange={(v) => update("showKNNEdges", v)}
+            />
+            <Checkbox
+              label="Dynamic clustering"
+              checked={settings.dynamicClustering ?? true}
+              onChange={(v) => update("dynamicClustering", v)}
             />
           </Section>
 
@@ -385,6 +398,16 @@ export function ControlSidebar({
               <div>
                 Zoom: {cameraZ !== undefined ? `${(CAMERA_Z_SCALE_BASE / cameraZ).toFixed(2)}x` : "—"}
               </div>
+              {clusterResolutionDebug && (
+                <>
+                  <div className="pt-1 border-t border-zinc-300 dark:border-zinc-600 mt-1" />
+                  <div>Zoom scale: {clusterResolutionDebug.zoomScale.toFixed(2)}</div>
+                  <div>Nodes: {clusterResolutionDebug.nodeCount}</div>
+                  <div>Effective res: {clusterResolutionDebug.effectiveResolution.toFixed(2)}</div>
+                  <div>Debounced res: {clusterResolutionDebug.debouncedResolution.toFixed(2)}</div>
+                  <div>Clusters: {clusterResolutionDebug.clusterCount}</div>
+                </>
+              )}
             </div>
           </Section>
         </div>

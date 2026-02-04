@@ -68,6 +68,8 @@ export interface TopicsViewProps {
   showKNNEdges?: boolean;
   /** Z-depth offset for chunk nodes (negative = behind keywords) */
   chunkZDepth?: number;
+  /** Callback when cluster count changes */
+  onClusterCountChange?: (count: number) => void;
 }
 
 // ============================================================================
@@ -95,6 +97,7 @@ export function TopicsView({
   blurEnabled = true,
   showKNNEdges = false,
   chunkZDepth = -150,
+  onClusterCountChange,
 }: TopicsViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -166,6 +169,13 @@ export function TopicsView({
     clusterResolution,
     { onError }
   );
+
+  // Report cluster count changes
+  useEffect(() => {
+    if (onClusterCountChange) {
+      onClusterCountChange(baseClusters.size);
+    }
+  }, [baseClusters.size, onClusterCountChange]);
 
   // PCA transform for stable semantic colors
   const [pcaTransform, setPcaTransform] = useState<PCATransform | null>(null);
@@ -317,10 +327,14 @@ export function TopicsView({
         hubToCluster.set(cluster.hub, { clusterId, hub: cluster.hub });
       }
 
-      // Update hullLabel and communityMembers on R3F nodes (for label rendering)
+      // Update communityId, hullLabel and communityMembers on R3F nodes (for label rendering)
       const r3fNodes = r3fRendererResult.labelsRef.current.getNodes();
       for (const node of r3fNodes) {
         if (node.type !== "keyword") continue;
+
+        // Update communityId from nodeToCluster map
+        node.communityId = nodeToCluster.get(node.id);
+
         const clusterInfo = hubToCluster.get(node.label);
         if (clusterInfo) {
           const cluster = baseClusters.get(clusterInfo.clusterId);

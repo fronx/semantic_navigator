@@ -2,6 +2,7 @@
 
 ## Guides
 
+- [Clustering Systems](guides/clustering-systems.md) - Understanding the two clustering systems (MapView vs TopicsView), inspection tools, and maintenance
 - [Local NPM Packages](guides/local-npm-packages.md) - Developing with locally checked-out packages (umapper)
 
 ## Patterns

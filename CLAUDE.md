@@ -61,14 +61,14 @@ Semantic Navigator is a knowledge base tool that imports markdown files, atomize
 - Each chunk has extracted keywords for enhanced search
 - Keywords have their own embeddings (`vector(1536)`) for semantic matching
 - Linked to nodes (chunk or article) via `node_id` foreign key; `node_type` denormalized for efficient filtering
-- Used in both search (similarity matching) and the Map view (article clustering)
+- Used in both search (similarity matching) and visualization (clustering)
 
-**Keyword Communities** (stored in `keyword_communities` table):
-- Louvain community detection groups semantically similar keywords
-- 8 resolution levels (0=coarsest ~22 clusters, 7=finest ~374 clusters) for semantic zooming
-- Each level has its own hub keyword per community
-- Computed by `scripts/compute-keyword-communities.ts`
-- Similarity edges stored in `keyword_similarities` table (threshold > 0.7)
+**Clustering Systems**:
+- Semantic Navigator has **two clustering systems** serving different views
+- **MapView** uses `keyword_communities` table (Louvain, 8 levels) - for article-keyword bipartite graphs
+- **TopicsView** uses `precomputed_topic_clusters` table (Leiden, 8 resolutions) - for pure keyword graphs with client-side fallback
+- See [Clustering Systems Guide](docs/guides/clustering-systems.md) for inspection tools, maintenance, and detailed comparison
+- Inspect current state: `npm run script scripts/inspect-keyword-communities.ts`
 
 ### Core Files
 
