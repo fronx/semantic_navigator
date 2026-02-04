@@ -45,7 +45,7 @@ export function ChunkNodes({ chunkNodes }: ChunkNodesProps) {
 
   return (
     <instancedMesh ref={meshRef} args={[geometry, undefined, chunkNodes.length]}>
-      <meshBasicMaterial color="#e0e0e0" transparent opacity={0.6} depthTest={false} />
+      <meshBasicMaterial color="#e0e0e0" transparent opacity={1.0} depthTest={false} />
     </instancedMesh>
   );
 }

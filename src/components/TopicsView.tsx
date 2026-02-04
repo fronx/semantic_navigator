@@ -11,11 +11,15 @@ import { useThreeTopicsRenderer } from "@/hooks/useThreeTopicsRenderer";
 import { useR3FTopicsRenderer } from "@/hooks/useR3FTopicsRenderer";
 import { useChunkLoading } from "@/hooks/useChunkLoading";
 import { R3FTopicsCanvas } from "@/components/topics-r3f/R3FTopicsCanvas";
+import { createChunkNodes, applyConstrainedForces } from "@/lib/chunk-layout";
+import { convertToThreeNodes } from "@/lib/topics-graph-nodes";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 import { loadPCATransform, type PCATransform } from "@/lib/semantic-colors";
 import type { BaseRendererOptions } from "@/lib/renderer-types";
+import type { SimNode } from "@/lib/map-renderer";
 import { CAMERA_Z_SCALE_BASE } from "@/lib/three/camera-controller";
 import type { ZoomPhaseConfig } from "@/lib/zoom-phase-config";
+import { calculatePanelRatio, calculatePanelThickness } from "@/lib/transmission-panel-config";
 
 // ============================================================================
 // Types
@@ -92,6 +96,21 @@ export function TopicsView({
   // Blur layer toggle for debugging
   const [blurEnabled, setBlurEnabled] = useState(true);
 
+  // Calculate panel distance ratio automatically based on camera zoom level
+  // This creates a fade effect: keywords blur out at medium distance, clear up when close
+  const panelDistanceRatio = cameraZ !== undefined ? calculatePanelRatio(cameraZ) : 0.5;
+
+  // Calculate panel material thickness (controls blur strength)
+  // Thickness ramps from 0 (no blur) to 20 (full blur) as camera approaches threshold
+  const panelThickness = cameraZ !== undefined ? calculatePanelThickness(cameraZ) : 0;
+
+  // Calculate absolute panel Z position for debug display
+  // panel.z = camera.z * ratio (0% = at keywords z=0, 100% = at camera)
+  const panelZ = cameraZ !== undefined ? cameraZ * panelDistanceRatio : undefined;
+
+  // UI panel collapse state
+  const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
+
   // Filter state management (click-to-filter, external filter, position preservation)
   const {
     activeNodes,
@@ -124,7 +143,7 @@ export function TopicsView({
 
   // Stable callbacks - won't trigger effect re-runs when parent re-renders
   const handleZoomChange = useStableCallback((zoomScale: number) => {
-    if (rendererType === "three" && Number.isFinite(zoomScale) && zoomScale > 0) {
+    if ((rendererType === "three" || rendererType === "r3f") && Number.isFinite(zoomScale) && zoomScale > 0) {
       setCameraZ(CAMERA_Z_SCALE_BASE / zoomScale);
     }
     onZoomChange?.(zoomScale);
@@ -300,6 +319,33 @@ export function TopicsView({
     d3RendererResult.rendererRef.current.updateVisuals();
   }, [colorMixRatio, d3RendererResult.rendererRef, d3RendererResult.immediateParamsRef]);
 
+  // Create chunk nodes for R3F renderer (similar to Three.js renderer)
+  const r3fChunkNodes = useMemo((): SimNode[] => {
+    if (rendererType !== "r3f" || !chunksByKeyword || chunksByKeyword.size === 0) {
+      return [];
+    }
+
+    // Convert keyword nodes to SimNodes (we need positions for chunk layout)
+    const { mapNodes } = convertToThreeNodes({
+      keywordNodes: activeNodes,
+      edges: activeEdges,
+      projectNodes: projectNodesRef.current,
+      width: 1000,
+      height: 1000,
+      getSavedPosition: () => undefined,
+    });
+
+    const keywordSimNodes = mapNodes.filter(n => n.type === "keyword");
+    const { chunkNodes } = createChunkNodes(keywordSimNodes, chunksByKeyword);
+
+    // Apply constrained forces to position chunks around keywords
+    const keywordMap = new Map<string, SimNode>(keywordSimNodes.map(n => [n.id, n]));
+    const keywordRadius = 5;
+    applyConstrainedForces(chunkNodes, keywordMap, keywordRadius);
+
+    return chunkNodes;
+  }, [rendererType, activeNodes, activeEdges, chunksByKeyword, projectNodesRef]);
+
   if (rendererType === "r3f") {
     return (
       <div className="w-full h-full relative">
@@ -307,13 +353,58 @@ export function TopicsView({
           nodes={activeNodes}
           edges={activeEdges}
           projectNodes={projectNodes}
+          chunkNodes={r3fChunkNodes}
           colorMixRatio={colorMixRatio}
           pcaTransform={pcaTransform}
+          blurEnabled={blurEnabled}
+          panelDistanceRatio={panelDistanceRatio}
+          panelThickness={panelThickness}
           onKeywordClick={handleKeywordClick}
           onProjectClick={handleProjectClick}
           onProjectDrag={handleProjectDrag}
           onZoomChange={handleZoomChange}
         />
+        {isLoading && (
+          <div className="absolute top-4 right-4 px-3 py-2 bg-black/70 text-white text-sm rounded-md">
+            Loading chunks...
+          </div>
+        )}
+        <div className="absolute top-4 left-4 bg-white/90 dark:bg-black/70 text-black dark:text-white text-sm rounded-md shadow-lg">
+          <button
+            onClick={() => setIsPanelCollapsed(!isPanelCollapsed)}
+            className="w-full px-3 py-2 text-left font-medium hover:bg-black/5 dark:hover:bg-white/5 flex items-center justify-between"
+          >
+            <span>Controls</span>
+            <span className="text-xs">{isPanelCollapsed ? "▼" : "▲"}</span>
+          </button>
+          {!isPanelCollapsed && (
+            <div className="px-3 pb-2 pt-1 space-y-3 border-t border-black/10 dark:border-white/10">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={blurEnabled}
+                  onChange={(e) => setBlurEnabled(e.target.checked)}
+                  className="cursor-pointer"
+                />
+                <span>Enable blur layer</span>
+              </label>
+              <div className="pt-2 border-t border-black/10 dark:border-white/10 space-y-1">
+                <div className="text-xs font-mono">
+                  Camera Z: {cameraZ !== undefined ? cameraZ.toFixed(0) : "—"}
+                </div>
+                <div className="text-xs font-mono">
+                  Panel ratio: {(panelDistanceRatio * 100).toFixed(0)}%
+                </div>
+                <div className="text-xs font-mono">
+                  Panel Z: {panelZ !== undefined ? panelZ.toFixed(0) : "—"}
+                </div>
+                <div className="text-xs font-mono">
+                  Panel thickness: {panelThickness.toFixed(1)}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     );
   }
@@ -330,16 +421,27 @@ export function TopicsView({
             Loading chunks...
           </div>
         )}
-        <div className="absolute top-4 left-4 px-3 py-2 bg-white/90 text-black text-sm rounded-md shadow-lg">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={blurEnabled}
-              onChange={(e) => setBlurEnabled(e.target.checked)}
-              className="cursor-pointer"
-            />
-            <span>Enable blur layer</span>
-          </label>
+        <div className="absolute top-4 left-4 bg-white/90 dark:bg-black/70 text-black dark:text-white text-sm rounded-md shadow-lg">
+          <button
+            onClick={() => setIsPanelCollapsed(!isPanelCollapsed)}
+            className="w-full px-3 py-2 text-left font-medium hover:bg-black/5 dark:hover:bg-white/5 flex items-center justify-between"
+          >
+            <span>Controls</span>
+            <span className="text-xs">{isPanelCollapsed ? "▼" : "▲"}</span>
+          </button>
+          {!isPanelCollapsed && (
+            <div className="px-3 pb-2 pt-1 border-t border-black/10 dark:border-white/10">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={blurEnabled}
+                  onChange={(e) => setBlurEnabled(e.target.checked)}
+                  className="cursor-pointer"
+                />
+                <span>Enable blur layer</span>
+              </label>
+            </div>
+          )}
         </div>
       </div>
     );

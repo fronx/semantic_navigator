@@ -21,6 +21,8 @@ export interface R3FTopicsSceneProps {
   colorMixRatio: number;
   pcaTransform: PCATransform | null;
   blurEnabled?: boolean;
+  panelDistanceRatio: number;
+  panelThickness: number;
   onKeywordClick?: (keyword: string) => void;
   onProjectClick?: (projectId: string) => void;
   onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
@@ -35,6 +37,8 @@ export function R3FTopicsScene({
   colorMixRatio,
   pcaTransform,
   blurEnabled = true,
+  panelDistanceRatio,
+  panelThickness,
   onKeywordClick,
   onProjectClick,
   onProjectDrag,
@@ -57,7 +61,11 @@ export function R3FTopicsScene({
       {chunkNodes.length > 0 && <ChunkNodes chunkNodes={chunkNodes} />}
 
       {/* Frosted glass panel (between chunks and keywords) */}
-      <TransmissionPanel enabled={blurEnabled && chunkNodes.length > 0} />
+      <TransmissionPanel
+        enabled={blurEnabled && chunkNodes.length > 0}
+        distanceRatio={panelDistanceRatio}
+        thickness={panelThickness}
+      />
 
       {/* Keyword layer (front, z = 0) */}
       {simNodes.length > 0 && (

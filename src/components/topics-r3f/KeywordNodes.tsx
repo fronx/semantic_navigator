@@ -74,7 +74,7 @@ export function KeywordNodes({
         }
       }}
     >
-      <meshBasicMaterial depthTest={false} transparent />
+      {/* <meshBasicMaterial transparent /> */}
     </instancedMesh>
   );
 }

@@ -5,6 +5,7 @@
 
 import { useState, useEffect } from "react";
 import { Canvas } from "@react-three/fiber";
+import { Environment } from "@react-three/drei";
 import { R3FTopicsScene } from "./R3FTopicsScene";
 import { getBackgroundColor, watchThemeChanges } from "@/lib/theme";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
@@ -19,6 +20,8 @@ export interface R3FTopicsCanvasProps {
   colorMixRatio: number;
   pcaTransform: PCATransform | null;
   blurEnabled?: boolean;
+  panelDistanceRatio: number;
+  panelThickness: number;
   onKeywordClick?: (keyword: string) => void;
   onProjectClick?: (projectId: string) => void;
   onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
@@ -33,6 +36,8 @@ export function R3FTopicsCanvas({
   colorMixRatio,
   pcaTransform,
   blurEnabled = true,
+  panelDistanceRatio,
+  panelThickness,
   onKeywordClick,
   onProjectClick,
   onProjectDrag,
@@ -60,6 +65,7 @@ export function R3FTopicsCanvas({
     >
       <color attach="background" args={[backgroundColor]} />
       <ambientLight intensity={1} />
+      <Environment preset="city" />
 
       <R3FTopicsScene
         nodes={nodes}
@@ -69,6 +75,8 @@ export function R3FTopicsCanvas({
         colorMixRatio={colorMixRatio}
         pcaTransform={pcaTransform}
         blurEnabled={blurEnabled}
+        panelDistanceRatio={panelDistanceRatio}
+        panelThickness={panelThickness}
         onKeywordClick={onKeywordClick}
         onProjectClick={onProjectClick}
         onProjectDrag={onProjectDrag}
