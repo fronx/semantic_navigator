@@ -305,7 +305,33 @@ export function TopicsView({
       // Update cluster labels after setting hullLabel
       threeRendererResult.threeRendererRef.current.updateClusterLabels();
     }
-  }, [nodeToCluster, baseClusters, labels, rendererType, keywordNodes, d3RendererResult.simulationNodesRef, d3RendererResult.rendererRef, threeRendererResult.threeRendererRef]);
+
+    // Handle R3F renderer
+    if (rendererType === "r3f" && r3fRendererResult.labelsRef.current) {
+      const hubToCluster = new Map<string, { clusterId: number; hub: string }>();
+      for (const [clusterId, cluster] of baseClusters) {
+        hubToCluster.set(cluster.hub, { clusterId, hub: cluster.hub });
+      }
+
+      // Update hullLabel and communityMembers on R3F nodes (for label rendering)
+      const r3fNodes = r3fRendererResult.labelsRef.current.getNodes();
+      for (const node of r3fNodes) {
+        if (node.type !== "keyword") continue;
+        const clusterInfo = hubToCluster.get(node.label);
+        if (clusterInfo) {
+          const cluster = baseClusters.get(clusterInfo.clusterId);
+          node.communityMembers = cluster ? [node.label] : undefined;
+          node.hullLabel = labels[clusterInfo.clusterId] || clusterInfo.hub;
+        } else {
+          node.communityMembers = undefined;
+          node.hullLabel = undefined;
+        }
+      }
+
+      // Update cluster labels after setting hullLabel
+      r3fRendererResult.labelsRef.current.updateClusterLabels();
+    }
+  }, [nodeToCluster, baseClusters, labels, rendererType, keywordNodes, d3RendererResult.simulationNodesRef, d3RendererResult.rendererRef, threeRendererResult.threeRendererRef, r3fRendererResult.labelsRef]);
 
   // Update colors when colorMixRatio changes (without relayout) - D3 only
   useEffect(() => {
@@ -346,6 +372,7 @@ export function TopicsView({
     return (
       <div className="w-full h-full relative">
         <R3FTopicsCanvas
+          ref={r3fRendererResult.labelsRef}
           nodes={activeNodes}
           edges={activeEdges}
           projectNodes={projectNodes}

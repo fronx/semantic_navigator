@@ -3,7 +3,7 @@
  * Orchestrates all child components (camera, simulation, nodes, edges, labels).
  */
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { CameraController } from "./CameraController";
 import { ForceSimulation } from "./ForceSimulation";
 import { KeywordNodes } from "./KeywordNodes";
@@ -11,11 +11,16 @@ import { ChunkNodes } from "./ChunkNodes";
 import { TransmissionPanel } from "./TransmissionPanel";
 import { KeywordEdges } from "./KeywordEdges";
 import { ChunkEdges } from "./ChunkEdges";
+import { LabelsUpdater } from "./LabelsUpdater";
 import { useEdgeCurveDirections } from "@/hooks/useEdgeCurveDirections";
+import { computeNodeDegrees } from "@/lib/label-overlays";
+import { groupNodesByCommunity } from "@/lib/hull-renderer";
+import { computeClusterColors } from "@/lib/semantic-colors";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 import type { PCATransform } from "@/lib/semantic-colors";
 import type { SimNode, SimLink } from "@/lib/map-renderer";
 import type { ZoomPhaseConfig } from "@/lib/zoom-phase-config";
+import type { LabelRefs } from "./R3FLabelContext";
 
 export interface R3FTopicsSceneProps {
   nodes: KeywordNode[];
@@ -34,6 +39,8 @@ export interface R3FTopicsSceneProps {
   onProjectClick?: (projectId: string) => void;
   onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
   onZoomChange?: (zoomScale: number) => void;
+  /** Refs for label rendering (bridging to DOM overlay) */
+  labelRefs: LabelRefs;
 }
 
 export function R3FTopicsScene({
@@ -52,53 +59,39 @@ export function R3FTopicsScene({
   onProjectClick,
   onProjectDrag,
   onZoomChange,
+  labelRefs,
 }: R3FTopicsSceneProps) {
   // Simulation nodes shared between ForceSimulation and KeywordNodes
   const [simNodes, setSimNodes] = useState<SimNode[]>([]);
 
+  // Update labelRefs when simNodes change (for label rendering)
+  useEffect(() => {
+    labelRefs.simNodesRef.current = simNodes;
+
+    // Compute node degrees for keyword label visibility
+    if (simNodes.length > 0) {
+      const degrees = computeNodeDegrees(
+        simNodes.map(n => n.id),
+        edges as SimLink[]
+      );
+      labelRefs.nodeDegreesRef.current = degrees;
+
+      // Compute cluster colors for label coloring
+      const grouped = groupNodesByCommunity(simNodes);
+      const colors = computeClusterColors(grouped, pcaTransform ?? undefined);
+      labelRefs.clusterColorsRef.current = colors;
+    }
+  }, [simNodes, edges, pcaTransform, labelRefs]);
+
   // Compute curve directions ONLY for similarity edges
   const curveDirections = useEdgeCurveDirections(simNodes, edges as SimLink[]);
-
-  // Debug: check for duplicate and bidirectional edges
-  if (edges.length > 0 && Math.random() < 0.1) {
-    const edgeKeys = new Set<string>();
-    const duplicates: string[] = [];
-    const bidirectional: string[] = [];
-    let knnCount = 0;
-
-    for (const edge of edges as SimLink[]) {
-      const sourceId = typeof edge.source === "string" ? edge.source : (edge.source as any).id;
-      const targetId = typeof edge.target === "string" ? edge.target : (edge.target as any).id;
-      const key = `${sourceId}->${targetId}`;
-      const reverseKey = `${targetId}->${sourceId}`;
-
-      if (edge.isKNN) knnCount++;
-
-      // Check for exact duplicate
-      if (edgeKeys.has(key)) {
-        duplicates.push(key);
-      }
-
-      // Check for bidirectional edge
-      if (edgeKeys.has(reverseKey)) {
-        bidirectional.push(`${sourceId}<->${targetId}`);
-      }
-
-      edgeKeys.add(key);
-    }
-
-    if (duplicates.length > 0) {
-      console.warn(`Duplicate edges found:`, duplicates);
-    }
-    if (bidirectional.length > 0) {
-      console.warn(`Bidirectional edges found (both A->B and B->A):`, bidirectional.slice(0, 10));
-    }
-    console.log(`Total edges: ${edges.length}, Unique: ${edgeKeys.size}, Bidirectional pairs: ${bidirectional.length}, k-NN edges: ${knnCount}`);
-  }
 
   return (
     <>
       <CameraController onZoomChange={onZoomChange} />
+
+      {/* Labels updater - updates camera state and triggers label renders */}
+      <LabelsUpdater labelRefs={labelRefs} />
 
       <ForceSimulation
         nodes={nodes}

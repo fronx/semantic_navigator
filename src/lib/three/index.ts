@@ -7,7 +7,9 @@
  * - input-handler.ts: Pan, zoom, click/drag detection
  * - node-renderer.ts: Mesh creation, caching, colors, highlighting
  * - edge-renderer.ts: Curve rendering (bezier/arc), link objects
- * - label-overlays.ts: HTML labels positioned over WebGL canvas
+ *
+ * Shared modules (in parent @/lib/):
+ * - label-overlays.ts: HTML labels positioned over WebGL canvas (renderer-agnostic)
  */
 
 export { createThreeRenderer } from "./renderer";

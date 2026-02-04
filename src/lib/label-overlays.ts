@@ -1,13 +1,14 @@
 /**
- * HTML label overlay management for Three.js renderer.
- * Handles DOM-based labels positioned over the WebGL canvas.
+ * Renderer-agnostic HTML label overlay management.
+ * Handles DOM-based labels positioned over WebGL canvases.
+ * Used by both Three.js and R3F renderers.
  */
 
 import type { SimNode } from "@/lib/map-renderer";
 import { computeClusterLabels } from "@/lib/cluster-labels";
 import { communityColorScale } from "@/lib/hull-renderer";
 import { clusterColorToCSS, type ClusterColorInfo } from "@/lib/semantic-colors";
-import { CAMERA_FOV_DEGREES } from "./zoom-to-cursor";
+import { CAMERA_FOV_DEGREES } from "@/lib/three/zoom-to-cursor";
 
 // ============================================================================
 // Types
@@ -378,8 +379,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
 
   function getChunkPreviewText(node: SimNode): string {
     const chunkContent = (node as SimNode & { content?: string | null }).content;
-    const text = chunkContent?.trim() || node.label || "";
-    return text;
+    return chunkContent?.trim() || node.label || "";
   }
 
   function hideChunkPreview(): void {

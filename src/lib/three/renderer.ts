@@ -43,7 +43,7 @@ import { CAMERA_FOV_DEGREES } from "./zoom-to-cursor";
 import { createInputHandler } from "./input-handler";
 import { createNodeRenderer, getNodeRadius, BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "./node-renderer";
 import { createEdgeRenderer } from "./edge-renderer";
-import { createLabelOverlayManager, computeNodeDegrees } from "./label-overlays";
+import { createLabelOverlayManager, computeNodeDegrees } from "@/lib/label-overlays";
 import { createHullRenderer } from "./hull-renderer";
 
 // ============================================================================

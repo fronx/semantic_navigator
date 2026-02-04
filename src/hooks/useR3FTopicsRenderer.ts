@@ -5,6 +5,7 @@
 
 import { useRef } from "react";
 import type { BaseRendererOptions } from "@/lib/renderer-types";
+import type { LabelsOverlayHandle } from "@/components/topics-r3f/R3FLabelContext";
 
 export interface UseR3FTopicsRendererOptions extends BaseRendererOptions {
   containerRef: React.RefObject<HTMLDivElement | null>;
@@ -15,35 +16,25 @@ export interface UseR3FTopicsRendererResult {
   highlightedIdsRef: React.MutableRefObject<Set<string>>;
   /** Get position for a node ID */
   getNodePosition: (id: string) => { x: number; y: number } | undefined;
+  /** Ref to labels overlay handle (for cluster label updates and getNodes) */
+  labelsRef: React.RefObject<LabelsOverlayHandle | null>;
 }
 
 export function useR3FTopicsRenderer(
-  options: UseR3FTopicsRendererOptions
+  _options: UseR3FTopicsRendererOptions
 ): UseR3FTopicsRendererResult {
-  const { enabled } = options;
-
-  // Refs to expose to parent
   const highlightedIdsRef = useRef<Set<string>>(new Set());
+  const labelsRef = useRef<LabelsOverlayHandle | null>(null);
 
-  // For MVP, we don't have position tracking yet (Phase 2 feature)
-  const getNodePosition = (id: string): { x: number; y: number } | undefined => {
-    // TODO: Implement position tracking
+  function getNodePosition(id: string): { x: number; y: number } | undefined {
+    const nodes = labelsRef.current?.getNodes();
+    if (!nodes) return undefined;
+    const node = nodes.find(n => n.id === id);
+    if (node?.x !== undefined && node?.y !== undefined) {
+      return { x: node.x, y: node.y };
+    }
     return undefined;
-  };
-
-  // For MVP, the R3F renderer is purely declarative
-  // All rendering happens in R3FTopicsCanvas component
-  // Hover highlighting will be added in Phase 2
-
-  if (!enabled) {
-    return {
-      highlightedIdsRef,
-      getNodePosition,
-    };
   }
 
-  return {
-    highlightedIdsRef,
-    getNodePosition,
-  };
+  return { highlightedIdsRef, getNodePosition, labelsRef };
 }
