@@ -86,19 +86,33 @@ Semantic Navigator is a knowledge base tool that imports markdown files, atomize
 - `src/hooks/useStableRef.ts` - Prevent React effect re-runs for callbacks (see `docs/patterns/stable-refs.md`)
 - `src/hooks/useD3TopicsRenderer.ts` - D3/SVG graph rendering logic for TopicsView
 - `src/hooks/useThreeTopicsRenderer.ts` - Three.js/WebGL graph rendering logic for TopicsView
+- `src/hooks/useR3FTopicsRenderer.ts` - React Three Fiber rendering hook (primary renderer)
 - `src/hooks/useTopicsFilter.ts` - Click-to-filter and external filter logic
+- `src/hooks/useChunkLoading.ts` - Lazy loading of paragraph chunks for LOD
 
-### Renderer Architecture (D3 + Three.js)
+### Renderer Architecture
 
-The TopicsView supports two renderers that share application logic:
+TopicsView supports three renderers. **R3F (React Three Fiber) is the primary renderer** under active development.
 
-- **Shared logic** lives in `src/lib/`:
-  - `topics-hover-controller.ts` - Hover highlighting, cursor tracking, click handling
-  - `topics-graph-nodes.ts` - Node/edge conversion with `convertToSimNodes()`
-- **Renderer-specific code** stays in hooks and renderer files
-- **Adapter pattern**: Renderers implement `RendererAdapter` interface for the hover controller
+**R3F Renderer** (`src/components/topics-r3f/`):
+- Component-based architecture using React Three Fiber
+- `R3FTopicsCanvas.tsx` - Canvas wrapper with DOM label overlay
+- `R3FTopicsScene.tsx` - Scene coordinator (orchestrates all components)
+- `ForceSimulation.tsx` - D3-force simulation as React component
+- `KeywordNodes.tsx`, `ChunkNodes.tsx` - Instanced mesh rendering
+- `KeywordEdges.tsx`, `ChunkEdges.tsx` - Merged geometry edge rendering
+- `TransmissionPanel.tsx` - Frosted glass effect between layers
+- `CameraController.tsx` - Zoom/pan with cursor-centered zoom
+- `LabelsOverlay.tsx` - DOM-based labels positioned via 3D→2D projection
 
-**Code smell**: If you need to make the same fix in both `useD3TopicsRenderer` and `useThreeTopicsRenderer`, that's duplicated logic that should be extracted to a shared module.
+**Shared logic** lives in `src/lib/`:
+- `topics-hover-controller.ts` - Hover highlighting, cursor tracking, click handling
+- `topics-graph-nodes.ts` - Node/edge conversion with `convertToSimNodes()`
+- `chunk-scale.ts` - Zoom-based scale interpolation for LOD
+- `chunk-layout.ts` - Force-based chunk positioning around keywords
+- `chunk-zoom-config.ts` - Centralized zoom configuration
+
+**Legacy renderers** (D3 and raw Three.js) remain for reference but R3F is preferred.
 
 ### API Routes
 
@@ -114,7 +128,9 @@ The TopicsView supports two renderers that share application logic:
 - `src/components/VaultBrowser.tsx` - File picker for importing markdown files
 - `src/components/NodeViewer.tsx` - Display node content and children
 - `src/components/MapView.tsx` - D3 force-directed graph of articles and keywords
-- `src/components/TopicsView.tsx` - **Main visualization view** for keyword-only graphs. Orchestrates modular hooks for rendering (D3 or Three.js), filtering, clustering, and project creation. This is the primary view being actively developed.
+- `src/components/TopicsView.tsx` - **Main visualization view** for keyword graphs with LOD chunks. Orchestrates rendering (R3F preferred), filtering, clustering, and project creation.
+- `src/components/topics-r3f/` - R3F renderer components (see Renderer Architecture above)
+- `src/components/ControlSidebar.tsx` - Collapsible settings panel for visualization controls
 - `src/components/ImportProgress.tsx` - SSE-based import progress display
 
 ### Database
