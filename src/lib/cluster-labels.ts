@@ -23,6 +23,26 @@ export interface ComputeClusterLabelsOptions {
   visibleIds?: Set<string> | null;
   /** Function to get color for a community */
   getColor: (communityId: number) => string;
+  /** Override node.communityId with runtime cluster IDs from useClusterLabels */
+  nodeToCluster?: Map<string, number>;
+}
+
+/**
+ * Group nodes by cluster ID from nodeToCluster map.
+ * Used when we want to override node.communityId with runtime cluster IDs.
+ */
+function groupNodesByClusterMap(nodes: SimNode[], nodeToCluster: Map<string, number>): Map<number, SimNode[]> {
+  const map = new Map<number, SimNode[]>();
+  for (const node of nodes) {
+    const clusterId = nodeToCluster.get(node.id);
+    if (clusterId === undefined) continue;
+
+    if (!map.has(clusterId)) {
+      map.set(clusterId, []);
+    }
+    map.get(clusterId)!.push(node);
+  }
+  return map;
 }
 
 /**
@@ -30,9 +50,12 @@ export interface ComputeClusterLabelsOptions {
  * Returns label position (centroid), text, and visibility info for each cluster.
  */
 export function computeClusterLabels(options: ComputeClusterLabelsOptions): ClusterLabelData[] {
-  const { nodes, visibleIds, getColor } = options;
+  const { nodes, visibleIds, getColor, nodeToCluster } = options;
 
-  const communitiesMap = groupNodesByCommunity(nodes);
+  // Use runtime cluster IDs if provided, otherwise fall back to node.communityId
+  const communitiesMap = nodeToCluster
+    ? groupNodesByClusterMap(nodes, nodeToCluster)
+    : groupNodesByCommunity(nodes);
   const labelData: ClusterLabelData[] = [];
 
   // Compute graph center (mean of all node positions) for label positioning

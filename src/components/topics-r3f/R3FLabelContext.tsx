@@ -55,6 +55,8 @@ export interface LabelRefs {
   nodeDegreesRef: React.MutableRefObject<Map<string, number>>;
   /** Cluster colors for label coloring */
   clusterColorsRef: React.MutableRefObject<Map<number, ClusterColorInfo>>;
+  /** Runtime cluster IDs from useClusterLabels (Leiden clustering) */
+  nodeToClusterRef: React.MutableRefObject<Map<string, number>>;
   /** Label manager (created by LabelsOverlay) */
   labelManagerRef: React.MutableRefObject<LabelOverlayManager | null>;
   /** Chunk screen rects (updated by ChunkNodes every frame, read by label system) */

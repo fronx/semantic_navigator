@@ -127,6 +127,21 @@ export function TopicsView({
   // Thickness ramps from 0 (no blur) to 20 (full blur) as camera approaches threshold
   const panelThickness = cameraZ !== undefined ? calculatePanelThickness(cameraZ) : 0;
 
+  // Client-side Leiden clustering (must come before useTopicsFilter)
+  const { nodeToCluster, baseClusters, labels } = useClusterLabels(
+    keywordNodes,
+    edges,
+    clusterResolution,
+    { onError }
+  );
+
+  // Report cluster count changes
+  useEffect(() => {
+    if (onClusterCountChange) {
+      onClusterCountChange(baseClusters.size);
+    }
+  }, [baseClusters.size, onClusterCountChange]);
+
   // Filter state management (click-to-filter, external filter, position preservation)
   const {
     activeNodes,
@@ -139,6 +154,7 @@ export function TopicsView({
     chunkKeywordIds,
     filterHistory,
     applySemanticFilter,
+    applyClusterFilter,
     clearSemanticFilter,
     goBackInHistory,
     goToHistoryIndex,
@@ -146,6 +162,7 @@ export function TopicsView({
     keywordNodes,
     edges,
     externalFilter,
+    clusters: baseClusters,
   });
 
   // Notify parent component when semantic filter state changes (for ControlSidebar)
@@ -217,6 +234,20 @@ export function TopicsView({
       handleKeywordClickInternal(keywordNode.label);
     }
   });
+
+  // Handle cluster label click - apply cluster filter
+  const handleClusterLabelClick = useStableCallback((clusterId: number) => {
+    // Save positions before applying filter
+    const getPosition = (id: string) => {
+      const node = activeNodes.find(n => n.id === id);
+      return node ? { x: 0, y: 0 } : undefined;
+    };
+    capturePositions(getPosition);
+
+    // Apply cluster filter
+    applyClusterFilter(clusterId);
+  });
+
   const handleProjectClick = useStableCallback(onProjectClick);
   const handleProjectDrag = useStableCallback(onProjectDrag);
 
@@ -227,21 +258,6 @@ export function TopicsView({
   // This is shared between both renderers to avoid duplicating the ref pattern
   const projectNodesRef = useRef(projectNodes);
   projectNodesRef.current = projectNodes;
-
-  // Client-side Louvain clustering
-  const { nodeToCluster, baseClusters, labels } = useClusterLabels(
-    keywordNodes,
-    edges,
-    clusterResolution,
-    { onError }
-  );
-
-  // Report cluster count changes
-  useEffect(() => {
-    if (onClusterCountChange) {
-      onClusterCountChange(baseClusters.size);
-    }
-  }, [baseClusters.size, onClusterCountChange]);
 
   // PCA transform for stable semantic colors
   const [pcaTransform, setPcaTransform] = useState<PCATransform | null>(null);
@@ -443,8 +459,10 @@ export function TopicsView({
           chunkZDepth={chunkZDepth}
           chunkTextDepthScale={chunkTextDepthScale}
           keywordTiers={keywordTiers}
+          nodeToCluster={nodeToCluster}
           onKeywordClick={handleKeywordClickInternal}
           onKeywordLabelClick={handleKeywordLabelClick}
+          onClusterLabelClick={handleClusterLabelClick}
           onProjectClick={handleProjectClick}
           onProjectDrag={handleProjectDrag}
           onZoomChange={handleZoomChange}

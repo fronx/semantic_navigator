@@ -24,6 +24,24 @@ import type { LabelRefs } from "./R3FLabelContext";
 import type { ChunkNode } from "@/lib/chunk-loader";
 import type { KeywordTierMap } from "@/lib/topics-filter";
 
+/**
+ * Group nodes by cluster ID from nodeToCluster map.
+ * Helper for computing cluster colors based on Leiden clustering.
+ */
+function groupNodesByMap(nodes: SimNode[], nodeToCluster: Map<string, number>): Map<number, SimNode[]> {
+  const map = new Map<number, SimNode[]>();
+  for (const node of nodes) {
+    const clusterId = nodeToCluster.get(node.id);
+    if (clusterId === undefined) continue;
+
+    if (!map.has(clusterId)) {
+      map.set(clusterId, []);
+    }
+    map.get(clusterId)!.push(node);
+  }
+  return map;
+}
+
 export interface R3FTopicsSceneProps {
   nodes: KeywordNode[];
   edges: SimilarityEdge[];
@@ -114,7 +132,11 @@ export function R3FTopicsScene({
       labelRefs.nodeDegreesRef.current = degrees;
 
       // Compute cluster colors for label coloring
-      const grouped = groupNodesByCommunity(simNodes);
+      // Use Leiden cluster IDs from nodeToClusterRef if available, otherwise fall back to node.communityId
+      const nodeToCluster = labelRefs.nodeToClusterRef.current;
+      const grouped = nodeToCluster.size > 0
+        ? groupNodesByMap(simNodes, nodeToCluster)
+        : groupNodesByCommunity(simNodes);
       const colors = computeClusterColors(grouped, pcaTransform ?? undefined);
       labelRefs.clusterColorsRef.current = colors;
     }

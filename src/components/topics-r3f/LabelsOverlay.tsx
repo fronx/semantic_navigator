@@ -22,16 +22,19 @@ export interface LabelsOverlayProps {
   keywordLabelRange: { start: number; full: number };
   /** Handler for keyword label click */
   onKeywordLabelClick?: (keywordId: string) => void;
+  /** Handler for cluster label click */
+  onClusterLabelClick?: (clusterId: number) => void;
 }
 
 export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>(
-  function LabelsOverlay({ labelRefs, keywordLabelRange, onKeywordLabelClick }, ref) {
+  function LabelsOverlay({ labelRefs, keywordLabelRange, onKeywordLabelClick, onClusterLabelClick }, ref) {
     const {
       cameraStateRef,
       containerRef,
       simNodesRef,
       nodeDegreesRef,
       clusterColorsRef,
+      nodeToClusterRef,
       labelManagerRef,
     } = labelRefs;
 
@@ -121,7 +124,9 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
         getClusterColors: () => clusterColorsRef.current,
         getKeywordLabelRange: () => keywordLabelRange,
         getChunkScreenRects: () => labelRefs.chunkScreenRectsRef.current,
+        getNodeToCluster: () => nodeToClusterRef.current,
         onKeywordLabelClick,
+        onClusterLabelClick,
       });
 
       labelManagerRef.current = labelManager;

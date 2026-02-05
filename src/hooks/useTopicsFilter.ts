@@ -25,6 +25,8 @@ export interface UseTopicsFilterOptions {
   keywordNodes: KeywordNode[];
   edges: SimilarityEdge[];
   externalFilter?: Set<string> | null;
+  /** Cluster data for cluster-based filtering */
+  clusters?: Map<number, { id: number; members: string[] }> | null;
 }
 
 export interface UseTopicsFilterResult {
@@ -32,6 +34,8 @@ export interface UseTopicsFilterResult {
   filteredNodeIds: Set<string> | null;
   /** Current semantic filter state (selected + 1-hop + 2-hop) */
   semanticFilter: SemanticFilter | null;
+  /** Current cluster filter (cluster ID if active) */
+  clusterFilter: number | null;
   /** Keyword tier map for visual hierarchy (size scaling) */
   keywordTiers: KeywordTierMap | null;
   /** Keyword IDs that should have visible chunks (selected + 1-hop only) */
@@ -52,6 +56,8 @@ export interface UseTopicsFilterResult {
   applyFilter: (highlightedIds: Set<string>) => void;
   /** Apply semantic filter from a clicked keyword */
   applySemanticFilter: (keywordId: string) => void;
+  /** Apply cluster filter from a clicked cluster label */
+  applyClusterFilter: (clusterId: number) => void;
   /** Clear the internal filter */
   clearFilter: () => void;
   /** Clear semantic filter (keep external filter) */
@@ -79,10 +85,11 @@ export interface UseTopicsFilterResult {
  * });
  */
 export function useTopicsFilter(options: UseTopicsFilterOptions): UseTopicsFilterResult {
-  const { keywordNodes, edges, externalFilter } = options;
+  const { keywordNodes, edges, externalFilter, clusters } = options;
 
   const [filteredNodeIds, setFilteredNodeIds] = useState<Set<string> | null>(null);
   const [semanticFilter, setSemanticFilter] = useState<SemanticFilter | null>(null);
+  const [clusterFilter, setClusterFilter] = useState<number | null>(null);
   const [filterHistory, setFilterHistory] = useState<string[]>([]);
   const positionMapRef = useRef<Map<string, { x: number; y: number }>>(new Map());
 
@@ -140,7 +147,34 @@ export function useTopicsFilter(options: UseTopicsFilterOptions): UseTopicsFilte
     }
   }, []);
 
-  const clearFilter = useCallback(() => setFilteredNodeIds(null), []);
+  const clearFilter = useCallback(() => {
+    setFilteredNodeIds(null);
+    setClusterFilter(null);
+  }, []);
+
+  const applyClusterFilter = useCallback(
+    (clusterId: number) => {
+      if (!clusters) {
+        return;
+      }
+
+      const cluster = clusters.get(clusterId);
+
+      if (!cluster || cluster.members.length === 0) {
+        return;
+      }
+
+      // Create set of member keyword IDs
+      const memberIds = new Set(cluster.members);
+
+      // Set cluster filter state
+      setClusterFilter(clusterId);
+      setFilteredNodeIds(memberIds);
+      setSemanticFilter(null); // Clear semantic filter
+      setFilterHistory([]); // Clear history (cluster filters don't use history)
+    },
+    [clusters]
+  );
 
   const applySemanticFilter = useCallback(
     (keywordId: string) => {
@@ -168,6 +202,7 @@ export function useTopicsFilter(options: UseTopicsFilterOptions): UseTopicsFilte
 
   const clearSemanticFilter = useCallback(() => {
     setSemanticFilter(null);
+    setClusterFilter(null);
     setFilterHistory([]);
   }, []);
 
@@ -204,6 +239,7 @@ export function useTopicsFilter(options: UseTopicsFilterOptions): UseTopicsFilte
   return {
     filteredNodeIds,
     semanticFilter,
+    clusterFilter,
     keywordTiers,
     chunkKeywordIds,
     filterHistory,
@@ -214,6 +250,7 @@ export function useTopicsFilter(options: UseTopicsFilterOptions): UseTopicsFilte
     getSavedPosition,
     applyFilter,
     applySemanticFilter,
+    applyClusterFilter,
     clearFilter,
     clearSemanticFilter,
     goBackInHistory,

@@ -34,8 +34,11 @@ export interface R3FTopicsCanvasProps {
   chunkZDepth?: number;
   chunkTextDepthScale?: number;
   keywordTiers?: KeywordTierMap | null;
+  /** Runtime cluster IDs from useClusterLabels (for label rendering) */
+  nodeToCluster?: Map<string, number>;
   onKeywordClick?: (keyword: string) => void;
   onKeywordLabelClick?: (keywordId: string) => void;
+  onClusterLabelClick?: (clusterId: number) => void;
   onProjectClick?: (projectId: string) => void;
   onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
   onZoomChange?: (zoomScale: number) => void;
@@ -57,8 +60,10 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     chunkZDepth,
     chunkTextDepthScale,
     keywordTiers,
+    nodeToCluster,
     onKeywordClick,
     onKeywordLabelClick,
+    onClusterLabelClick,
     onProjectClick,
     onProjectDrag,
     onZoomChange,
@@ -115,8 +120,12 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     const simNodesRef = useRef<SimNode[]>([]);
     const nodeDegreesRef = useRef<Map<string, number>>(new Map());
     const clusterColorsRef = useRef<Map<number, ClusterColorInfo>>(new Map());
+    const nodeToClusterRef = useRef<Map<string, number>>(nodeToCluster ?? new Map());
     const labelManagerRef = useRef<LabelOverlayManager | null>(null);
     const chunkScreenRectsRef = useRef<Map<string, ChunkScreenRect>>(new Map());
+
+    // Keep nodeToCluster ref updated
+    nodeToClusterRef.current = nodeToCluster ?? new Map();
 
     const labelRefs: LabelRefs = {
       cameraStateRef,
@@ -124,6 +133,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
       simNodesRef,
       nodeDegreesRef,
       clusterColorsRef,
+      nodeToClusterRef,
       labelManagerRef,
       chunkScreenRectsRef,
     };
@@ -181,6 +191,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
           labelRefs={labelRefs}
           keywordLabelRange={zoomPhaseConfig.keywordLabels}
           onKeywordLabelClick={onKeywordLabelClick}
+          onClusterLabelClick={onClusterLabelClick}
         />
       </div>
     );

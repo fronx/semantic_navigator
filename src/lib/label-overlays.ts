@@ -61,8 +61,12 @@ export interface LabelOverlayOptions {
   getKeywordLabelRange: () => { start: number; full: number };
   /** Function to get chunk screen rects (calculated by ChunkNodes, shared via ref) */
   getChunkScreenRects?: () => Map<string, ChunkScreenRect>;
+  /** Function to get nodeToCluster map (runtime cluster IDs from useClusterLabels) */
+  getNodeToCluster?: () => Map<string, number> | null;
   /** Handler for keyword label click */
   onKeywordLabelClick?: (keywordId: string) => void;
+  /** Handler for cluster label click */
+  onClusterLabelClick?: (clusterId: number) => void;
 }
 
 // ============================================================================
@@ -79,7 +83,9 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     getClusterColors,
     getKeywordLabelRange,
     getChunkScreenRects,
+    getNodeToCluster,
     onKeywordLabelClick,
+    onClusterLabelClick,
   } = options;
 
   // Create overlay for cluster labels
@@ -117,6 +123,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
   function updateClusterLabels(nodes: SimNode[]) {
     const rect = container.getBoundingClientRect();
     const clusterColors = getClusterColors();
+    const nodeToCluster = getNodeToCluster?.() ?? undefined;
 
     // Compute labels from current node positions
     const labelData = computeClusterLabels({
@@ -130,6 +137,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
         // Fallback to legacy color scale
         return communityColorScale(String(communityId));
       },
+      nodeToCluster,
     });
 
     // Track which communities we've seen (for cleanup)
@@ -158,6 +166,16 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
         labelEl.className = "cluster-label";
         clusterOverlay.appendChild(labelEl);
         clusterLabelCache.set(data.communityId, labelEl);
+
+        // Add click handler
+        if (onClusterLabelClick) {
+          labelEl.style.cursor = "pointer";
+          labelEl.style.pointerEvents = "auto";
+          labelEl.addEventListener("click", (e) => {
+            e.stopPropagation();
+            onClusterLabelClick(data.communityId);
+          });
+        }
       }
 
       // Update label content and position
