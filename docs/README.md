@@ -8,6 +8,7 @@
 ## Patterns
 
 - [Stable Refs](patterns/stable-refs.md) - Prevent React effect re-runs for callbacks and config (`useLatest`, `useStableCallback`)
+- [Three.js & R3F Patterns](patterns/threejs-r3f/index.md) - Best practices for Three.js and React Three Fiber (instanceColor, materials, depth testing, event handling)
 
 ## Lab Experiments
 
