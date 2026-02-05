@@ -5,6 +5,7 @@
  * then polar coordinates to HSL (angle→hue, radius→saturation).
  */
 
+import chroma from "chroma-js";
 import { normalize } from "./math-utils";
 
 /** PCA transformation matrix: 2 rows × embedding_dim columns */
@@ -54,8 +55,9 @@ export function pcaProject(
 /**
  * Map 2D coordinates to HSL color string.
  * Uses polar coordinates: angle→hue, radius→saturation.
+ * @param desaturation - Amount to reduce saturation (0-1, where 0 = no change)
  */
-export function coordinatesToHSL(x: number, y: number): string {
+export function coordinatesToHSL(x: number, y: number, desaturation: number = 0): string {
   // Angle to hue (0-360)
   const angle = Math.atan2(y, x);
   const hue = ((angle / Math.PI + 1) * 180) % 360;
@@ -68,7 +70,19 @@ export function coordinatesToHSL(x: number, y: number): string {
   // Fixed lightness for readability
   const lightness = 45;
 
-  return `hsl(${hue.toFixed(0)}, ${saturation.toFixed(0)}%, ${lightness}%)`;
+  const baseColor = `hsl(${hue.toFixed(0)}, ${saturation.toFixed(0)}%, ${lightness}%)`;
+
+  if (desaturation === 0) return baseColor;
+
+  // Use LCH color space to preserve perceptual lightness while reducing chroma (saturation)
+  const color = chroma(baseColor);
+  const l = color.get('lch.l');
+  const c = color.get('lch.c');
+  const h = color.get('lch.h') || 0; // hue can be NaN for achromatic colors
+
+  // Reduce chroma while preserving lightness
+  const reducedC = c * (1 - desaturation);
+  return chroma.lch(l, reducedC, h).hex();
 }
 
 /**
@@ -90,9 +104,10 @@ export function centroidToColor(
 
 /**
  * Get color for a single keyword from its PCA coordinates.
+ * @param desaturation - Amount to reduce saturation (0-1, where 0 = no change)
  */
-export function pcaCoordsToColor(pcaX: number, pcaY: number): string {
-  return coordinatesToHSL(pcaX, pcaY);
+export function pcaCoordsToColor(pcaX: number, pcaY: number, desaturation: number = 0): string {
+  return coordinatesToHSL(pcaX, pcaY, desaturation);
 }
 
 // --- Cluster-based coloring ---
@@ -142,6 +157,7 @@ export function computeClusterColorInfo(
  * Compute node color as a blend between cluster base color and node's own color.
  *
  * @param mixRatio - 0 = pure cluster color (with small variations), 1 = pure node color
+ * @param desaturation - Amount to reduce saturation (0-1, where 0 = no change)
  *
  * Cluster-derived color (mixRatio=0):
  * - Direction from centroid → small hue shift (±15°)
@@ -155,7 +171,8 @@ export function nodeColorFromCluster(
   nodeEmbedding: number[],
   clusterInfo: ClusterColorInfo,
   transform: PCATransform,
-  mixRatio: number = 0
+  mixRatio: number = 0,
+  desaturation: number = 0
 ): string {
   const [nx, ny] = pcaProject(nodeEmbedding, transform);
   const [cx, cy] = clusterInfo.pcaCentroid;
@@ -201,7 +218,19 @@ export function nodeColorFromCluster(
   const s = clusterS + (nodeS - clusterS) * mixRatio;
   const l = clusterL + (nodeL - clusterL) * mixRatio;
 
-  return `hsl(${h.toFixed(0)}, ${s.toFixed(0)}%, ${l.toFixed(0)}%)`;
+  const baseColor = `hsl(${h.toFixed(0)}, ${s.toFixed(0)}%, ${l.toFixed(0)}%)`;
+
+  if (desaturation === 0) return baseColor;
+
+  // Use LCH color space to preserve perceptual lightness while reducing chroma (saturation)
+  const color = chroma(baseColor);
+  const lchL = color.get('lch.l');
+  const lchC = color.get('lch.c');
+  const lchH = color.get('lch.h') || 0; // hue can be NaN for achromatic colors
+
+  // Reduce chroma while preserving lightness
+  const reducedC = lchC * (1 - desaturation);
+  return chroma.lch(lchL, reducedC, lchH).hex();
 }
 
 // --- Shared cluster color utilities ---

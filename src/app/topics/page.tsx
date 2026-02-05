@@ -476,6 +476,7 @@ export default function TopicsPage() {
             contrast={settings.contrast}
             clusterResolution={debouncedClusterResolution}
             colorMixRatio={settings.colorMixRatio}
+            colorDesaturation={settings.colorDesaturation}
             onClusterCountChange={setClusterCount}
             hoverConfig={{
               similarityThreshold: settings.hoverSimilarity,

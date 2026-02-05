@@ -17,6 +17,7 @@ import type { PCATransform, ClusterColorInfo } from "./semantic-colors";
  * @param clusterColors - Optional cluster color information
  * @param colorMixRatio - Ratio for mixing cluster colors (0-1)
  * @param getNodeById - Optional callback to get node by ID (for chunk parent lookup)
+ * @param desaturation - Amount to reduce saturation (0-1, where 0 = no change)
  * @returns Hex color string for the edge
  */
 export function getEdgeColor(
@@ -25,7 +26,8 @@ export function getEdgeColor(
   pcaTransform?: PCATransform,
   clusterColors?: Map<number, ClusterColorInfo>,
   colorMixRatio: number = 0,
-  getNodeById?: (nodeId: string) => SimNode | undefined
+  getNodeById?: (nodeId: string) => SimNode | undefined,
+  desaturation: number = 0.2
 ): string {
   const sourceId = typeof link.source === "string" ? link.source : link.source.id;
   const targetId = typeof link.target === "string" ? link.target : link.target.id;
@@ -37,8 +39,8 @@ export function getEdgeColor(
     return "#888888";
   }
 
-  const sourceColor = getNodeColor(sourceNode, pcaTransform, clusterColors, colorMixRatio, getNodeById);
-  const targetColor = getNodeColor(targetNode, pcaTransform, clusterColors, colorMixRatio, getNodeById);
+  const sourceColor = getNodeColor(sourceNode, pcaTransform, clusterColors, colorMixRatio, getNodeById, desaturation);
+  const targetColor = getNodeColor(targetNode, pcaTransform, clusterColors, colorMixRatio, getNodeById, desaturation);
 
-  return blendColors(sourceColor, targetColor);
+  return blendColors(sourceColor, targetColor, desaturation);
 }

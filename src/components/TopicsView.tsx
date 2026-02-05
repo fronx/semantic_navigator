@@ -45,6 +45,8 @@ export interface TopicsViewProps {
   clusterResolution: number;
   /** Color mix ratio: 0 = cluster color, 1 = node's own color */
   colorMixRatio: number;
+  /** Color desaturation: 0 = no desaturation, 1 = fully desaturated */
+  colorDesaturation: number;
   /** Hover highlight configuration */
   hoverConfig: HoverHighlightConfig;
   /** Callback when a keyword is clicked */
@@ -105,6 +107,7 @@ export function TopicsView({
   contrast,
   clusterResolution,
   colorMixRatio,
+  colorDesaturation,
   hoverConfig,
   onKeywordClick,
   onProjectClick,
@@ -464,6 +467,7 @@ export function TopicsView({
           projectNodes={projectNodes}
           chunksByKeyword={chunksByKeyword}
           colorMixRatio={colorMixRatio}
+          colorDesaturation={colorDesaturation}
           pcaTransform={pcaTransform}
           blurEnabled={blurEnabled}
           showKNNEdges={showKNNEdges}

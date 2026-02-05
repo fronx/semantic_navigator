@@ -20,6 +20,7 @@ const VISIBILITY_THRESHOLD = 0.01;
 export interface KeywordNodesProps {
   simNodes: SimNode[];
   colorMixRatio: number;
+  colorDesaturation: number;
   pcaTransform: PCATransform | null;
   zoomRange: ZoomRange;
   keywordTiers?: KeywordTierMap | null;
@@ -28,6 +29,7 @@ export interface KeywordNodesProps {
 export function KeywordNodes({
   simNodes,
   colorMixRatio,
+  colorDesaturation,
   pcaTransform,
   zoomRange,
   keywordTiers,
@@ -88,7 +90,9 @@ export function KeywordNodes({
         node,
         pcaTransform ?? undefined,
         undefined, // clusterColors not yet implemented
-        colorMixRatio
+        colorMixRatio,
+        undefined, // getParentNode not needed for keywords
+        colorDesaturation
       );
       colorRef.current.set(color);
 

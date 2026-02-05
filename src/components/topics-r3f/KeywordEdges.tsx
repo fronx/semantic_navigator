@@ -23,6 +23,7 @@ export interface KeywordEdgesProps {
   curveIntensity: number;
   curveDirections: Map<string, number>;
   colorMixRatio: number;
+  colorDesaturation: number;
   pcaTransform?: PCATransform;
   /** Show k-NN connectivity edges (usually hidden, only affect force simulation) */
   showKNNEdges?: boolean;
@@ -34,6 +35,7 @@ export function KeywordEdges({
   curveIntensity,
   curveDirections,
   colorMixRatio,
+  colorDesaturation,
   pcaTransform,
   showKNNEdges = false,
 }: KeywordEdgesProps): React.JSX.Element {
@@ -136,7 +138,7 @@ export function KeywordEdges({
       posArray[breakIdx + 1] = NaN;
       posArray[breakIdx + 2] = NaN;
 
-      tempColor.current.set(getEdgeColor(edge, nodeMap, pcaTransform, clusterColors, colorMixRatio));
+      tempColor.current.set(getEdgeColor(edge, nodeMap, pcaTransform, clusterColors, colorMixRatio, undefined, colorDesaturation));
       // Write colors for all vertices including break vertex (18 total)
       for (let i = 0; i < VERTICES_PER_EDGE; i++) {
         tempColor.current.toArray(colArray, baseOffset + i * 3);

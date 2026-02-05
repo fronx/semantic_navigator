@@ -25,6 +25,7 @@ export interface R3FTopicsCanvasProps {
   projectNodes?: ProjectNode[];
   chunksByKeyword?: Map<string, ChunkNode[]>;
   colorMixRatio: number;
+  colorDesaturation: number;
   pcaTransform: PCATransform | null;
   blurEnabled?: boolean;
   /** Show k-NN connectivity edges (usually hidden, only affect force simulation) */
@@ -59,6 +60,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     projectNodes = [],
     chunksByKeyword,
     colorMixRatio,
+    colorDesaturation,
     pcaTransform,
     blurEnabled = true,
     showKNNEdges = false,
@@ -194,6 +196,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
             projectNodes={projectNodes}
             chunksByKeyword={chunksByKeyword}
             colorMixRatio={colorMixRatio}
+            colorDesaturation={colorDesaturation}
             pcaTransform={pcaTransform}
             blurEnabled={blurEnabled}
             showKNNEdges={showKNNEdges}
@@ -217,6 +220,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
           ref={ref}
           labelRefs={labelRefs}
           keywordLabelRange={zoomPhaseConfig.keywordLabels}
+          chunksByKeyword={chunksByKeyword}
           onKeywordLabelClick={onKeywordLabelClick}
           onClusterLabelClick={onClusterLabelClick}
           onKeywordHover={onKeywordHover}

@@ -61,7 +61,8 @@ export function getNodeColor(
   pcaTransform?: PCATransform,
   clusterColors?: Map<number, ClusterColorInfo>,
   colorMixRatio: number = 0,
-  getParentNode?: (nodeId: string) => SimNode | undefined
+  getParentNode?: (nodeId: string) => SimNode | undefined,
+  desaturation: number = 0
 ): string {
   // Projects have a distinct purple color
   if (node.type === "project") {
@@ -74,8 +75,8 @@ export function getNodeColor(
     if (chunkNode.parentId) {
       const parent = getParentNode(chunkNode.parentId);
       if (parent) {
-        // Recursively get parent's color (without passing getParentNode to avoid infinite loops)
-        return getNodeColor(parent, pcaTransform, clusterColors, colorMixRatio);
+        // Recursively get parent's color (pass desaturation through)
+        return getNodeColor(parent, pcaTransform, clusterColors, colorMixRatio, undefined, desaturation);
       }
     }
   }
@@ -86,12 +87,12 @@ export function getNodeColor(
     if (node.communityId !== undefined && clusterColors) {
       const clusterInfo = clusterColors.get(node.communityId);
       if (clusterInfo) {
-        return nodeColorFromCluster(node.embedding, clusterInfo, pcaTransform, colorMixRatio);
+        return nodeColorFromCluster(node.embedding, clusterInfo, pcaTransform, colorMixRatio, desaturation);
       }
     }
     // Fallback: PCA-based semantic color from embedding
     const [x, y] = pcaProject(node.embedding, pcaTransform);
-    return coordinatesToHSL(x, y);
+    return coordinatesToHSL(x, y, desaturation);
   }
 
   // Fall back to community-based coloring

@@ -279,6 +279,15 @@ export function ControlSidebar({
               checked={settings.dynamicClustering ?? true}
               onChange={(v) => update("dynamicClustering", v)}
             />
+            <Slider
+              label="Desaturate"
+              value={settings.colorDesaturation}
+              onChange={(v) => update("colorDesaturation", v)}
+              min={0}
+              max={1}
+              step={0.05}
+              format={(v) => `${(v * 100).toFixed(0)}%`}
+            />
           </Section>
 
           {/* Graph */}

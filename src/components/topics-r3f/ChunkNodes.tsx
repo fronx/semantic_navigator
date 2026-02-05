@@ -23,6 +23,7 @@ export interface ChunkNodesProps {
   chunkNodes: SimNode[];
   simNodes: SimNode[];
   colorMixRatio: number;
+  colorDesaturation: number;
   pcaTransform: PCATransform | null;
   zoomRange: ZoomRange;
   /** Z-depth offset for chunks (negative = behind keywords) */
@@ -45,6 +46,7 @@ export function ChunkNodes({
   chunkNodes,
   simNodes,
   colorMixRatio,
+  colorDesaturation,
   pcaTransform,
   zoomRange,
   chunkZDepth = CHUNK_Z_DEPTH,
@@ -151,7 +153,9 @@ export function ChunkNodes({
           parentNode,
           pcaTransform ?? undefined,
           undefined,
-          colorMixRatio
+          colorMixRatio,
+          undefined, // getParentNode not needed
+          colorDesaturation
         );
 
         colorRef.current.set(color);

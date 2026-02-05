@@ -54,6 +54,7 @@ export interface R3FTopicsSceneProps {
   projectNodes: ProjectNode[];
   chunksByKeyword?: Map<string, ChunkNode[]>;
   colorMixRatio: number;
+  colorDesaturation: number;
   pcaTransform: PCATransform | null;
   blurEnabled?: boolean;
   /** Show k-NN connectivity edges (usually hidden, only affect force simulation) */
@@ -83,6 +84,7 @@ export function R3FTopicsScene({
   projectNodes,
   chunksByKeyword,
   colorMixRatio,
+  colorDesaturation,
   pcaTransform,
   blurEnabled = true,
   showKNNEdges = false,
@@ -200,6 +202,7 @@ export function R3FTopicsScene({
           chunkNodes={chunkNodes}
           simNodes={simNodes}
           colorMixRatio={colorMixRatio}
+          colorDesaturation={colorDesaturation}
           pcaTransform={pcaTransform}
           zoomRange={zoomPhaseConfig.chunkCrossfade}
           chunkZDepth={chunkZDepth}
@@ -225,6 +228,7 @@ export function R3FTopicsScene({
           curveIntensity={0.25}
           curveDirections={curveDirections}
           colorMixRatio={colorMixRatio}
+          colorDesaturation={colorDesaturation}
           pcaTransform={pcaTransform ?? undefined}
         />
       )}
@@ -237,6 +241,7 @@ export function R3FTopicsScene({
           curveIntensity={0.25}
           curveDirections={curveDirections}
           colorMixRatio={colorMixRatio}
+          colorDesaturation={colorDesaturation}
           pcaTransform={pcaTransform ?? undefined}
           showKNNEdges={showKNNEdges}
         />
@@ -247,6 +252,7 @@ export function R3FTopicsScene({
         <KeywordNodes
           simNodes={keywordNodes}
           colorMixRatio={colorMixRatio}
+          colorDesaturation={colorDesaturation}
           pcaTransform={pcaTransform}
           zoomRange={zoomPhaseConfig.chunkCrossfade}
           keywordTiers={keywordTiers}

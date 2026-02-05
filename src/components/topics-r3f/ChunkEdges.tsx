@@ -35,6 +35,7 @@ export interface ChunkEdgesProps {
   curveIntensity: number;
   curveDirections: Map<string, number>;
   colorMixRatio: number;
+  colorDesaturation: number;
   pcaTransform?: PCATransform;
 }
 
@@ -44,6 +45,7 @@ export function ChunkEdges({
   curveIntensity,
   curveDirections,
   colorMixRatio,
+  colorDesaturation,
   pcaTransform,
 }: ChunkEdgesProps): React.JSX.Element | null {
   const lineRef = useRef<THREE.Line>(null);
@@ -147,7 +149,7 @@ export function ChunkEdges({
         }
       }
 
-      tempColor.current.set(getEdgeColor(edge, nodeMap, pcaTransform, clusterColors, colorMixRatio));
+      tempColor.current.set(getEdgeColor(edge, nodeMap, pcaTransform, clusterColors, colorMixRatio, undefined, colorDesaturation));
       for (let i = 0; i < VERTICES_PER_EDGE; i++) {
         tempColor.current.toArray(colArray, baseOffset + i * 3);
       }
