@@ -44,6 +44,8 @@ export interface R3FTopicsCanvasProps {
   onProjectClick?: (projectId: string) => void;
   onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
   onZoomChange?: (zoomScale: number) => void;
+  /** Handler for chunk hover (for debug info) */
+  onChunkHover?: (chunkId: string | null, content: string | null) => void;
 }
 
 export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasProps>(
@@ -168,9 +170,10 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     return (
       <div
         ref={containerRef}
-        style={{ position: "relative", width: "100%", height: "100%" }}
+        style={{ position: "relative", width: "100%", height: "100%", userSelect: "none" }}
         onPointerMove={handlePointerMove}
         onPointerLeave={handlePointerLeave}
+        onWheel={(e) => e.preventDefault()}
       >
         <Canvas
           camera={{
