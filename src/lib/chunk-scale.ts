@@ -66,7 +66,7 @@ export function calculateScales(cameraZ: number, range: ZoomRange = DEFAULT_RANG
     keywordScale: MIN_KEYWORD_SCALE + t * (1 - MIN_KEYWORD_SCALE), // Scale from MIN to 1.0, never fully disappears
     chunkScale: invT ** 2,              // Exponential: appear as we zoom in
     chunkEdgeOpacity: invT ** 2,        // Fade in with chunks
-    keywordLabelOpacity: 0.4 + t * 0.6, // Partial fade: 0.4 (zoomed in) to 1.0 (zoomed out)
+    keywordLabelOpacity: 0.0 + t * 1.0, // Partial fade: 0.0 (zoomed in) to 1.0 (zoomed out)
     chunkLabelOpacity: invT ** 2,       // Fade in with chunks
   };
 
