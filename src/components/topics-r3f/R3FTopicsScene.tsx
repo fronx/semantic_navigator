@@ -226,16 +226,22 @@ export function R3FTopicsScene({
 
       {/* Chunk containment edges (keyword → chunk) */}
       {keywordNodes.length > 0 && chunkNodes.length > 0 && (
-        <ChunkEdges
-          simNodes={keywordNodes}
-          chunkNodes={chunkNodes}
-          curveIntensity={0.25}
-          curveDirections={curveDirections}
-          colorMixRatio={colorMixRatio}
-          colorDesaturation={colorDesaturation}
-          pcaTransform={pcaTransform ?? undefined}
-          searchOpacities={searchOpacities}
-        />
+        // These edges go all over the place.
+        // We might bring them back at some point,
+        // but for now they add visual clutter and hurt performance.
+        <>
+        </>
+        //
+        // <ChunkEdges
+        //   simNodes={keywordNodes}
+        //   chunkNodes={chunkNodes}
+        //   curveIntensity={0.25}
+        //   curveDirections={curveDirections}
+        //   colorMixRatio={colorMixRatio}
+        //   colorDesaturation={colorDesaturation}
+        //   pcaTransform={pcaTransform ?? undefined}
+        //   searchOpacities={searchOpacities}
+        // />
       )}
 
       {/* Keyword similarity edges - constant opacity */}
