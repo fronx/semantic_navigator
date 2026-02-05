@@ -74,7 +74,7 @@ export interface LabelOverlayOptions {
   /** Handler for cluster label click */
   onClusterLabelClick?: (clusterId: number) => void;
   /** Callback when chunk label container is created/updated for portal rendering */
-  onChunkLabelContainer?: (chunkId: string, container: HTMLElement, content: string, visible: boolean) => void;
+  onChunkLabelContainer?: (chunkId: string, container: HTMLElement, content: string, visible: boolean, parentKeywordId?: string) => void;
   /** Callback when hovered keyword changes (for debug display) */
   onKeywordHover?: (keywordId: string | null) => void;
 }
@@ -136,6 +136,8 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
   const clusterLabelCache = new Map<number, HTMLDivElement>();
   const keywordLabelCache = new Map<string, HTMLDivElement>();
   const chunkLabelCache = new Map<string, HTMLDivElement>();
+  // Track which chunks have been reported visible to React (prevents per-frame callback spam)
+  const reportedVisibleChunks = new Set<string>();
 
   // Hover/pin state for chunk previews
   let hoveredChunk: SimNode | null = null;
@@ -371,11 +373,15 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
       // Only show labels for chunk nodes
       if (node.type !== "chunk") continue;
 
+      // Composite key: parentId:chunkId — chunks shared across keywords create
+      // duplicate nodes with the same id. Without this, they collide in all Maps.
+      const parentId = (node as ChunkSimNode).parentId;
+      const chunkKey = parentId ? `${parentId}:${node.id}` : node.id;
+
       // Get screen rect from ChunkNodes (single source of truth)
-      const screenRect = screenRects.get(node.id);
+      const screenRect = screenRects.get(chunkKey);
       if (!screenRect) {
-        // Chunk not rendered or off-screen
-        const existing = chunkLabelCache.get(node.id);
+        const existing = chunkLabelCache.get(chunkKey);
         if (existing) existing.style.display = "none";
         continue;
       }
@@ -383,28 +389,29 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
       // Skip if off-screen (with padding)
       if (screenRect.x < -50 || screenRect.x > rect.width + 50 ||
         screenRect.y < -50 || screenRect.y > rect.height + 50) {
-        const existing = chunkLabelCache.get(node.id);
+        const existing = chunkLabelCache.get(chunkKey);
         if (existing) existing.style.display = "none";
         continue;
       }
 
       // Skip if chunk is too small on screen
       if (screenRect.width < minScreenSize) {
-        const existing = chunkLabelCache.get(node.id);
+        const existing = chunkLabelCache.get(chunkKey);
         if (existing) existing.style.display = "none";
         continue;
       }
 
-      seenNodes.add(node.id);
+      seenNodes.add(chunkKey);
 
-      // Get or create label element
-      let labelEl = chunkLabelCache.get(node.id);
+      // Get or create label element — each (keyword, chunk) pair gets its own DOM element
+      let labelEl = chunkLabelCache.get(chunkKey);
       if (!labelEl) {
         labelEl = document.createElement("div");
         labelEl.className = "chunk-content-label";
         labelEl.dataset.chunkId = node.id;
+        if (parentId) labelEl.dataset.parentKeywordId = parentId;
         chunkOverlay.appendChild(labelEl);
-        chunkLabelCache.set(node.id, labelEl);
+        chunkLabelCache.set(chunkKey, labelEl);
       }
 
       // Calculate font size based on chunk screen size
@@ -450,16 +457,25 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
 
       // Display full content
       const targetContent = (node as ChunkSimNode).content || node.label;
+      const parentKeywordId = (node as ChunkSimNode).parentId;
 
-      // Notify React portal manager to render markdown
-      onChunkLabelContainer?.(node.id, labelEl, targetContent, true);
+      // Only notify React when chunk becomes newly visible (not every frame)
+      if (!reportedVisibleChunks.has(chunkKey)) {
+        reportedVisibleChunks.add(chunkKey);
+        onChunkLabelContainer?.(node.id, labelEl, targetContent, true, parentKeywordId);
+      }
     }
 
     // Hide labels for nodes that are no longer visible
-    for (const [nodeId, labelEl] of chunkLabelCache) {
-      if (!seenNodes.has(nodeId)) {
+    for (const [compositeKey, labelEl] of chunkLabelCache) {
+      if (!seenNodes.has(compositeKey)) {
         labelEl.style.display = "none";
-        onChunkLabelContainer?.(nodeId, labelEl, "", false);
+        if (reportedVisibleChunks.has(compositeKey)) {
+          reportedVisibleChunks.delete(compositeKey);
+          const chunkId = labelEl.dataset.chunkId || compositeKey;
+          const parentKeywordId = labelEl.dataset.parentKeywordId;
+          onChunkLabelContainer?.(chunkId, labelEl, "", false, parentKeywordId);
+        }
       }
     }
   }
@@ -673,11 +689,14 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     }
 
     // Remove chunk labels
-    for (const [nodeId, labelEl] of chunkLabelCache) {
-      onChunkLabelContainer?.(nodeId, labelEl, "", false);
+    for (const [compositeKey, labelEl] of chunkLabelCache) {
+      const chunkId = labelEl.dataset.chunkId || compositeKey;
+      const parentKeywordId = labelEl.dataset.parentKeywordId;
+      onChunkLabelContainer?.(chunkId, labelEl, "", false, parentKeywordId);
       labelEl.remove();
     }
     chunkLabelCache.clear();
+    reportedVisibleChunks.clear();
     if (chunkOverlay.parentNode === container) {
       container.removeChild(chunkOverlay);
     }

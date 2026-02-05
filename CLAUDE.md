@@ -114,6 +114,10 @@ TopicsView supports three renderers. **R3F (React Three Fiber) is the primary re
 
 **Legacy renderers** (D3 and raw Three.js) remain for reference but R3F is preferred.
 
+**Known gotcha — non-unique chunk node IDs**: `createChunkNodes()` in `chunk-layout.ts` creates a separate `ChunkSimNode` for each (keyword, chunk) pair. When a chunk is associated with multiple keywords, multiple nodes share the same `id`. Any Map keyed by `node.id` will silently lose data. Use composite keys like `${parentId}:${node.id}` when tracking chunks. See [Empty Chunk Labels investigation](docs/investigations/empty-chunk-labels.md).
+
+**R3F rule — never call React setState inside useFrame**: `useFrame` runs every animation frame (60fps). Calling `setState` there causes React to re-render every frame with no error or warning. When bridging imperative animation loops with React state, track previous values and only update on actual changes.
+
 ### API Routes
 
 - `POST /api/search` - Vector similarity search

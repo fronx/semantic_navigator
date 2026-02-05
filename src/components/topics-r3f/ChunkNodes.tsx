@@ -189,7 +189,10 @@ export function ChunkNodes({
         const screenHalfWidth = Math.abs(screenEdgeX - screenCenterX);
         const screenWidth = screenHalfWidth * 2;
 
-        chunkScreenRectsRef.current.set(node.id, {
+        // Composite key: parentId:chunkId — needed because chunks shared across
+        // keywords create duplicate nodes with the same id but different parents
+        const chunkKey = `${node.parentId}:${node.id}`;
+        chunkScreenRectsRef.current.set(chunkKey, {
           x: screenCenterX,
           y: screenCenterY,
           width: screenWidth,

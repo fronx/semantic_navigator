@@ -14,6 +14,7 @@ import { CAMERA_FOV_DEGREES } from "@/lib/three/zoom-to-cursor";
 import { getNodeRadius, DOT_SCALE_FACTOR } from "@/lib/three/node-renderer";
 import type { LabelRefs, LabelsOverlayHandle } from "./R3FLabelContext";
 import type { SimNode } from "@/lib/map-renderer";
+import type { ChunkNode } from "@/lib/chunk-loader";
 
 const CAMERA_FOV_RADIANS = CAMERA_FOV_DEGREES * Math.PI / 180;
 
@@ -22,14 +23,18 @@ export interface LabelsOverlayProps {
   labelRefs: LabelRefs;
   /** Keyword label zoom range thresholds */
   keywordLabelRange: { start: number; full: number };
+  /** Source data for chunk content (bypasses SimNode transformation) */
+  chunksByKeyword?: Map<string, ChunkNode[]>;
   /** Handler for keyword label click */
   onKeywordLabelClick?: (keywordId: string) => void;
   /** Handler for cluster label click */
   onClusterLabelClick?: (clusterId: number) => void;
+  /** Handler for keyword hover */
+  onKeywordHover?: (keywordId: string | null) => void;
 }
 
 export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>(
-  function LabelsOverlay({ labelRefs, keywordLabelRange, onKeywordLabelClick, onClusterLabelClick }, ref) {
+  function LabelsOverlay({ labelRefs, keywordLabelRange, chunksByKeyword, onKeywordLabelClick, onClusterLabelClick, onKeywordHover }, ref) {
     const {
       cameraStateRef,
       containerRef,
@@ -52,18 +57,39 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
       chunkId: string,
       container: HTMLElement,
       content: string,
-      visible: boolean
+      visible: boolean,
+      parentKeywordId?: string
     ) => {
       setChunkPortals(prev => {
         const next = new Map(prev);
-        if (visible && content) {
-          next.set(chunkId, { container, content });
+        // Use unique portal key: parentKeywordId-chunkId
+        // This prevents portal collisions when chunks are shared across multiple keywords
+        const portalKey = parentKeywordId ? `${parentKeywordId}-${chunkId}` : chunkId;
+
+        if (visible) {
+          // Look up content directly from source data (chunksByKeyword)
+          // instead of using transformed content from SimNode
+          let actualContent = content;
+
+          if (chunksByKeyword && parentKeywordId) {
+            const chunks = chunksByKeyword.get(parentKeywordId);
+            const chunk = chunks?.find(c => c.id === chunkId);
+            if (chunk) {
+              actualContent = chunk.content;
+            }
+          }
+
+          if (actualContent) {
+            next.set(portalKey, { container, content: actualContent });
+          } else {
+            next.delete(portalKey);
+          }
         } else {
-          next.delete(chunkId);
+          next.delete(portalKey);
         }
         return next;
       });
-    }, []);
+    }, [chunksByKeyword]);
 
     // Create label manager on mount
     useEffect(() => {
@@ -156,6 +182,7 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
         onKeywordLabelClick,
         onClusterLabelClick,
         onChunkLabelContainer: handleChunkLabelContainer,
+        onKeywordHover,
       });
 
       labelManagerRef.current = labelManager;
@@ -164,7 +191,7 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
         labelManager.destroy();
         labelManagerRef.current = null;
       };
-    }, [containerRef, cameraStateRef, clusterColorsRef, labelManagerRef, keywordLabelRange, cursorWorldPosRef, handleChunkLabelContainer]);
+    }, [containerRef, cameraStateRef, clusterColorsRef, labelManagerRef, keywordLabelRange, cursorWorldPosRef, handleChunkLabelContainer, onKeywordHover]);
 
     // Expose imperative handle for TopicsView to call
     useImperativeHandle(ref, () => ({
@@ -196,13 +223,13 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
     // Render markdown portals into label containers
     return (
       <>
-        {Array.from(chunkPortals.entries()).map(([chunkId, { container, content }]) =>
+        {Array.from(chunkPortals.entries()).map(([portalKey, { container, content }]) =>
           createPortal(
             <div className="chunk-markdown">
               <ReactMarkdown>{content}</ReactMarkdown>
             </div>,
             container,
-            chunkId
+            portalKey
           )
         )}
       </>
