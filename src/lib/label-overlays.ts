@@ -10,8 +10,6 @@ import { computeClusterLabels } from "@/lib/cluster-labels";
 import { communityColorScale } from "@/lib/hull-renderer";
 import { clusterColorToCSS, type ClusterColorInfo } from "@/lib/semantic-colors";
 import { CAMERA_FOV_DEGREES } from "@/lib/three/zoom-to-cursor";
-import { calculateScales } from "@/lib/chunk-scale";
-import { DEFAULT_ZOOM_PHASE_CONFIG } from "@/lib/zoom-phase-config";
 import { updateLabelStyles } from "@/lib/dom-update-utils";
 
 // ============================================================================
@@ -355,9 +353,6 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
         { prop: "fontSize", key: "lastFontSize", value: newFontSize, threshold: 0.5 },
       ]);
 
-      // Note: Opacity is controlled solely by keywordLabelOpacity in updateLabelOpacity()
-      // We previously had a degree-based fade here, but it conflicted with the zoom-based fade
-
       if (labelEl.textContent !== node.label) {
         labelEl.textContent = node.label;
       }
@@ -426,6 +421,12 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
         labelEl.className = "chunk-content-label";
         labelEl.dataset.chunkId = node.id;
         if (parentId) labelEl.dataset.parentKeywordId = parentId;
+        // Static styles (set once when created)
+        labelEl.style.overflow = "hidden";
+        labelEl.style.transform = "none";
+        labelEl.style.whiteSpace = "normal";
+        labelEl.style.wordWrap = "break-word";
+        labelEl.style.overflowWrap = "break-word";
         chunkOverlay.appendChild(labelEl);
         chunkLabelCache.set(chunkKey, labelEl);
       }
@@ -461,15 +462,6 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
         { prop: "maxWidth", key: "lastChunkMaxWidth", value: newWidth, threshold: 1 },
         { prop: "maxHeight", key: "lastChunkMaxHeight", value: newHeight, threshold: 1 },
       ]);
-
-      // Static properties (set once, don't need change detection)
-      labelEl.style.overflow = "hidden"; // Clip overflow text
-      labelEl.style.transform = "none"; // Disable any CSS centering transforms
-
-      // Force text wrapping for long lines
-      labelEl.style.whiteSpace = "normal";
-      labelEl.style.wordWrap = "break-word";
-      labelEl.style.overflowWrap = "break-word";
 
       // Display full content
       const targetContent = (node as ChunkSimNode).content || node.label;
@@ -623,13 +615,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
   }
 
   function setHoveredKeyword(node: SimNode | null): void {
-    console.log("Hovered keyword set to:", node?.id ?? null);
-    // Only accept keyword nodes
-    if (node && node.type !== "keyword") {
-      hoveredKeyword = null;
-    } else {
-      hoveredKeyword = node;
-    }
+    hoveredKeyword = node?.type === "keyword" ? node : null;
   }
 
   function updateHoverLabel(nodes: SimNode[]): void {
@@ -684,15 +670,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     // Update hovered keyword (will be used by updateKeywordLabels to scale up the label)
     if (nearestKeyword !== hoveredKeyword) {
       hoveredKeyword = nearestKeyword;
-      // Call debug callback when hovered keyword changes
-      console.log('[label-overlays] Keyword hover changed:', nearestKeyword?.id, nearestKeyword?.label);
-      console.log('[label-overlays] onKeywordHover callback exists?', !!onKeywordHover);
-      if (onKeywordHover) {
-        console.log('[label-overlays] Calling onKeywordHover with:', nearestKeyword?.id ?? null);
-        onKeywordHover(nearestKeyword?.id ?? null);
-      } else {
-        console.log('[label-overlays] onKeywordHover is undefined!');
-      }
+      onKeywordHover?.(nearestKeyword?.id ?? null);
     }
 
     // Hide the separate hover label overlay (we'll scale the regular label instead)
