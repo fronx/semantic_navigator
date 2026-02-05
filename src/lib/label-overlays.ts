@@ -60,6 +60,8 @@ export interface LabelOverlayOptions {
   getKeywordLabelRange: () => { start: number; full: number };
   /** Function to get chunk screen rects (calculated by ChunkNodes, shared via ref) */
   getChunkScreenRects?: () => Map<string, ChunkScreenRect>;
+  /** Handler for keyword label click */
+  onKeywordLabelClick?: (keywordId: string) => void;
 }
 
 // ============================================================================
@@ -76,6 +78,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     getClusterColors,
     getKeywordLabelRange,
     getChunkScreenRects,
+    onKeywordLabelClick,
   } = options;
 
   // Create overlay for cluster labels
@@ -250,6 +253,14 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
         labelEl.className = "keyword-label";
         keywordOverlay.appendChild(labelEl);
         keywordLabelCache.set(node.id, labelEl);
+
+        // Add click handler
+        labelEl.style.cursor = "pointer";
+        labelEl.style.pointerEvents = "auto";
+        labelEl.addEventListener("click", (e) => {
+          e.stopPropagation();
+          onKeywordLabelClick?.(node.id);
+        });
       }
 
       // Calculate offset from node center (to the right of the dot)

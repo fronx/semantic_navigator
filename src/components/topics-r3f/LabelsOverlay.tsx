@@ -20,10 +20,12 @@ export interface LabelsOverlayProps {
   labelRefs: LabelRefs;
   /** Keyword label zoom range thresholds */
   keywordLabelRange: { start: number; full: number };
+  /** Handler for keyword label click */
+  onKeywordLabelClick?: (keywordId: string) => void;
 }
 
 export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>(
-  function LabelsOverlay({ labelRefs, keywordLabelRange }, ref) {
+  function LabelsOverlay({ labelRefs, keywordLabelRange, onKeywordLabelClick }, ref) {
     const {
       cameraStateRef,
       containerRef,
@@ -119,6 +121,7 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
         getClusterColors: () => clusterColorsRef.current,
         getKeywordLabelRange: () => keywordLabelRange,
         getChunkScreenRects: () => labelRefs.chunkScreenRectsRef.current,
+        onKeywordLabelClick,
       });
 
       labelManagerRef.current = labelManager;

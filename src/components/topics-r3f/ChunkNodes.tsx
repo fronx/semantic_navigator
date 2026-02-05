@@ -120,22 +120,6 @@ export function ChunkNodes({
     const physicalThickness = panelThickness * chunkTextDepthScale;
     const textFrontZ = chunkZDepth - physicalThickness;
 
-    // Debug first few chunks
-    if (Math.random() < 0.01 && chunkNodes.length > 0) {
-      console.log('[ChunkNodes Debug]', JSON.stringify({
-        totalChunks: chunkNodes.length,
-        chunkZDepth,
-        first3Chunks: chunkNodes.slice(0, 3).map(n => ({
-          id: n.id,
-          x: n.x,
-          y: n.y,
-          parentId: (n as ChunkSimNode).parentId,
-        })),
-        simNodesCount: simNodes.length,
-        keywordMapSize: keywordMap.size,
-      }, null, 2));
-    }
-
     // Clear screen rects map before populating with current frame data
     if (chunkScreenRectsRef) {
       chunkScreenRectsRef.current.clear();
@@ -165,25 +149,10 @@ export function ChunkNodes({
           colorMixRatio
         );
 
-        // Debug first chunk color
-        if (i === 0 && Math.random() < 0.01) {
-          console.log('[ChunkNodes Color Debug]', JSON.stringify({
-            chunkId: node.id,
-            parentId: node.parentId,
-            parentFound: !!parentNode,
-            parentLabel: parentNode?.label,
-            computedColor: color,
-            colorRGB: colorRef.current.set(color).toArray(),
-          }, null, 2));
-        }
-
         colorRef.current.set(color);
       } else {
         // Fallback gray if parent not found
         colorRef.current.set("#e0e0e0");
-        if (i === 0 && Math.random() < 0.1) {
-          console.log('[ChunkNodes] Parent not found for chunk:', node.id, 'parentId:', node.parentId);
-        }
       }
       meshRef.current.setColorAt(i, colorRef.current);
 

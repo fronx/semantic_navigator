@@ -22,6 +22,7 @@ import type { SimNode, SimLink } from "@/lib/map-renderer";
 import type { ZoomPhaseConfig } from "@/lib/zoom-phase-config";
 import type { LabelRefs } from "./R3FLabelContext";
 import type { ChunkNode } from "@/lib/chunk-loader";
+import type { KeywordTierMap } from "@/lib/topics-filter";
 
 export interface R3FTopicsSceneProps {
   nodes: KeywordNode[];
@@ -40,6 +41,7 @@ export interface R3FTopicsSceneProps {
   chunkZDepth?: number;
   /** Scale factor for converting panel thickness to chunk text depth offset */
   chunkTextDepthScale?: number;
+  keywordTiers?: KeywordTierMap | null;
   onKeywordClick?: (keyword: string) => void;
   onProjectClick?: (projectId: string) => void;
   onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
@@ -68,6 +70,7 @@ export function R3FTopicsScene({
   zoomPhaseConfig,
   chunkZDepth = -150,
   chunkTextDepthScale = -15.0,
+  keywordTiers,
   onKeywordClick,
   onProjectClick,
   onProjectDrag,
@@ -190,6 +193,7 @@ export function R3FTopicsScene({
           colorMixRatio={colorMixRatio}
           pcaTransform={pcaTransform}
           zoomRange={zoomPhaseConfig.chunkCrossfade}
+          keywordTiers={keywordTiers}
           onKeywordClick={onKeywordClick}
         />
       )}

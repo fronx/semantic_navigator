@@ -15,6 +15,7 @@ import { createChunkNodes, applyConstrainedForces } from "@/lib/chunk-layout";
 import { convertToThreeNodes } from "@/lib/topics-graph-nodes";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 import { loadPCATransform, type PCATransform } from "@/lib/semantic-colors";
+import type { SemanticFilter } from "@/lib/topics-filter";
 import type { BaseRendererOptions } from "@/lib/renderer-types";
 import type { SimNode } from "@/lib/map-renderer";
 import { CAMERA_Z_SCALE_BASE } from "@/lib/three/camera-controller";
@@ -72,6 +73,15 @@ export interface TopicsViewProps {
   chunkTextDepthScale?: number;
   /** Callback when cluster count changes */
   onClusterCountChange?: (count: number) => void;
+  /** Callback when semantic filter state changes (for breadcrumb UI) */
+  onSemanticFilterChange?: (filter: {
+    semanticFilter: SemanticFilter | null;
+    filterHistory: string[];
+    keywordNodes: KeywordNode[];
+    clearSemanticFilter: () => void;
+    goBackInHistory: () => void;
+    goToHistoryIndex: (index: number) => void;
+  }) => void;
 }
 
 // ============================================================================
@@ -101,6 +111,7 @@ export function TopicsView({
   chunkZDepth = -150,
   chunkTextDepthScale = -15.0,
   onClusterCountChange,
+  onSemanticFilterChange,
 }: TopicsViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -123,18 +134,41 @@ export function TopicsView({
     capturePositions,
     getSavedPosition,
     applyFilter,
+    semanticFilter,
+    keywordTiers,
+    chunkKeywordIds,
+    filterHistory,
+    applySemanticFilter,
+    clearSemanticFilter,
+    goBackInHistory,
+    goToHistoryIndex,
   } = useTopicsFilter({
     keywordNodes,
     edges,
     externalFilter,
   });
 
+  // Notify parent component when semantic filter state changes (for ControlSidebar)
+  useEffect(() => {
+    onSemanticFilterChange?.({
+      semanticFilter,
+      filterHistory,
+      keywordNodes,
+      clearSemanticFilter,
+      goBackInHistory,
+      goToHistoryIndex,
+    });
+  }, [semanticFilter, filterHistory, keywordNodes, clearSemanticFilter, goBackInHistory, goToHistoryIndex, onSemanticFilterChange]);
+
   // Chunk loading for visible keywords
+  // If semantic filter active, only load chunks for selected + 1-hop
   // Stabilize the Set to prevent unnecessary refetches
-  const visibleKeywordIds = useMemo(
-    () => new Set(activeNodes.map(n => n.id)),
-    [activeNodes]
-  );
+  const visibleKeywordIds = useMemo(() => {
+    if (chunkKeywordIds) {
+      return chunkKeywordIds;
+    }
+    return new Set(activeNodes.map(n => n.id));
+  }, [activeNodes, chunkKeywordIds]);
 
   const { chunksByKeyword, isLoading } = useChunkLoading({
     visibleKeywordIds,
@@ -153,7 +187,36 @@ export function TopicsView({
     }
     onZoomChange?.(zoomScale);
   });
-  const handleKeywordClick = useStableCallback(onKeywordClick);
+  // Handle keyword click - apply semantic filter
+  const handleKeywordClickInternal = useStableCallback((keyword: string) => {
+    // Find keyword node by label
+    const keywordNode = activeNodes.find(n => n.label === keyword);
+    if (keywordNode) {
+      // Save positions before applying filter
+      // For R3F renderer, we'll need to access node positions
+      // For now, create a simple position getter from activeNodes
+      const getPosition = (id: string) => {
+        const node = activeNodes.find(n => n.id === id);
+        return node ? { x: 0, y: 0 } : undefined; // Positions will be captured from simulation
+      };
+      capturePositions(getPosition);
+
+      // Apply semantic filter
+      applySemanticFilter(keywordNode.id);
+    }
+
+    // Also call external handler if provided
+    onKeywordClick?.(keyword);
+  });
+
+  // Handle keyword label click (same as node click)
+  const handleKeywordLabelClick = useStableCallback((keywordId: string) => {
+    // Find keyword by ID
+    const keywordNode = activeNodes.find(n => n.id === keywordId);
+    if (keywordNode) {
+      handleKeywordClickInternal(keywordNode.label);
+    }
+  });
   const handleProjectClick = useStableCallback(onProjectClick);
   const handleProjectDrag = useStableCallback(onProjectDrag);
 
@@ -217,7 +280,7 @@ export function TopicsView({
     pcaTransform,
     getSavedPosition,
     chunkZDepth,
-    onKeywordClick: handleKeywordClick,
+    onKeywordClick: handleKeywordClickInternal,
     onProjectClick: handleProjectClick,
     onProjectDrag: handleProjectDrag,
     onZoomChange: handleZoomChange,
@@ -379,7 +442,9 @@ export function TopicsView({
           zoomPhaseConfig={zoomPhaseConfig ?? DEFAULT_ZOOM_PHASE_CONFIG}
           chunkZDepth={chunkZDepth}
           chunkTextDepthScale={chunkTextDepthScale}
-          onKeywordClick={handleKeywordClick}
+          keywordTiers={keywordTiers}
+          onKeywordClick={handleKeywordClickInternal}
+          onKeywordLabelClick={handleKeywordLabelClick}
           onProjectClick={handleProjectClick}
           onProjectDrag={handleProjectDrag}
           onZoomChange={handleZoomChange}

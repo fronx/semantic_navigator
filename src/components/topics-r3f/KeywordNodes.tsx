@@ -9,8 +9,10 @@ import * as THREE from "three";
 import type { SimNode } from "@/lib/map-renderer";
 import type { PCATransform } from "@/lib/semantic-colors";
 import type { ZoomRange } from "@/lib/zoom-phase-config";
+import type { KeywordTierMap } from "@/lib/topics-filter";
 import { calculateScales } from "@/lib/chunk-scale";
 import { getNodeColor, BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/three/node-renderer";
+import { KEYWORD_TIER_SCALES } from "@/lib/semantic-filter-config";
 
 const VISIBILITY_THRESHOLD = 0.01;
 
@@ -19,6 +21,7 @@ export interface KeywordNodesProps {
   colorMixRatio: number;
   pcaTransform: PCATransform | null;
   zoomRange: ZoomRange;
+  keywordTiers?: KeywordTierMap | null;
   onKeywordClick?: (keyword: string) => void;
 }
 
@@ -27,6 +30,7 @@ export function KeywordNodes({
   colorMixRatio,
   pcaTransform,
   zoomRange,
+  keywordTiers,
   onKeywordClick,
 }: KeywordNodesProps) {
   const { camera } = useThree();
@@ -36,9 +40,48 @@ export function KeywordNodes({
   const quaternionRef = useRef(new THREE.Quaternion());
   const scaleRef = useRef(new THREE.Vector3(1, 1, 1));
   const colorRef = useRef(new THREE.Color());
+  const materialRef = useRef<THREE.MeshBasicMaterial | null>(null);
 
   // Create geometry once - match Three.js renderer size
   const geometry = useMemo(() => new THREE.CircleGeometry(BASE_DOT_RADIUS * DOT_SCALE_FACTOR, 64), []);
+
+  // Initialize instanceColor AND material synchronously using ref callback
+  const handleMeshRef = (mesh: THREE.InstancedMesh | null) => {
+    meshRef.current = mesh;
+
+    if (mesh && !mesh.instanceColor) {
+      // FIRST: Create instanceColor attribute with default white color
+      const colors = new Float32Array(simNodes.length * 3);
+      for (let i = 0; i < simNodes.length; i++) {
+        colors[i * 3] = 1; // R
+        colors[i * 3 + 1] = 1; // G
+        colors[i * 3 + 2] = 1; // B
+      }
+      mesh.instanceColor = new THREE.InstancedBufferAttribute(colors, 3);
+      mesh.instanceColor.needsUpdate = true;
+
+      // SECOND: Create and attach material AFTER instanceColor exists
+      // This ensures the shader compiles with vertex color support from the start
+
+      // Dispose old material if it exists
+      if (mesh.material) {
+        (mesh.material as THREE.Material).dispose();
+      }
+
+      const material = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(0xffffff),
+        transparent: false,
+        depthTest: true,
+        depthWrite: true,
+      });
+      material.toneMapped = false;
+      mesh.material = material;
+      materialRef.current = material;
+
+      // CRITICAL: Force shader recompilation to include instanceColor support
+      material.needsUpdate = true;
+    }
+  };
 
   // Update positions, scales, and colors every frame
   useFrame(() => {
@@ -61,9 +104,22 @@ export function KeywordNodes({
       const y = node.y ?? 0;
       const z = 0;
 
+      // Base scale from zoom
+      let scaleMultiplier = 1.0;
+
+      // Apply tier-based scale multiplier if semantic filter active
+      if (keywordTiers) {
+        const tier = keywordTiers.get(node.id);
+        if (tier) {
+          scaleMultiplier = KEYWORD_TIER_SCALES[tier];
+        }
+      }
+
+      const finalScale = keywordScale * scaleMultiplier;
+
       // Compose matrix with position and scale
       positionRef.current.set(x, y, z);
-      scaleRef.current.setScalar(keywordScale);
+      scaleRef.current.setScalar(finalScale);
       matrixRef.current.compose(positionRef.current, quaternionRef.current, scaleRef.current);
       meshRef.current.setMatrixAt(i, matrixRef.current);
 
@@ -75,6 +131,16 @@ export function KeywordNodes({
         colorMixRatio
       );
       colorRef.current.set(color);
+
+      // Apply opacity for 2-hop keywords (dimmed for navigation)
+      if (keywordTiers) {
+        const tier = keywordTiers.get(node.id);
+        if (tier === "neighbor-2") {
+          // Dim 2-hop keywords to 60% opacity
+          colorRef.current.multiplyScalar(0.6);
+        }
+      }
+
       meshRef.current.setColorAt(i, colorRef.current);
     }
 
@@ -86,9 +152,15 @@ export function KeywordNodes({
 
   return (
     <instancedMesh
-      ref={meshRef}
+      ref={handleMeshRef}
       args={[geometry, undefined, simNodes.length]}
       frustumCulled={false}
+      onPointerOver={() => {
+        document.body.style.cursor = "pointer";
+      }}
+      onPointerOut={() => {
+        document.body.style.cursor = "default";
+      }}
       onClick={(e) => {
         e.stopPropagation();
         const instanceId = e.instanceId;

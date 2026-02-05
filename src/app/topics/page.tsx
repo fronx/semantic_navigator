@@ -10,6 +10,7 @@ import { ProjectSidebar, type Project as SidebarProject } from "@/components/Pro
 import { InlineTitleInput } from "@/components/InlineTitleInput";
 import { ControlSidebar } from "@/components/ControlSidebar";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
+import type { SemanticFilter } from "@/lib/topics-filter";
 import { CAMERA_Z_SCALE_BASE } from "@/lib/three/camera-controller";
 import { BASE_CAMERA_Z } from "@/lib/chunk-zoom-config";
 
@@ -92,6 +93,16 @@ export default function TopicsPage() {
 
   // Camera Z state for debug display
   const [currentCameraZ, setCurrentCameraZ] = useState<number | undefined>(undefined);
+
+  // Semantic filter state (for breadcrumb navigation UI in ControlSidebar)
+  const [semanticFilterData, setSemanticFilterData] = useState<{
+    semanticFilter: SemanticFilter | null;
+    filterHistory: string[];
+    keywordNodes: KeywordNode[];
+    clearSemanticFilter: () => void;
+    goBackInHistory: () => void;
+    goToHistoryIndex: (index: number) => void;
+  } | null>(null);
 
   // Calculate chunk Z depth from offset multiplier
   // BASE_CAMERA_Z is 1000, so default offset of 0.5 gives depth of 500
@@ -370,6 +381,12 @@ export default function TopicsPage() {
             nodeCount,
             clusterCount,
           }}
+          semanticFilter={semanticFilterData?.semanticFilter ?? null}
+          filterHistory={semanticFilterData?.filterHistory ?? []}
+          keywordNodes={semanticFilterData?.keywordNodes ?? []}
+          clearSemanticFilter={semanticFilterData?.clearSemanticFilter}
+          goBackInHistory={semanticFilterData?.goBackInHistory}
+          goToHistoryIndex={semanticFilterData?.goToHistoryIndex}
         />
         <div className="flex-1 relative min-w-0 overflow-hidden">
           <TopicsView
@@ -405,6 +422,7 @@ export default function TopicsPage() {
             showKNNEdges={settings.showKNNEdges}
             chunkZDepth={chunkZDepth}
             chunkTextDepthScale={settings.chunkTextDepthScale}
+            onSemanticFilterChange={setSemanticFilterData}
           />
 
           {creatingAt && (

@@ -25,6 +25,7 @@
 - [Search Performance Investigation](architecture/search-performance-investigation.md) - Root cause analysis of search timeouts (resolved: PostgreSQL query planner behavior with explicit null parameters)
 - [Chunk Node LOD Analysis](investigations/chunk-lod-analysis.md) - Performance analysis of Three.js chunk rendering with LOD optimization recommendations
 - [Camera Z-Scale Sync Bug](investigations/camera-z-scale-sync-bug.md) - Keywords disappearing on zoom stop due to delayed camera initialization and mismatched Z↔K conversions (resolved: synchronous camera setup + shared CAMERA_Z_SCALE_BASE constant)
+- [Keyword Material Double Bind](investigations/keyword-material-double-bind.md) - Black dots and broken clicks caused by vertexColors flag on instanced meshes (resolved: use base color + instanceColor without vertexColors)
 
 ### Architecture Decision Records (ADRs)
 

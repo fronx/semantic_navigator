@@ -6,6 +6,8 @@
 import type { ZoomPhaseConfig } from "@/lib/zoom-phase-config";
 import type { RendererType } from "@/components/TopicsView";
 import type { TopicsSettings } from "@/hooks/useTopicsSettings";
+import type { SemanticFilter } from "@/lib/topics-filter";
+import type { KeywordNode } from "@/lib/graph-queries";
 import { CAMERA_Z_MIN, CAMERA_Z_MAX } from "@/lib/chunk-zoom-config";
 import { CAMERA_Z_SCALE_BASE } from "@/lib/three/camera-controller";
 
@@ -150,6 +152,13 @@ export interface ControlSidebarProps {
     nodeCount: number;
     clusterCount: number;
   };
+  // Semantic filter navigation
+  semanticFilter?: SemanticFilter | null;
+  filterHistory?: string[];
+  keywordNodes?: KeywordNode[];
+  clearSemanticFilter?: () => void;
+  goBackInHistory?: () => void;
+  goToHistoryIndex?: (index: number) => void;
 }
 
 export function ControlSidebar({
@@ -158,6 +167,12 @@ export function ControlSidebar({
   updateZoomPhaseConfig,
   toggleSection,
   cameraZ,
+  semanticFilter,
+  filterHistory = [],
+  keywordNodes = [],
+  clearSemanticFilter,
+  goBackInHistory,
+  goToHistoryIndex,
   clusterResolutionDebug,
 }: ControlSidebarProps) {
   const section = (title: string) => ({
@@ -185,6 +200,48 @@ export function ControlSidebar({
 
       {!settings.sidebarCollapsed && (
         <div className="overflow-y-auto h-[calc(100%-40px)]">
+          {/* Semantic Filter Navigation */}
+          {semanticFilter && (
+            <div className="filter-navigation">
+              {/* Breadcrumb trail */}
+              <div className="breadcrumb-trail">
+                {filterHistory.map((keywordId, index) => {
+                  const keyword = keywordNodes.find((n) => n.id === keywordId);
+                  const isLast = index === filterHistory.length - 1;
+                  return (
+                    <span key={keywordId}>
+                      <button
+                        onClick={() => goToHistoryIndex?.(index)}
+                        disabled={isLast}
+                        className={isLast ? "breadcrumb-current" : "breadcrumb-link"}
+                      >
+                        {keyword?.label || keywordId}
+                      </button>
+                      {!isLast && <span className="breadcrumb-separator"> → </span>}
+                    </span>
+                  );
+                })}
+              </div>
+
+              {/* Navigation buttons */}
+              <div className="filter-controls">
+                <button
+                  onClick={goBackInHistory}
+                  disabled={filterHistory.length === 0}
+                  title="Go back one level"
+                >
+                  ← Back
+                </button>
+                <button
+                  onClick={clearSemanticFilter}
+                  title="Clear filter and return to full view"
+                >
+                  Clear Filter
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Renderer */}
           <Section {...section("Renderer")}>
             <select

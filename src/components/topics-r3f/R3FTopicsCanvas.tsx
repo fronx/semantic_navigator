@@ -16,6 +16,7 @@ import type { ZoomPhaseConfig } from "@/lib/zoom-phase-config";
 import type { LabelOverlayManager } from "@/lib/label-overlays";
 import type { CameraState, ChunkScreenRect, LabelRefs, LabelsOverlayHandle } from "./R3FLabelContext";
 import type { ChunkNode } from "@/lib/chunk-loader";
+import type { KeywordTierMap } from "@/lib/topics-filter";
 
 export interface R3FTopicsCanvasProps {
   nodes: KeywordNode[];
@@ -32,7 +33,9 @@ export interface R3FTopicsCanvasProps {
   zoomPhaseConfig: ZoomPhaseConfig;
   chunkZDepth?: number;
   chunkTextDepthScale?: number;
+  keywordTiers?: KeywordTierMap | null;
   onKeywordClick?: (keyword: string) => void;
+  onKeywordLabelClick?: (keywordId: string) => void;
   onProjectClick?: (projectId: string) => void;
   onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
   onZoomChange?: (zoomScale: number) => void;
@@ -53,7 +56,9 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     zoomPhaseConfig,
     chunkZDepth,
     chunkTextDepthScale,
+    keywordTiers,
     onKeywordClick,
+    onKeywordLabelClick,
     onProjectClick,
     onProjectDrag,
     onZoomChange,
@@ -158,6 +163,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
             zoomPhaseConfig={zoomPhaseConfig}
             chunkZDepth={chunkZDepth}
             chunkTextDepthScale={chunkTextDepthScale}
+            keywordTiers={keywordTiers}
             onKeywordClick={onKeywordClick}
             onProjectClick={onProjectClick}
             onProjectDrag={onProjectDrag}
@@ -174,6 +180,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
           ref={ref}
           labelRefs={labelRefs}
           keywordLabelRange={zoomPhaseConfig.keywordLabels}
+          onKeywordLabelClick={onKeywordLabelClick}
         />
       </div>
     );
