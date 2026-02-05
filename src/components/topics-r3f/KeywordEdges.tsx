@@ -53,7 +53,6 @@ export function KeywordEdges({
   // Filter k-NN connectivity edges unless explicitly enabled
   const visibleEdges = useMemo(() => {
     const filtered = showKNNEdges ? edges : edges.filter(e => !e.isKNN);
-    console.log(`KeywordEdges: ${edges.length} total edges, ${filtered.length} visible (${edges.length - filtered.length} k-NN ${showKNNEdges ? 'shown' : 'hidden'})`);
     return filtered;
   }, [edges, showKNNEdges]);
 
@@ -146,13 +145,6 @@ export function KeywordEdges({
 
     line.geometry.attributes.position.needsUpdate = true;
     line.geometry.attributes.color.needsUpdate = true;
-
-    // Debug: log straight line stats occasionally
-    if (straightLineCount > 0 && Math.random() < 0.01) {
-      const avgLength = straightLineLengths.reduce((a, b) => a + b, 0) / straightLineLengths.length;
-      const maxLength = Math.max(...straightLineLengths);
-      console.log(`Straight lines: ${straightLineCount}/${visibleEdges.length}, avg length: ${avgLength.toFixed(1)}, max: ${maxLength.toFixed(1)}`);
-    }
   });
 
   return (
