@@ -12,7 +12,7 @@ import type { OrbitControls as OrbitControlsType } from "three-stdlib";
 import type { Camera, WebGLRenderer } from "three";
 import { CAMERA_Z_SCALE_BASE } from "@/lib/three/camera-controller";
 import { CAMERA_Z_MIN, CAMERA_Z_MAX } from "@/lib/chunk-zoom-config";
-import { calculateZoomToCursor } from "@/lib/three/zoom-to-cursor";
+import { calculateZoomToCursor, calculateZoomFactor } from "@/lib/three/zoom-to-cursor";
 import { createPanHandler } from "@/lib/three/pan-handler";
 import { classifyWheelGesture } from "@/lib/three/gesture-classifier";
 import { calculatePan } from "@/lib/three/pan-camera";
@@ -116,9 +116,11 @@ export function CameraController({ onZoomChange, maxDistance = CAMERA_Z_MAX }: C
         const controls = controlsRef.current;
         const oldZ = camera.position.z;
 
-        // Calculate zoom delta with sensitivity based on current zoom level
-        const zoomSensitivity = camera.position.z * 0.003;
-        const newZ = Math.max(CAMERA_Z_MIN, Math.min(maxDistance, oldZ + event.deltaY * zoomSensitivity));
+        // Exponential zoom: each scroll unit changes zoom by constant percentage
+        // This gives consistent perceptual zoom speed at all levels
+        const isPinch = gesture === 'pinch';
+        const zoomFactor = calculateZoomFactor(event.deltaY, isPinch);
+        const newZ = Math.max(CAMERA_Z_MIN, Math.min(maxDistance, oldZ * zoomFactor));
 
         if (Math.abs(newZ - oldZ) < 0.01) return;
 

@@ -7,6 +7,30 @@
 export const CAMERA_FOV_DEGREES = 10;
 const CAMERA_FOV_RADIANS = CAMERA_FOV_DEGREES * Math.PI / 180;
 
+/**
+ * Exponential zoom factor base.
+ * Higher = faster zoom, lower = slower zoom.
+ * Typical values: 1.005 (conservative), 1.008 (balanced), 1.01 (aggressive)
+ */
+const ZOOM_FACTOR_BASE = 1.003;
+
+/**
+ * Multiplier for pinch gestures to compensate for smaller deltaY values.
+ */
+const PINCH_ZOOM_MULTIPLIER = 3;
+
+/**
+ * Calculate exponential zoom factor from scroll delta.
+ * Gives consistent perceptual zoom speed at all zoom levels.
+ *
+ * @param deltaY - Scroll delta from wheel event
+ * @param isPinch - Whether this is a pinch gesture (applies multiplier)
+ */
+export function calculateZoomFactor(deltaY: number, isPinch = false): number {
+  const effectiveDelta = isPinch ? deltaY * PINCH_ZOOM_MULTIPLIER : deltaY;
+  return Math.pow(ZOOM_FACTOR_BASE, effectiveDelta);
+}
+
 export interface ZoomToCursorParams {
   /** Current camera Z position */
   oldZ: number;

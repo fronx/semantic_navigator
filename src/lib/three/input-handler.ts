@@ -142,7 +142,8 @@ export function createInputHandler(options: InputHandlerOptions): InputHandler {
       const ndcX = (mouseX / rect.width) * 2 - 1;
       const ndcY = -(mouseY / rect.height) * 2 + 1;
 
-      cameraController.zoom(event.deltaY, { x: ndcX, y: ndcY });
+      const isPinch = gesture === 'pinch';
+      cameraController.zoom(event.deltaY, { x: ndcX, y: ndcY }, isPinch);
       markUserInteraction(autoFitState);
       onLabelsUpdate();
 

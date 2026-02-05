@@ -4,7 +4,7 @@
  */
 
 import type * as THREE from "three";
-import { calculateZoomToCursor, CAMERA_FOV_DEGREES } from "./zoom-to-cursor";
+import { calculateZoomToCursor, calculateZoomFactor, CAMERA_FOV_DEGREES } from "./zoom-to-cursor";
 
 const CAMERA_FOV_RADIANS = CAMERA_FOV_DEGREES * Math.PI / 180;
 /** Base value used to convert perspective camera Z to a pseudo-zoom scale (k = BASE / z) */
@@ -35,7 +35,7 @@ export interface CameraController {
   /** Apply world-space pan deltas directly */
   applyWorldPan(worldDeltaX: number, worldDeltaY: number): void;
   /** Zoom camera with cursor position (NDC coordinates -1 to +1) */
-  zoom(deltaY: number, cursorNDC: { x: number; y: number }): void;
+  zoom(deltaY: number, cursorNDC: { x: number; y: number }, isPinch?: boolean): void;
   /** Notify zoom change (calls onZoomEnd callback) */
   notifyZoomChange(): void;
   /** Cancel any running animation */
@@ -128,16 +128,19 @@ export function createCameraController(options: CameraControllerOptions): Camera
     camera.position.y += worldDeltaY;
   }
 
-  function zoom(deltaY: number, cursorNDC: { x: number; y: number }): void {
+  function zoom(deltaY: number, cursorNDC: { x: number; y: number }, isPinch = false): void {
     const camera = getCamera();
     if (!camera) return;
 
     const oldZ = camera.position.z;
-    const zoomSensitivity = camera.position.z * 0.003;
+
+    // Exponential zoom: each scroll unit changes zoom by constant percentage
+    // This gives consistent perceptual zoom speed at all levels
+    const zoomFactor = calculateZoomFactor(deltaY, isPinch);
 
     // Use centralized camera range from chunk-zoom-config
     const { CAMERA_Z_MIN, CAMERA_Z_MAX } = require('@/lib/chunk-zoom-config');
-    const newZ = Math.max(CAMERA_Z_MIN, Math.min(CAMERA_Z_MAX, oldZ + deltaY * zoomSensitivity));
+    const newZ = Math.max(CAMERA_Z_MIN, Math.min(CAMERA_Z_MAX, oldZ * zoomFactor));
 
     if (Math.abs(newZ - oldZ) < 0.01) return;
 
