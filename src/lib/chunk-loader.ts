@@ -11,28 +11,30 @@ export interface ChunkNode {
 }
 
 /**
- * Fetch chunks for a set of keywords
+ * Fetch chunks (or articles) for a set of keywords
  */
 export async function fetchChunksForKeywords(
-  keywordIds: string[]
+  keywordIds: string[],
+  nodeType: 'article' | 'chunk' = 'chunk'
 ): Promise<ChunkNode[]> {
   if (keywordIds.length === 0) {
     return [];
   }
 
-  console.log('[Chunk Loader] Fetching chunks for', keywordIds.length, 'keywords');
+  const nodeTypeLabel = nodeType === 'article' ? 'articles' : 'chunks';
+  console.log(`[Chunk Loader] Fetching ${nodeTypeLabel} for ${keywordIds.length} keywords`);
 
   const response = await fetch('/api/topics/chunks', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ keywordIds }),
+    body: JSON.stringify({ keywordIds, nodeType }),
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to fetch chunks: ${response.statusText}`);
+    throw new Error(`Failed to fetch ${nodeTypeLabel}: ${response.statusText}`);
   }
 
   const { chunks } = await response.json();
-  console.log('[Chunk Loader] Received', chunks.length, 'chunks');
+  console.log(`[Chunk Loader] Received ${chunks.length} ${nodeTypeLabel}`);
   return chunks;
 }

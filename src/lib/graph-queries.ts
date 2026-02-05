@@ -65,7 +65,7 @@ export const DEFAULT_BACKBONE_OPTIONS: Required<KeywordBackboneOptions> = {
   minSimilarity: 0.3,
   communityLevel: 3,
   nearestNeighbors: 1,
-  nodeType: 'article', // Must match get_article_keyword_graph RPC filter (migration 017)
+  nodeType: 'article', // Default to article-level view (can be 'article' or 'chunk')
 };
 
 /** Supabase query batch size to avoid payload limits */
@@ -95,10 +95,11 @@ export async function getKeywordBackbone(
     nodeType,
   } = { ...DEFAULT_BACKBONE_OPTIONS, ...options };
 
-  // Use existing RPC that finds cross-article keyword connections
+  // Use parameterized RPC that finds keyword connections (articles or chunks)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase.rpc as any)("get_article_keyword_graph", {
-    max_edges_per_article: maxEdgesPerArticle,
+  const { data, error } = await (supabase.rpc as any)("get_keyword_graph", {
+    filter_node_type: nodeType,
+    max_edges_per_node: maxEdgesPerArticle,
     min_similarity: minSimilarity,
   });
 

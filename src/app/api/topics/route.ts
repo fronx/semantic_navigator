@@ -24,6 +24,7 @@ export async function GET(request: Request) {
   const maxEdgesPerArticle = parseInt(searchParams.get("maxEdges") || "10", 10);
   const minSimilarity = parseFloat(searchParams.get("minSimilarity") || "0.3");
   const level = parseInt(searchParams.get("level") || "3", 10);
+  const nodeType = searchParams.get("nodeType") === "chunk" ? "chunk" : "article";
 
   const supabase = createServerClient();
 
@@ -32,12 +33,11 @@ export async function GET(request: Request) {
       maxEdgesPerArticle,
       minSimilarity,
       communityLevel: level,
+      nodeType,
     });
 
     console.log(
-      "[topics] Loaded",
-      result.nodes.length,
-      "keywords,",
+      `[topics] Loaded ${result.nodes.length} ${nodeType} keywords,`,
       result.edges.length,
       "similarity edges"
     );

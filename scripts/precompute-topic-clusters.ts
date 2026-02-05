@@ -13,95 +13,124 @@ const RESOLUTIONS = [0.1, 0.3, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0];
 
 async function main() {
   const supabase = createServerClient();
+  const NODE_TYPES = ['article', 'chunk'] as const;
 
-  console.log("Fetching graph data from get_article_keyword_graph...");
+  // Process both article and chunk keywords
+  for (const nodeType of NODE_TYPES) {
+    console.log(`\n${'='.repeat(60)}`);
+    console.log(`Processing ${nodeType.toUpperCase()} keywords`);
+    console.log('='.repeat(60));
 
-  // Fetch full graph via same RPC used by TopicsView
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: rawPairs, error } = await (supabase.rpc as any)(
-    "get_article_keyword_graph",
-    {
-      max_edges_per_article: 10,
-      min_similarity: 0.3,
-    }
-  );
+    console.log(`Fetching graph data from get_keyword_graph (${nodeType})...`);
 
-  if (error) {
-    throw new Error(`Failed to fetch graph: ${error.message}`);
-  }
-
-  // Convert pairs to nodes and edges
-  const { nodes, edges } = convertPairsToGraph(rawPairs);
-
-  console.log(`Graph: ${nodes.length} nodes, ${edges.length} edges`);
-
-  // Fetch embeddings for nodes
-  console.log("Fetching embeddings...");
-  await fetchEmbeddings(supabase, nodes);
-
-  // Clear existing precomputed data
-  console.log("Clearing existing precomputed clusters...");
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (supabase.from as any)("precomputed_topic_clusters").delete().gte("resolution", 0);
-
-  // Precompute for each resolution
-  for (const resolution of RESOLUTIONS) {
-    console.log(`\n=== Resolution ${resolution} ===`);
-
-    // Run Leiden clustering with periphery detection
-    console.log("Running Leiden clustering...");
-    const { nodeToCluster, clusters } = computeLeidenClustering(
-      nodes,
-      edges,
-      resolution
+    // Fetch full graph via same RPC used by TopicsView
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: rawPairs, error } = await (supabase.rpc as any)(
+      "get_keyword_graph",
+      {
+        filter_node_type: nodeType,
+        max_edges_per_node: 10,
+        min_similarity: 0.3,
+      }
     );
 
-    console.log(`Generated ${clusters.size} clusters`);
-
-    // Generate semantic labels via Haiku
-    const clustersForLabeling = Array.from(clusters.values()).map(c => ({
-      id: c.id,
-      keywords: c.members,
-    }));
-
-    console.log(`Calling Haiku API for ${clustersForLabeling.length} labels...`);
-    const labels = await generateClusterLabels(clustersForLabeling);
-
-    // Insert into database
-    const rows = [];
-    for (const [nodeId, clusterId] of nodeToCluster) {
-      const cluster = clusters.get(clusterId)!;
-      rows.push({
-        resolution,
-        node_id: nodeId,
-        cluster_id: clusterId,
-        hub_node_id: `kw:${cluster.hub}`,
-        cluster_label: labels[clusterId] || cluster.hub,
-        member_count: cluster.members.length,
-      });
+    if (error) {
+      console.error(`Failed to fetch ${nodeType} graph:`, error.message);
+      console.log(`Skipping ${nodeType} keywords...`);
+      continue;
     }
 
-    console.log(`Inserting ${rows.length} rows...`);
+    if (!rawPairs || rawPairs.length === 0) {
+      console.log(`No data found for ${nodeType} keywords. Skipping...`);
+      continue;
+    }
+
+    // Convert pairs to nodes and edges
+    const { nodes, edges } = convertPairsToGraph(rawPairs);
+
+    console.log(`Graph: ${nodes.length} nodes, ${edges.length} edges`);
+
+    // Fetch embeddings for nodes
+    console.log("Fetching embeddings...");
+    await fetchEmbeddings(supabase, nodes, nodeType);
+
+    // Clear existing precomputed data for this node type
+    console.log(`Clearing existing precomputed clusters for ${nodeType}...`);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error: insertError } = await (supabase.from as any)("precomputed_topic_clusters")
-      .insert(rows);
+    await (supabase.from as any)("precomputed_topic_clusters")
+      .delete()
+      .eq("node_type", nodeType)
+      .gte("resolution", 0);
 
-    if (insertError) {
-      throw new Error(`Insert failed: ${insertError.message}`);
+    // Precompute for each resolution
+    for (const resolution of RESOLUTIONS) {
+      console.log(`\n=== ${nodeType} - Resolution ${resolution} ===`);
+
+      // Run Leiden clustering with periphery detection
+      console.log("Running Leiden clustering...");
+      const { nodeToCluster, clusters } = computeLeidenClustering(
+        nodes,
+        edges,
+        resolution
+      );
+
+      console.log(`Generated ${clusters.size} clusters`);
+
+      // Generate semantic labels via Haiku
+      const clustersForLabeling = Array.from(clusters.values()).map(c => ({
+        id: c.id,
+        keywords: c.members,
+      }));
+
+      console.log(`Calling Haiku API for ${clustersForLabeling.length} labels...`);
+      const labels = await generateClusterLabels(clustersForLabeling);
+
+      // Insert into database
+      const rows = [];
+      for (const [nodeId, clusterId] of nodeToCluster) {
+        const cluster = clusters.get(clusterId)!;
+        rows.push({
+          resolution,
+          node_type: nodeType,
+          node_id: nodeId,
+          cluster_id: clusterId,
+          hub_node_id: `kw:${cluster.hub}`,
+          cluster_label: labels[clusterId] || cluster.hub,
+          member_count: cluster.members.length,
+        });
+      }
+
+      console.log(`Inserting ${rows.length} rows...`);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: insertError } = await (supabase.from as any)("precomputed_topic_clusters")
+        .insert(rows);
+
+      if (insertError) {
+        throw new Error(`Insert failed: ${insertError.message}`);
+      }
+
+      console.log(`✓ Resolution ${resolution} complete`);
     }
 
-    console.log(`✓ Resolution ${resolution} complete`);
+    console.log(`\n✓ All resolutions for ${nodeType} precomputed!`);
   }
 
-  console.log("\n✓ All resolutions precomputed!");
-  console.log("\nSummary:");
-  for (const resolution of RESOLUTIONS) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { count } = await (supabase.from as any)("precomputed_topic_clusters")
-      .select("*", { count: "exact", head: true })
-      .eq("resolution", resolution);
+  // Summary
+  console.log("\n" + "=".repeat(60));
+  console.log("SUMMARY");
+  console.log("=".repeat(60));
 
-    console.log(`  Resolution ${resolution}: ${count} nodes`);
+  for (const nodeType of NODE_TYPES) {
+    console.log(`\n${nodeType.toUpperCase()}:`);
+    for (const resolution of RESOLUTIONS) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { count } = await (supabase.from as any)("precomputed_topic_clusters")
+        .select("*", { count: "exact", head: true })
+        .eq("node_type", nodeType)
+        .eq("resolution", resolution);
+
+      console.log(`  Resolution ${resolution}: ${count} nodes`);
+    }
   }
 }
 
@@ -169,7 +198,8 @@ function convertPairsToGraph(pairs: any[]): {
  */
 async function fetchEmbeddings(
   supabase: any,
-  nodes: KeywordNode[]
+  nodes: KeywordNode[],
+  nodeType: 'article' | 'chunk'
 ): Promise<void> {
   // Extract keyword labels (strip "kw:" prefix)
   const keywords = nodes.map(n => n.label);
@@ -182,6 +212,7 @@ async function fetchEmbeddings(
     const { data: kwData } = await supabase
       .from("keywords")
       .select("keyword, embedding_256")
+      .eq("node_type", nodeType)
       .in("keyword", batch);
 
     // Build map of keyword -> embedding

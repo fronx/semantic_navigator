@@ -9,6 +9,7 @@ import { ProjectSelector, type Project } from "@/components/ProjectSelector";
 import { ProjectSidebar, type Project as SidebarProject } from "@/components/ProjectSidebar";
 import { InlineTitleInput } from "@/components/InlineTitleInput";
 import { ControlSidebar } from "@/components/ControlSidebar";
+import { GranularityToggle } from "@/components/GranularityToggle";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 import type { SemanticFilter } from "@/lib/topics-filter";
 import { CAMERA_Z_SCALE_BASE } from "@/lib/three/camera-controller";
@@ -262,7 +263,7 @@ export default function TopicsPage() {
 
       try {
         const [topicsRes, projectsRes] = await Promise.all([
-          fetch("/api/topics"),
+          fetch(`/api/topics?nodeType=${settings.nodeType}`),
           fetch("/api/projects"),
         ]);
 
@@ -306,7 +307,7 @@ export default function TopicsPage() {
     }
 
     fetchData();
-  }, []);
+  }, [settings.nodeType]);
 
   if (loading || !settingsReady) {
     return (
@@ -358,12 +359,19 @@ export default function TopicsPage() {
             )}
           </h1>
 
-          <a
-            href="/"
-            className="text-xs text-blue-500 hover:text-blue-600 ml-auto"
-          >
-            Back to Map
-          </a>
+          <div className="ml-auto flex items-center gap-3">
+            <GranularityToggle
+              value={settings.nodeType}
+              onChange={(value) => update('nodeType', value)}
+            />
+
+            <a
+              href="/"
+              className="text-xs text-blue-500 hover:text-blue-600"
+            >
+              Back to Map
+            </a>
+          </div>
         </div>
       </header>
 
@@ -393,6 +401,7 @@ export default function TopicsPage() {
             nodes={data.nodes}
             edges={data.edges}
             projectNodes={graphProjects}
+            nodeType={settings.nodeType}
             knnStrength={settings.knnStrength}
             contrast={settings.contrast}
             clusterResolution={debouncedClusterResolution}

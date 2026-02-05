@@ -26,6 +26,35 @@ Semantic Navigator has **two different clustering systems** that serve different
 - Stored in `precomputed_topic_clusters` table with `resolution` parameter
 - See [ADR-013](../architecture/adr/013-leiden-clustering-precomputation.md) for rationale
 
+## Granularity Modes in TopicsView
+
+TopicsView supports **dual granularity modes** that switch between article-level and chunk-level keyword graphs:
+
+**Article Mode** (default):
+- Displays keywords extracted from full articles
+- LOD nodes show article content (title + summary)
+- Typical: 400-600 keywords with broader semantic coverage
+
+**Chunk Mode**:
+- Displays keywords extracted from paragraph chunks
+- LOD nodes show chunk content (individual paragraphs)
+- Typical: 2000-3000 keywords with finer semantic granularity
+
+**UI Control**: Toggle located in top bar (right side), labeled "Articles | Chunks"
+
+**Implementation**: Single `nodeType` parameter flows through the stack:
+1. UI toggle → `useTopicsSettings` (persisted in localStorage)
+2. Page → `/api/topics?nodeType=article|chunk`
+3. API → `get_keyword_graph(filter_node_type)` RPC
+4. Precomputed clusters filtered by `node_type` column
+5. LOD nodes loaded via `/api/topics/chunks` with matching `nodeType`
+
+**Cache Behavior**: Switching modes clears the LOD node cache to prevent showing wrong content (articles vs chunks).
+
+**Symmetric Design**: LOD nodes match keyword granularity:
+- Article mode: article keywords + article nodes behind glass
+- Chunk mode: chunk keywords + chunk nodes behind glass
+
 ## Terminology: communityId vs clusterId
 
 **Both terms refer to the same thing** - the ID assigned to a group of semantically related keywords.
@@ -66,10 +95,12 @@ CREATE TABLE keyword_communities (
 CREATE TABLE precomputed_topic_clusters (
   node_id text,                 -- Keyword node ID (e.g., "kw:machine learning")
   resolution float,             -- Leiden resolution parameter
+  node_type text,              -- 'article' or 'chunk' (supports dual granularity)
+  cluster_id int,              -- Cluster ID at this resolution
   hub_node_id text,            -- Hub keyword for this cluster
   cluster_label text,          -- LLM-generated semantic label
   member_count int,            -- Size of cluster
-  PRIMARY KEY (node_id, resolution)
+  PRIMARY KEY (node_id, resolution, node_type)
 );
 ```
 
@@ -106,11 +137,13 @@ Level | Communities | Keywords | Avg Size | Hubs
 ================================================================================
 PRECOMPUTED TOPIC CLUSTERS (used by TopicsView)
 ================================================================================
-Resolution | Clusters | Nodes | Avg Size | Example Labels
------------|----------|-------|----------|---------------
-       0.1 |       10 |   489 |     48.9 | systems and dynamics, consciousness embodiment
-       0.3 |       14 |   489 |     34.9 | systems and design, culture and nature
-       1.0 |       28 |   489 |     17.5 | neural networks, reinforcement learning
+Node Type | Resolution | Clusters | Nodes | Avg Size | Example Labels
+----------|------------|----------|-------|----------|---------------
+  article |        0.1 |       10 |   489 |     48.9 | systems and dynamics, consciousness embodiment
+  article |        0.3 |       14 |   489 |     34.9 | systems and design, culture and nature
+  article |        1.0 |       28 |   489 |     17.5 | neural networks, reinforcement learning
+    chunk |        0.1 |       15 |   521 |     34.7 | deep learning, neural architectures
+    chunk |        0.3 |       22 |   521 |     23.7 | machine learning, gradient descent
        ...
 ```
 
@@ -132,9 +165,9 @@ npm run script scripts/precompute-topic-clusters.ts
 ```
 
 Requirements:
-- Keywords table with article-level keywords
+- Keywords table with both article-level and chunk-level keywords
 - Anthropic API key for semantic label generation
-- Takes ~5-10 minutes (includes LLM calls for labels)
+- Takes ~10-20 minutes (processes both node types, includes LLM calls for labels)
 
 ## Data Flow
 
@@ -211,6 +244,14 @@ npm run script scripts/compute-keyword-communities.ts  # For MapView
 **Cause**: Only level 0 was computed (single community containing everything).
 
 **Fix**: Regenerate with script above - should produce 8 levels with increasing granularity.
+
+### Wrong content showing after switching granularity modes
+
+**Cause**: Browser cache may retain LOD nodes from previous mode (articles when in chunk mode, or vice versa).
+
+**Fix**: The app automatically clears the LOD node cache when switching modes. If stale content persists, refresh the page.
+
+**Prevention**: Cache is automatically invalidated in `useChunkLoading` hook when `nodeType` changes.
 
 ## Implementation Notes
 

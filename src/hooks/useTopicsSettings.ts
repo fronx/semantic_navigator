@@ -20,6 +20,7 @@ export interface TopicsSettings {
 
   // Display options
   rendererType: RendererType;
+  nodeType: 'article' | 'chunk';
   blurEnabled: boolean;
   showKNNEdges: boolean;
   chunkZOffset: number;
@@ -42,6 +43,7 @@ const DEFAULT_SETTINGS: TopicsSettings = {
   baseDim: 0.7,
   colorMixRatio: 0.3,
   rendererType: "d3",
+  nodeType: "article",
   blurEnabled: true,
   showKNNEdges: true,
   chunkZOffset: 0.5,

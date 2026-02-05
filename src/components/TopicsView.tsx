@@ -35,6 +35,8 @@ export interface TopicsViewProps {
   edges: SimilarityEdge[];
   /** Project nodes to display in the graph */
   projectNodes?: ProjectNode[];
+  /** Node type: 'article' or 'chunk' (determines granularity level) */
+  nodeType: 'article' | 'chunk';
   /** k-NN edge strength multiplier */
   knnStrength: number;
   /** Contrast exponent for similarity-based layout */
@@ -92,6 +94,7 @@ export function TopicsView({
   nodes: keywordNodes,
   edges,
   projectNodes = [],
+  nodeType,
   knnStrength,
   contrast,
   clusterResolution,
@@ -190,6 +193,7 @@ export function TopicsView({
   const { chunksByKeyword, isLoading } = useChunkLoading({
     visibleKeywordIds,
     enabled: true,
+    nodeType, // Load articles in article mode, chunks in chunk mode
   });
 
   // Cursor tracking for project creation (press 'N' to create)

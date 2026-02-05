@@ -164,8 +164,8 @@ export function useTopicsFilter(options: UseTopicsFilterOptions): UseTopicsFilte
         return;
       }
 
-      // Create set of member keyword IDs
-      const memberIds = new Set(cluster.members);
+      // Create set of member keyword IDs (cluster.members are labels, need to convert to IDs)
+      const memberIds = new Set(cluster.members.map(label => `kw:${label}`));
 
       // Set cluster filter state
       setClusterFilter(clusterId);

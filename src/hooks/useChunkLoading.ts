@@ -17,6 +17,7 @@ function mapsEqual<K, V>(map1: Map<K, V>, map2: Map<K, V>): boolean {
 export interface UseChunkLoadingOptions {
   visibleKeywordIds: Set<string>;
   enabled: boolean;
+  nodeType: 'article' | 'chunk';
 }
 
 export interface UseChunkLoadingResult {
@@ -36,6 +37,7 @@ export interface UseChunkLoadingResult {
 export function useChunkLoading({
   visibleKeywordIds,
   enabled,
+  nodeType,
 }: UseChunkLoadingOptions): UseChunkLoadingResult {
   const [chunksByKeyword, setChunksByKeyword] = useState(
     () => new Map<string, ChunkNode[]>()
@@ -95,7 +97,7 @@ export function useChunkLoading({
       // Fetch uncached chunks in single batched request
       setIsLoading(true);
       try {
-        const chunks = await fetchChunksForKeywords(uncachedKeywordIds);
+        const chunks = await fetchChunksForKeywords(uncachedKeywordIds, nodeType);
 
         // Group chunks by keywordId
         const chunksByKeywordId = new Map<string, ChunkNode[]>();
@@ -136,7 +138,14 @@ export function useChunkLoading({
         clearTimeout(debounceTimerRef.current);
       }
     };
-  }, [visibleKeywordIds, enabled]);
+  }, [visibleKeywordIds, enabled, nodeType]);
+
+  // Clear cache when nodeType changes
+  useEffect(() => {
+    chunkCacheRef.current.clear();
+    previousResultRef.current.clear();
+    setChunksByKeyword(new Map());
+  }, [nodeType]);
 
   return {
     chunksByKeyword,
