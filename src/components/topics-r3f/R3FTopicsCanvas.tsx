@@ -167,13 +167,27 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
       cursorWorldPosRef,
     };
 
+    // Disable default wheel behavior (must use imperative listener with passive: false)
+    useEffect(() => {
+      const container = containerRef.current;
+      if (!container) return;
+
+      const handleWheel = (e: WheelEvent) => {
+        e.preventDefault();
+      };
+
+      container.addEventListener("wheel", handleWheel, { passive: false });
+      return () => {
+        container.removeEventListener("wheel", handleWheel);
+      };
+    }, []);
+
     return (
       <div
         ref={containerRef}
         style={{ position: "relative", width: "100%", height: "100%", userSelect: "none" }}
         onPointerMove={handlePointerMove}
         onPointerLeave={handlePointerLeave}
-        onWheel={(e) => e.preventDefault()}
       >
         <Canvas
           camera={{
