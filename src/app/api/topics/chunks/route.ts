@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase";
+import { adaptToChunkNode } from "@/lib/node-adapters";
 
 export async function POST(request: Request) {
   try {
@@ -51,15 +52,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // Transform to ChunkNode format (works for both chunks and articles)
-    const chunks = (data || []).map((kw: any) => ({
-      id: kw.nodes.id,
-      keywordId: `kw:${kw.keyword}`, // Use "kw:label" format to match SimNode IDs
-      content: kw.nodes.content || '',
-      summary: kw.nodes.summary,
-      sourcePath: kw.nodes.source_path, // Include source_path for articles
-      // embedding not included (not needed for initial implementation)
-    }));
+    // Transform to ChunkNode format using adapter
+    const chunks = (data || []).map(row => adaptToChunkNode(row, nodeType));
 
     return NextResponse.json({ chunks });
   } catch (error) {

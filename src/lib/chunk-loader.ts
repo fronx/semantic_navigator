@@ -8,6 +8,7 @@ export interface ChunkNode {
   content: string;      // Paragraph text
   summary?: string;     // Optional summary for long paragraphs
   embedding?: number[]; // 256-dim for semantic operations
+  sourcePath?: string;  // Source file path (for articles)
 }
 
 /**
