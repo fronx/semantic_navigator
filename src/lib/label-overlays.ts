@@ -289,9 +289,9 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
       const fadeT = Math.min(1, (degree - degreeThreshold) / fadeRange);
       const baseOpacity = 0.5 + 0.5 * fadeT;
 
-      // Store base opacity as data attribute for later scaling
+      // Store base opacity as data attribute for later scaling by updateLabelOpacity()
+      // Note: Do NOT set style.opacity here - updateLabelOpacity() is the single source of truth
       labelEl.dataset.baseOpacity = String(baseOpacity);
-      labelEl.style.opacity = String(baseOpacity);
 
       if (labelEl.textContent !== node.label) {
         labelEl.textContent = node.label;

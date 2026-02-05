@@ -63,7 +63,7 @@ export function calculateScales(cameraZ: number, range: ZoomRange = DEFAULT_RANG
     keywordScale: t,                    // Linear: fade out as we zoom in
     chunkScale: invT ** 2,              // Exponential: appear as we zoom in
     chunkEdgeOpacity: invT ** 2,        // Fade in with chunks
-    keywordLabelOpacity: t,             // Fade out as we zoom in
+    keywordLabelOpacity: 0.4 + t * 0.6, // Partial fade: 0.4 (zoomed in) to 1.0 (zoomed out)
     chunkLabelOpacity: invT ** 2,       // Fade in with chunks
   };
 
