@@ -12,6 +12,7 @@ import { clusterColorToCSS, type ClusterColorInfo } from "@/lib/semantic-colors"
 import { CAMERA_FOV_DEGREES } from "@/lib/three/zoom-to-cursor";
 import { calculateScales } from "@/lib/chunk-scale";
 import { DEFAULT_ZOOM_PHASE_CONFIG } from "@/lib/zoom-phase-config";
+import { updateLabelStyles } from "@/lib/dom-update-utils";
 
 // ============================================================================
 // Types
@@ -270,11 +271,18 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
       const pixelsPerUnit = rect.height / (2 * cameraZ * Math.tan(fovRadians / 2));
       const screenRadius = worldRadius * pixelsPerUnit;
 
-      // Update label content and position
+      // Calculate new position and font size
+      const newLeft = screenPos.x + screenRadius + 4;
+      const newTop = screenPos.y;
+      const newFontSize = baseFontSize * zoomScale;
+
+      // Update label styles with change detection to prevent flickering
       labelEl.style.display = "block";
-      labelEl.style.left = `${screenPos.x + screenRadius + 4}px`;
-      labelEl.style.top = `${screenPos.y}px`;
-      labelEl.style.fontSize = `${baseFontSize * zoomScale}px`;
+      updateLabelStyles(labelEl, [
+        { prop: "left", key: "lastLeft", value: newLeft, threshold: 1 },
+        { prop: "top", key: "lastTop", value: newTop, threshold: 1 },
+        { prop: "fontSize", key: "lastFontSize", value: newFontSize, threshold: 0.5 },
+      ]);
 
       // Fade in based on how far above threshold
       const fadeRange = Math.max(1, maxDegree * 0.2);
@@ -365,15 +373,25 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
       const squareLeft = screenRect.x - (screenRect.width / 2);
       const squareTop = screenRect.y - (screenRect.height / 2);
 
-      // Update label content and position (inside square, top-left aligned with padding)
+      // Calculate new dimensions and position
+      const newLeft = squareLeft + (paddingHorizontal / 2);
+      const newTop = squareTop + (paddingVertical / 2);
+      const newWidth = screenRect.width - paddingHorizontal;
+      const newHeight = screenRect.height - paddingVertical;
+
+      // Update label styles with change detection to prevent flickering
       labelEl.style.display = "block";
-      labelEl.style.left = `${squareLeft + (paddingHorizontal / 2)}px`;
-      labelEl.style.top = `${squareTop + (paddingVertical / 2)}px`;
-      labelEl.style.width = `${screenRect.width - paddingHorizontal}px`;
-      labelEl.style.height = `${screenRect.height - paddingVertical}px`;
-      labelEl.style.fontSize = `${fontSize}px`;
-      labelEl.style.maxWidth = `${screenRect.width - paddingHorizontal}px`;
-      labelEl.style.maxHeight = `${screenRect.height - paddingVertical}px`;
+      updateLabelStyles(labelEl, [
+        { prop: "left", key: "lastChunkLeft", value: newLeft, threshold: 1 },
+        { prop: "top", key: "lastChunkTop", value: newTop, threshold: 1 },
+        { prop: "width", key: "lastChunkWidth", value: newWidth, threshold: 1 },
+        { prop: "height", key: "lastChunkHeight", value: newHeight, threshold: 1 },
+        { prop: "fontSize", key: "lastChunkFontSize", value: fontSize, threshold: 0.5 },
+        { prop: "maxWidth", key: "lastChunkMaxWidth", value: newWidth, threshold: 1 },
+        { prop: "maxHeight", key: "lastChunkMaxHeight", value: newHeight, threshold: 1 },
+      ]);
+
+      // Static properties (set once, don't need change detection)
       labelEl.style.overflow = "hidden"; // Clip overflow text
       labelEl.style.transform = "none"; // Disable any CSS centering transforms
 
