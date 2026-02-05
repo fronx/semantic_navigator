@@ -73,6 +73,8 @@ export interface TopicsViewProps {
   chunkZDepth?: number;
   /** Scale factor for converting panel thickness to chunk text depth offset */
   chunkTextDepthScale?: number;
+  /** Size multiplier for chunk/article nodes (default 1.5) */
+  chunkSizeMultiplier?: number;
   /** Callback when cluster count changes */
   onClusterCountChange?: (count: number) => void;
   /** Callback when semantic filter state changes (for breadcrumb UI) */
@@ -113,6 +115,7 @@ export function TopicsView({
   showKNNEdges = false,
   chunkZDepth = -150,
   chunkTextDepthScale = -15.0,
+  chunkSizeMultiplier = 1.5,
   onClusterCountChange,
   onSemanticFilterChange,
 }: TopicsViewProps) {
@@ -462,6 +465,7 @@ export function TopicsView({
           zoomPhaseConfig={zoomPhaseConfig ?? DEFAULT_ZOOM_PHASE_CONFIG}
           chunkZDepth={chunkZDepth}
           chunkTextDepthScale={chunkTextDepthScale}
+          chunkSizeMultiplier={chunkSizeMultiplier}
           keywordTiers={keywordTiers}
           nodeToCluster={nodeToCluster}
           onKeywordClick={handleKeywordClickInternal}

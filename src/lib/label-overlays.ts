@@ -33,6 +33,10 @@ export interface LabelOverlayManager {
   setHoveredChunk: (node: SimNode | null) => void;
   /** Toggle pinned (expanded) chunk preview */
   togglePinnedChunk: (node: SimNode) => void;
+  /** Set the currently hovered keyword node */
+  setHoveredKeyword: (node: SimNode | null) => void;
+  /** Update hover label position and visibility based on cursor position and nodes */
+  updateHoverLabel: (nodes: SimNode[]) => void;
   /** Clean up all DOM elements */
   destroy: () => void;
 }
@@ -63,6 +67,8 @@ export interface LabelOverlayOptions {
   getChunkScreenRects?: () => Map<string, ChunkScreenRect>;
   /** Function to get nodeToCluster map (runtime cluster IDs from useClusterLabels) */
   getNodeToCluster?: () => Map<string, number> | null;
+  /** Function to get cursor position in world coordinates (for hover labels) */
+  getCursorWorldPos?: () => { x: number; y: number } | null;
   /** Handler for keyword label click */
   onKeywordLabelClick?: (keywordId: string) => void;
   /** Handler for cluster label click */
@@ -86,6 +92,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     getKeywordLabelRange,
     getChunkScreenRects,
     getNodeToCluster,
+    getCursorWorldPos,
     onKeywordLabelClick,
     onClusterLabelClick,
     onChunkLabelContainer,
@@ -114,6 +121,14 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
   chunkPreview.style.display = "none";
   container.appendChild(chunkPreview);
 
+  // Create overlay for keyword hover labels (z-index above chunk preview)
+  const hoverLabelOverlay = document.createElement("div");
+  hoverLabelOverlay.className = "keyword-hover-label";
+  hoverLabelOverlay.style.zIndex = "4";
+  hoverLabelOverlay.style.display = "none";
+  hoverLabelOverlay.style.opacity = "0";
+  container.appendChild(hoverLabelOverlay);
+
   // Caches for DOM elements
   const clusterLabelCache = new Map<number, HTMLDivElement>();
   const keywordLabelCache = new Map<string, HTMLDivElement>();
@@ -122,6 +137,9 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
   // Hover/pin state for chunk previews
   let hoveredChunk: SimNode | null = null;
   let pinnedChunk: SimNode | null = null;
+
+  // Hover state for keyword labels
+  let hoveredKeyword: SimNode | null = null;
 
   function updateClusterLabels(nodes: SimNode[]) {
     const rect = container.getBoundingClientRect();
@@ -295,7 +313,12 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
       // Calculate new position and font size
       const newLeft = screenPos.x + screenRadius + 4;
       const newTop = screenPos.y;
-      const newFontSize = baseFontSize * zoomScale;
+      let newFontSize = baseFontSize * zoomScale;
+
+      // Scale up if this keyword is hovered
+      if (hoveredKeyword && node.id === hoveredKeyword.id) {
+        newFontSize *= 1.5; // Scale multiplier for readable hover size
+      }
 
       // Update label styles with change detection to prevent flickering
       labelEl.style.display = "block";
@@ -548,6 +571,67 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     }
   }
 
+  function setHoveredKeyword(node: SimNode | null): void {
+    // Only accept keyword nodes
+    if (node && node.type !== "keyword") {
+      hoveredKeyword = null;
+    } else {
+      hoveredKeyword = node;
+    }
+  }
+
+  function updateHoverLabel(nodes: SimNode[]): void {
+    // If no cursor position available, hide hover label
+    if (!getCursorWorldPos) {
+      hoverLabelOverlay.style.display = "none";
+      hoveredKeyword = null;
+      return;
+    }
+
+    const cursorPos = getCursorWorldPos();
+    if (!cursorPos) {
+      hoverLabelOverlay.style.display = "none";
+      hoveredKeyword = null;
+      return;
+    }
+
+    // Disable hover labels when zoomed too far out (cluster label dominance)
+    const cameraZ = getCameraZ();
+    const keywordRange = getKeywordLabelRange();
+    const keywordStart = Math.max(keywordRange.start, keywordRange.full);
+    if (cameraZ >= keywordStart) {
+      // Too zoomed out - cluster labels dominate, disable hover
+      hoverLabelOverlay.style.display = "none";
+      hoveredKeyword = null;
+      return;
+    }
+
+    // Find nearest keyword node within threshold
+    const HOVER_THRESHOLD = 30; // world units
+    let nearestKeyword: SimNode | null = null;
+    let nearestDist = HOVER_THRESHOLD;
+
+    for (const node of nodes) {
+      // Only consider keyword nodes
+      if (node.type !== "keyword") continue;
+      if (typeof node.x !== "number" || typeof node.y !== "number") continue;
+
+      const dist = Math.hypot(cursorPos.x - node.x, cursorPos.y - node.y);
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        nearestKeyword = node;
+      }
+    }
+
+    // Update hovered keyword (will be used by updateKeywordLabels to scale up the label)
+    if (nearestKeyword !== hoveredKeyword) {
+      hoveredKeyword = nearestKeyword;
+    }
+
+    // Hide the separate hover label overlay (we'll scale the regular label instead)
+    hoverLabelOverlay.style.display = "none";
+  }
+
   function destroy() {
     hoveredChunk = null;
     pinnedChunk = null;
@@ -579,6 +663,10 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
       container.removeChild(chunkOverlay);
     }
     chunkPreview.remove();
+
+    // Remove hover label
+    hoveredKeyword = null;
+    hoverLabelOverlay.remove();
   }
 
   return {
@@ -589,6 +677,8 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     syncChunkPreview,
     setHoveredChunk,
     togglePinnedChunk,
+    setHoveredKeyword,
+    updateHoverLabel,
     destroy,
   };
 }

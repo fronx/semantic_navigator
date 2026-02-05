@@ -33,7 +33,7 @@ const DEBUG_SCALES = false;
  * Scale values for different visual elements
  */
 export interface ScaleValues {
-  /** Linear interpolation: 1.0 far (keywords visible), 0.0 close (keywords hidden) */
+  /** Linear interpolation: 1.0 far (keywords full size), 0.15 close (keywords at minimum size) */
   keywordScale: number;
   /** Exponential interpolation: 0.0 far (chunks hidden), 1.0 close (chunks visible) */
   chunkScale: number;
@@ -59,8 +59,11 @@ export function calculateScales(cameraZ: number, range: ZoomRange = DEFAULT_RANG
   // Inverse factor for chunk scaling
   const invT = 1 - t;
 
+  // Minimum keyword scale to keep them visible at a reasonable size
+  const MIN_KEYWORD_SCALE = 0.3;
+
   const scales = {
-    keywordScale: t,                    // Linear: fade out as we zoom in
+    keywordScale: MIN_KEYWORD_SCALE + t * (1 - MIN_KEYWORD_SCALE), // Scale from MIN to 1.0, never fully disappears
     chunkScale: invT ** 2,              // Exponential: appear as we zoom in
     chunkEdgeOpacity: invT ** 2,        // Fade in with chunks
     keywordLabelOpacity: 0.4 + t * 0.6, // Partial fade: 0.4 (zoomed in) to 1.0 (zoomed out)

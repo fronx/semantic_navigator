@@ -61,6 +61,8 @@ export interface LabelRefs {
   labelManagerRef: React.MutableRefObject<LabelOverlayManager | null>;
   /** Chunk screen rects (updated by ChunkNodes every frame, read by label system) */
   chunkScreenRectsRef: React.MutableRefObject<Map<string, ChunkScreenRect>>;
+  /** Cursor position in world coordinates (from hover controller) */
+  cursorWorldPosRef: React.MutableRefObject<{ x: number; y: number } | null>;
 }
 
 /**

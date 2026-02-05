@@ -34,6 +34,8 @@ export interface ChunkNodesProps {
    * Negative values move text toward camera (away from keywords).
    */
   chunkTextDepthScale?: number;
+  /** Size multiplier for chunk nodes (default 1.5) */
+  chunkSizeMultiplier?: number;
   /** Handler for chunk click (locks/unlocks chunk label) */
   onChunkClick?: (chunkId: string) => void;
   /** Handler for chunk hover (for text preview) */
@@ -51,6 +53,7 @@ export function ChunkNodes({
   chunkZDepth = CHUNK_Z_DEPTH,
   panelThickness = 0,
   chunkTextDepthScale = -15.0,
+  chunkSizeMultiplier = 1.5,
   onChunkClick,
   onChunkHover,
   chunkScreenRectsRef,
@@ -70,7 +73,7 @@ export function ChunkNodes({
   );
 
   // Chunks are larger than keywords
-  const chunkRadius = BASE_DOT_RADIUS * DOT_SCALE_FACTOR * 1.5;
+  const chunkRadius = BASE_DOT_RADIUS * DOT_SCALE_FACTOR * chunkSizeMultiplier;
 
   // Create rounded square geometry
   const geometry = useMemo(() => {

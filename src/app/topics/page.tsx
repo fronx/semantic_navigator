@@ -431,6 +431,7 @@ export default function TopicsPage() {
             showKNNEdges={settings.showKNNEdges}
             chunkZDepth={chunkZDepth}
             chunkTextDepthScale={settings.chunkTextDepthScale}
+            chunkSizeMultiplier={settings.chunkSizeMultiplier}
             onSemanticFilterChange={setSemanticFilterData}
           />
 

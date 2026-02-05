@@ -283,6 +283,31 @@ body {
   transform: translate(-50%, -50%);
 }
 
+/* Keyword hover labels: larger readable labels that appear on hover */
+.keyword-hover-label {
+  position: absolute;
+  font-size: 18px;
+  font-weight: 500;
+  pointer-events: none;
+  white-space: nowrap;
+  transition: opacity 0.15s ease;
+  color: #333;
+  text-shadow:
+    0 0 3px #fff,
+    0 0 3px #fff,
+    0 0 3px #fff;
+}
+
+@media (prefers-color-scheme: dark) {
+  .keyword-hover-label {
+    color: #ededed;
+    text-shadow:
+      0 0 3px #0a0a0a,
+      0 0 3px #0a0a0a,
+      0 0 3px #0a0a0a;
+  }
+}
+
 /* ============================================================================
    Semantic Filter Navigation (Breadcrumb Trail)
    ============================================================================ */

@@ -408,6 +408,15 @@ export function ControlSidebar({
                   step={0.5}
                   format={(value) => value.toFixed(1)}
                 />
+                <Slider
+                  label="Max size"
+                  value={settings.chunkSizeMultiplier}
+                  onChange={(value) => update("chunkSizeMultiplier", value)}
+                  min={1.0}
+                  max={3.0}
+                  step={0.1}
+                  format={(value) => `${value.toFixed(1)}x`}
+                />
               </div>
 
             </div>

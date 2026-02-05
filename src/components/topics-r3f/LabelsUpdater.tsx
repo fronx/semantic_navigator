@@ -51,6 +51,9 @@ export function LabelsUpdater({ labelRefs }: LabelsUpdaterProps) {
     manager.updateLabelOpacity(scales);
 
     manager.syncChunkPreview();
+
+    // Update hover label based on cursor position
+    manager.updateHoverLabel(nodes);
   });
 
   return null;

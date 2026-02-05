@@ -38,6 +38,7 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
       clusterColorsRef,
       nodeToClusterRef,
       labelManagerRef,
+      cursorWorldPosRef,
     } = labelRefs;
 
     // Track visible chunk labels for portal rendering
@@ -151,6 +152,7 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
         getKeywordLabelRange: () => keywordLabelRange,
         getChunkScreenRects: () => labelRefs.chunkScreenRectsRef.current,
         getNodeToCluster: () => nodeToClusterRef.current,
+        getCursorWorldPos: () => cursorWorldPosRef.current,
         onKeywordLabelClick,
         onClusterLabelClick,
         onChunkLabelContainer: handleChunkLabelContainer,
@@ -162,7 +164,7 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
         labelManager.destroy();
         labelManagerRef.current = null;
       };
-    }, [containerRef, cameraStateRef, clusterColorsRef, labelManagerRef, keywordLabelRange, handleChunkLabelContainer]);
+    }, [containerRef, cameraStateRef, clusterColorsRef, labelManagerRef, keywordLabelRange, cursorWorldPosRef, handleChunkLabelContainer]);
 
     // Expose imperative handle for TopicsView to call
     useImperativeHandle(ref, () => ({

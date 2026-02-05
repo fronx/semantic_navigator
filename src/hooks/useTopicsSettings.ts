@@ -25,6 +25,7 @@ export interface TopicsSettings {
   showKNNEdges: boolean;
   chunkZOffset: number;
   chunkTextDepthScale: number;
+  chunkSizeMultiplier: number;
   dynamicClustering: boolean;
 
   // UI state
@@ -48,6 +49,7 @@ const DEFAULT_SETTINGS: TopicsSettings = {
   showKNNEdges: true,
   chunkZOffset: 0.5,
   chunkTextDepthScale: -15.0,
+  chunkSizeMultiplier: 1.5,
   dynamicClustering: true,
   sidebarCollapsed: false,
   sectionStates: {

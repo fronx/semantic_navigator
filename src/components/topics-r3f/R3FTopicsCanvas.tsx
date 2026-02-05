@@ -9,6 +9,7 @@ import { Environment } from "@react-three/drei";
 import { R3FTopicsScene } from "./R3FTopicsScene";
 import { LabelsOverlay } from "./LabelsOverlay";
 import { getBackgroundColor, watchThemeChanges } from "@/lib/theme";
+import { CAMERA_FOV_DEGREES } from "@/lib/three/zoom-to-cursor";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 import type { PCATransform, ClusterColorInfo } from "@/lib/semantic-colors";
 import type { SimNode } from "@/lib/map-renderer";
@@ -33,6 +34,7 @@ export interface R3FTopicsCanvasProps {
   zoomPhaseConfig: ZoomPhaseConfig;
   chunkZDepth?: number;
   chunkTextDepthScale?: number;
+  chunkSizeMultiplier?: number;
   keywordTiers?: KeywordTierMap | null;
   /** Runtime cluster IDs from useClusterLabels (for label rendering) */
   nodeToCluster?: Map<string, number>;
@@ -59,6 +61,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     zoomPhaseConfig,
     chunkZDepth,
     chunkTextDepthScale,
+    chunkSizeMultiplier,
     keywordTiers,
     nodeToCluster,
     onKeywordClick,
@@ -88,10 +91,32 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
 
-      setCursorPosition({
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
-      });
+      const screenX = e.clientX - rect.left;
+      const screenY = e.clientY - rect.top;
+
+      setCursorPosition({ x: screenX, y: screenY });
+
+      // Convert screen coordinates to world coordinates for hover label system
+      const camera = cameraStateRef.current;
+      const fovRadians = CAMERA_FOV_DEGREES * Math.PI / 180;
+      const visibleHeight = 2 * camera.z * Math.tan(fovRadians / 2);
+      const visibleWidth = visibleHeight * (rect.width / rect.height);
+
+      // Convert screen to NDC (Normalized Device Coordinates)
+      const ndcX = (screenX / rect.width) * 2 - 1;
+      const ndcY = -((screenY / rect.height) * 2 - 1); // Flip Y (screen Y down, world Y up)
+
+      // Convert NDC to world coordinates
+      const worldX = camera.x + ndcX * (visibleWidth / 2);
+      const worldY = camera.y + ndcY * (visibleHeight / 2);
+
+      cursorWorldPosRef.current = { x: worldX, y: worldY };
+    };
+
+    // Cursor leave handler (clears cursor position)
+    const handlePointerLeave = () => {
+      setCursorPosition(null);
+      cursorWorldPosRef.current = null;
     };
 
     // Chunk click handler (locks chunk visible)
@@ -123,6 +148,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     const nodeToClusterRef = useRef<Map<string, number>>(nodeToCluster ?? new Map());
     const labelManagerRef = useRef<LabelOverlayManager | null>(null);
     const chunkScreenRectsRef = useRef<Map<string, ChunkScreenRect>>(new Map());
+    const cursorWorldPosRef = useRef<{ x: number; y: number } | null>(null);
 
     // Keep nodeToCluster ref updated
     nodeToClusterRef.current = nodeToCluster ?? new Map();
@@ -136,6 +162,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
       nodeToClusterRef,
       labelManagerRef,
       chunkScreenRectsRef,
+      cursorWorldPosRef,
     };
 
     return (
@@ -143,6 +170,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
         ref={containerRef}
         style={{ position: "relative", width: "100%", height: "100%" }}
         onPointerMove={handlePointerMove}
+        onPointerLeave={handlePointerLeave}
       >
         <Canvas
           camera={{
@@ -173,6 +201,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
             zoomPhaseConfig={zoomPhaseConfig}
             chunkZDepth={chunkZDepth}
             chunkTextDepthScale={chunkTextDepthScale}
+            chunkSizeMultiplier={chunkSizeMultiplier}
             keywordTiers={keywordTiers}
             onKeywordClick={onKeywordClick}
             onProjectClick={onProjectClick}
