@@ -6,7 +6,9 @@
  * refs to access camera state that's updated by components inside Canvas.
  */
 
-import { useEffect, useImperativeHandle, forwardRef } from "react";
+import { useEffect, useImperativeHandle, forwardRef, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
+import ReactMarkdown from "react-markdown";
 import { createLabelOverlayManager } from "@/lib/label-overlays";
 import { CAMERA_FOV_DEGREES } from "@/lib/three/zoom-to-cursor";
 import { getNodeRadius, DOT_SCALE_FACTOR } from "@/lib/three/node-renderer";
@@ -37,6 +39,30 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
       nodeToClusterRef,
       labelManagerRef,
     } = labelRefs;
+
+    // Track visible chunk labels for portal rendering
+    const [chunkPortals, setChunkPortals] = useState<Map<string, {
+      container: HTMLElement;
+      content: string;
+    }>>(new Map());
+
+    // Callback for label manager to notify about chunk label containers
+    const handleChunkLabelContainer = useCallback((
+      chunkId: string,
+      container: HTMLElement,
+      content: string,
+      visible: boolean
+    ) => {
+      setChunkPortals(prev => {
+        const next = new Map(prev);
+        if (visible && content) {
+          next.set(chunkId, { container, content });
+        } else {
+          next.delete(chunkId);
+        }
+        return next;
+      });
+    }, []);
 
     // Create label manager on mount
     useEffect(() => {
@@ -127,6 +153,7 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
         getNodeToCluster: () => nodeToClusterRef.current,
         onKeywordLabelClick,
         onClusterLabelClick,
+        onChunkLabelContainer: handleChunkLabelContainer,
       });
 
       labelManagerRef.current = labelManager;
@@ -135,7 +162,7 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
         labelManager.destroy();
         labelManagerRef.current = null;
       };
-    }, [containerRef, cameraStateRef, clusterColorsRef, labelManagerRef, keywordLabelRange]);
+    }, [containerRef, cameraStateRef, clusterColorsRef, labelManagerRef, keywordLabelRange, handleChunkLabelContainer]);
 
     // Expose imperative handle for TopicsView to call
     useImperativeHandle(ref, () => ({
@@ -164,7 +191,19 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
       getNodes: () => simNodesRef.current,
     }), [labelManagerRef, simNodesRef, nodeDegreesRef]);
 
-    // This component doesn't render anything - DOM elements created by label manager
-    return null;
+    // Render markdown portals into label containers
+    return (
+      <>
+        {Array.from(chunkPortals.entries()).map(([chunkId, { container, content }]) =>
+          createPortal(
+            <div className="chunk-markdown">
+              <ReactMarkdown>{content}</ReactMarkdown>
+            </div>,
+            container,
+            chunkId
+          )
+        )}
+      </>
+    );
   }
 );

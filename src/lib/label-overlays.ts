@@ -67,6 +67,8 @@ export interface LabelOverlayOptions {
   onKeywordLabelClick?: (keywordId: string) => void;
   /** Handler for cluster label click */
   onClusterLabelClick?: (clusterId: number) => void;
+  /** Callback when chunk label container is created/updated for portal rendering */
+  onChunkLabelContainer?: (chunkId: string, container: HTMLElement, content: string, visible: boolean) => void;
 }
 
 // ============================================================================
@@ -86,6 +88,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     getNodeToCluster,
     onKeywordLabelClick,
     onClusterLabelClick,
+    onChunkLabelContainer,
   } = options;
 
   // Create overlay for cluster labels
@@ -373,6 +376,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
       if (!labelEl) {
         labelEl = document.createElement("div");
         labelEl.className = "chunk-content-label";
+        labelEl.dataset.chunkId = node.id;
         chunkOverlay.appendChild(labelEl);
         chunkLabelCache.set(node.id, labelEl);
       }
@@ -421,15 +425,15 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
       // Display full content
       const targetContent = (node as ChunkSimNode).content || node.label;
 
-      if (labelEl.textContent !== targetContent) {
-        labelEl.textContent = targetContent;
-      }
+      // Notify React portal manager to render markdown
+      onChunkLabelContainer?.(node.id, labelEl, targetContent, true);
     }
 
     // Hide labels for nodes that are no longer visible
     for (const [nodeId, labelEl] of chunkLabelCache) {
       if (!seenNodes.has(nodeId)) {
         labelEl.style.display = "none";
+        onChunkLabelContainer?.(nodeId, labelEl, "", false);
       }
     }
   }
@@ -566,7 +570,8 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     }
 
     // Remove chunk labels
-    for (const labelEl of chunkLabelCache.values()) {
+    for (const [nodeId, labelEl] of chunkLabelCache) {
+      onChunkLabelContainer?.(nodeId, labelEl, "", false);
       labelEl.remove();
     }
     chunkLabelCache.clear();

@@ -29,6 +29,7 @@
     "react": "19.2.3",
     "react-contenteditable": "^3.3.7",
     "react-dom": "19.2.3",
+    "react-markdown": "^10.1.0",
     "three": "^0.182.0",
     "umapper": "file:../umapper",
     "unist-util-visit": "^5.0.0"
