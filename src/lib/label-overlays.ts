@@ -278,7 +278,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     // Font size scales with zoom: smaller when zoomed out
     // Base size matches .keyword-label in globals.css
     // Adjusted for 10deg FOV (3x higher baseline due to increased camera distance)
-    const baseFontSize = 28;
+    const baseFontSize = 42;
     const zoomScale = Math.min(1, 1500 / cameraZ);
 
     // Track which nodes we've processed (for cleanup)
@@ -355,14 +355,8 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
         { prop: "fontSize", key: "lastFontSize", value: newFontSize, threshold: 0.5 },
       ]);
 
-      // Fade in based on how far above threshold
-      const fadeRange = Math.max(1, maxDegree * 0.2);
-      const fadeT = Math.min(1, (degree - degreeThreshold) / fadeRange);
-      const baseOpacity = 0.5 + 0.5 * fadeT;
-
-      // Store base opacity as data attribute for later scaling by updateLabelOpacity()
-      // Note: Do NOT set style.opacity here - updateLabelOpacity() is the single source of truth
-      labelEl.dataset.baseOpacity = String(baseOpacity);
+      // Note: Opacity is controlled solely by keywordLabelOpacity in updateLabelOpacity()
+      // We previously had a degree-based fade here, but it conflicted with the zoom-based fade
 
       if (labelEl.textContent !== node.label) {
         labelEl.textContent = node.label;
@@ -509,8 +503,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
 
     for (const [nodeId, labelEl] of keywordLabelCache) {
       if (labelEl.style.display !== "none") {
-        const baseOpacity = parseFloat(labelEl.dataset.baseOpacity || "1");
-        let newOpacity = baseOpacity * scales.keywordLabelOpacity;
+        let newOpacity = scales.keywordLabelOpacity;
 
         // Apply search opacity to keyword labels
         if (searchOpacities && searchOpacities.size > 0) {
