@@ -8,6 +8,8 @@ import type { AutoFitState } from "@/lib/auto-fit";
 import { markUserInteraction } from "@/lib/auto-fit";
 import type { SimNode } from "@/lib/map-renderer";
 import { createPanHandler } from "./pan-handler";
+import { classifyWheelGesture } from "./gesture-classifier";
+import { calculatePan } from "./pan-camera";
 
 export interface InputHandlerOptions {
   container: HTMLElement;
@@ -108,27 +110,52 @@ export function createInputHandler(options: InputHandlerOptions): InputHandler {
   const handleWheel = (event: WheelEvent) => {
     event.preventDefault();
 
+    const gesture = classifyWheelGesture(event);
     const rect = container.getBoundingClientRect();
-    const mouseX = event.clientX - rect.left;
-    const mouseY = event.clientY - rect.top;
 
-    // Convert mouse position to normalized device coordinates (-1 to +1)
-    const ndcX = (mouseX / rect.width) * 2 - 1;
-    const ndcY = -(mouseY / rect.height) * 2 + 1;
+    if (gesture === 'scroll-pan') {
+      // Two-finger scroll without modifiers → pan
+      const { worldDeltaX, worldDeltaY } = calculatePan({
+        screenDeltaX: -event.deltaX,  // Negative for natural scroll direction
+        screenDeltaY: -event.deltaY,
+        cameraZ: cameraController.getCameraZ(),
+        containerWidth: rect.width,
+        containerHeight: rect.height,
+      });
 
-    cameraController.zoom(event.deltaY, { x: ndcX, y: ndcY });
-    markUserInteraction(autoFitState);
-    onLabelsUpdate();
+      cameraController.applyWorldPan(worldDeltaX, worldDeltaY);
+      markUserInteraction(autoFitState);
+      onLabelsUpdate();
 
-    // Notify for hover highlight recalculation during zoom
-    onZoom?.();
+      // Notify end of pan (debounced)
+      if (zoomEndTimeout) clearTimeout(zoomEndTimeout);
+      zoomEndTimeout = setTimeout(() => {
+        cameraController.notifyZoomChange();
+        onZoomEnd?.();
+      }, 150);
+    } else {
+      // 'pinch' or 'scroll-zoom' → zoom to cursor
+      const mouseX = event.clientX - rect.left;
+      const mouseY = event.clientY - rect.top;
 
-    // Debounce callback to avoid React re-renders during zoom
-    if (zoomEndTimeout) clearTimeout(zoomEndTimeout);
-    zoomEndTimeout = setTimeout(() => {
-      cameraController.notifyZoomChange();
-      onZoomEnd?.();
-    }, 150);
+      // Convert mouse position to normalized device coordinates (-1 to +1)
+      const ndcX = (mouseX / rect.width) * 2 - 1;
+      const ndcY = -(mouseY / rect.height) * 2 + 1;
+
+      cameraController.zoom(event.deltaY, { x: ndcX, y: ndcY });
+      markUserInteraction(autoFitState);
+      onLabelsUpdate();
+
+      // Notify for hover highlight recalculation during zoom
+      onZoom?.();
+
+      // Debounce callback to avoid React re-renders during zoom
+      if (zoomEndTimeout) clearTimeout(zoomEndTimeout);
+      zoomEndTimeout = setTimeout(() => {
+        cameraController.notifyZoomChange();
+        onZoomEnd?.();
+      }, 150);
+    }
   };
 
   // Attach event listeners (pan handled by shared handler)

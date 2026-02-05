@@ -14,6 +14,8 @@ import { CAMERA_Z_SCALE_BASE } from "@/lib/three/camera-controller";
 import { CAMERA_Z_MIN, CAMERA_Z_MAX } from "@/lib/chunk-zoom-config";
 import { calculateZoomToCursor } from "@/lib/three/zoom-to-cursor";
 import { createPanHandler } from "@/lib/three/pan-handler";
+import { classifyWheelGesture } from "@/lib/three/gesture-classifier";
+import { calculatePan } from "@/lib/three/pan-camera";
 
 export interface CameraControllerProps {
   onZoomChange?: (zoomScale: number) => void;
@@ -76,54 +78,79 @@ export function CameraController({ onZoomChange, maxDistance = CAMERA_Z_MAX }: C
   // Handle pan events with shared handler
   usePanHandler(camera, gl, controlsRef, onZoomChange);
 
-  // Implement zoom-to-cursor behavior
+  // Implement unified gesture handling: scroll-to-pan, pinch/modifier-to-zoom
   useEffect(() => {
     const canvas = gl.domElement;
 
     const handleWheel = (event: WheelEvent) => {
       if (!controlsRef.current) return;
 
-      // Prevent default OrbitControls zoom behavior
       event.preventDefault();
       event.stopPropagation();
 
-      const controls = controlsRef.current;
-      const oldZ = camera.position.z;
+      const gesture = classifyWheelGesture(event);
 
-      // Calculate zoom delta with sensitivity based on current zoom level
-      const zoomSensitivity = camera.position.z * 0.003;
-      const newZ = Math.max(CAMERA_Z_MIN, Math.min(maxDistance, oldZ + event.deltaY * zoomSensitivity));
+      if (gesture === 'scroll-pan') {
+        // Two-finger scroll without modifiers → pan
+        const rect = canvas.getBoundingClientRect();
+        const { worldDeltaX, worldDeltaY } = calculatePan({
+          screenDeltaX: -event.deltaX,  // Negative for natural scroll direction
+          screenDeltaY: -event.deltaY,
+          cameraZ: camera.position.z,
+          containerWidth: rect.width,
+          containerHeight: rect.height,
+        });
 
-      if (Math.abs(newZ - oldZ) < 0.01) return;
+        // Update camera position
+        camera.position.x += worldDeltaX;
+        camera.position.y += worldDeltaY;
 
-      // Get cursor position in normalized device coordinates (-1 to +1)
-      const rect = canvas.getBoundingClientRect();
-      const screenX = event.clientX - rect.left;
-      const screenY = event.clientY - rect.top;
-      const ndcX = (screenX / rect.width) * 2 - 1;
-      const ndcY = -((screenY / rect.height) * 2 - 1); // Flip Y
+        // Sync OrbitControls target
+        controlsRef.current.target.set(camera.position.x, camera.position.y, 0);
+        controlsRef.current.update();
 
-      // Calculate new camera position using shared zoom-to-cursor logic
-      const result = calculateZoomToCursor({
-        oldZ,
-        newZ,
-        cameraX: camera.position.x,
-        cameraY: camera.position.y,
-        cursorNDC: { x: ndcX, y: ndcY },
-        aspect: size.width / size.height,
-      });
+        // Notify zoom change (for state updates)
+        handleChange();
+      } else {
+        // 'pinch' or 'scroll-zoom' → zoom to cursor
+        const controls = controlsRef.current;
+        const oldZ = camera.position.z;
 
-      // Update camera position
-      camera.position.x = result.cameraX;
-      camera.position.y = result.cameraY;
-      camera.position.z = newZ;
+        // Calculate zoom delta with sensitivity based on current zoom level
+        const zoomSensitivity = camera.position.z * 0.003;
+        const newZ = Math.max(CAMERA_Z_MIN, Math.min(maxDistance, oldZ + event.deltaY * zoomSensitivity));
 
-      // Update OrbitControls target to match new camera position
-      controls.target.set(camera.position.x, camera.position.y, 0);
-      controls.update();
+        if (Math.abs(newZ - oldZ) < 0.01) return;
 
-      // Notify zoom change
-      handleChange();
+        // Get cursor position in normalized device coordinates (-1 to +1)
+        const rect = canvas.getBoundingClientRect();
+        const screenX = event.clientX - rect.left;
+        const screenY = event.clientY - rect.top;
+        const ndcX = (screenX / rect.width) * 2 - 1;
+        const ndcY = -((screenY / rect.height) * 2 - 1); // Flip Y
+
+        // Calculate new camera position using shared zoom-to-cursor logic
+        const result = calculateZoomToCursor({
+          oldZ,
+          newZ,
+          cameraX: camera.position.x,
+          cameraY: camera.position.y,
+          cursorNDC: { x: ndcX, y: ndcY },
+          aspect: size.width / size.height,
+        });
+
+        // Update camera position
+        camera.position.x = result.cameraX;
+        camera.position.y = result.cameraY;
+        camera.position.z = newZ;
+
+        // Update OrbitControls target to match new camera position
+        controls.target.set(camera.position.x, camera.position.y, 0);
+        controls.update();
+
+        // Notify zoom change
+        handleChange();
+      }
     };
 
     canvas.addEventListener('wheel', handleWheel, { passive: false });
