@@ -6,7 +6,7 @@
  * refs to access camera state that's updated by components inside Canvas.
  */
 
-import { useEffect, useImperativeHandle, forwardRef, useState, useCallback } from "react";
+import { useEffect, useImperativeHandle, forwardRef, useState, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
 import { createLabelOverlayManager } from "@/lib/label-overlays";
@@ -25,6 +25,8 @@ export interface LabelsOverlayProps {
   keywordLabelRange: { start: number; full: number };
   /** Source data for chunk content (bypasses SimNode transformation) */
   chunksByKeyword?: Map<string, ChunkNode[]>;
+  /** Search opacity map (node id -> opacity) for semantic search highlighting */
+  searchOpacities?: Map<string, number>;
   /** Handler for keyword label click */
   onKeywordLabelClick?: (keywordId: string) => void;
   /** Handler for cluster label click */
@@ -34,7 +36,7 @@ export interface LabelsOverlayProps {
 }
 
 export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>(
-  function LabelsOverlay({ labelRefs, keywordLabelRange, chunksByKeyword, onKeywordLabelClick, onClusterLabelClick, onKeywordHover }, ref) {
+  function LabelsOverlay({ labelRefs, keywordLabelRange, chunksByKeyword, searchOpacities, onKeywordLabelClick, onClusterLabelClick, onKeywordHover }, ref) {
     const {
       cameraStateRef,
       containerRef,
@@ -45,6 +47,10 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
       labelManagerRef,
       cursorWorldPosRef,
     } = labelRefs;
+
+    // Ref for search opacities (so label manager closure always reads latest value)
+    const searchOpacitiesRef = useRef(searchOpacities);
+    searchOpacitiesRef.current = searchOpacities;
 
     // Track visible chunk labels for portal rendering
     const [chunkPortals, setChunkPortals] = useState<Map<string, {
@@ -183,6 +189,7 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
         onClusterLabelClick,
         onChunkLabelContainer: handleChunkLabelContainer,
         onKeywordHover,
+        getSearchOpacities: () => searchOpacitiesRef.current,
       });
 
       labelManagerRef.current = labelManager;

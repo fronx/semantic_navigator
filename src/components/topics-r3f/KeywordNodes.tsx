@@ -24,6 +24,8 @@ export interface KeywordNodesProps {
   pcaTransform: PCATransform | null;
   zoomRange: ZoomRange;
   keywordTiers?: KeywordTierMap | null;
+  /** Search opacity map (node id -> opacity) for semantic search highlighting */
+  searchOpacities?: Map<string, number>;
 }
 
 export function KeywordNodes({
@@ -33,6 +35,7 @@ export function KeywordNodes({
   pcaTransform,
   zoomRange,
   keywordTiers,
+  searchOpacities,
 }: KeywordNodesProps) {
   const { camera } = useThree();
   const { meshRef, handleMeshRef } = useInstancedMeshMaterial(simNodes.length);
@@ -103,6 +106,12 @@ export function KeywordNodes({
           // Dim 2-hop keywords to 60% opacity
           colorRef.current.multiplyScalar(0.6);
         }
+      }
+
+      // Apply search opacity if search is active
+      if (searchOpacities && searchOpacities.size > 0) {
+        const searchOpacity = searchOpacities.get(node.id) ?? 1.0;
+        colorRef.current.multiplyScalar(searchOpacity);
       }
 
       meshRef.current.setColorAt(i, colorRef.current);

@@ -73,6 +73,8 @@ export interface LabelOverlayOptions {
   onKeywordLabelClick?: (keywordId: string) => void;
   /** Handler for cluster label click */
   onClusterLabelClick?: (clusterId: number) => void;
+  /** Function to get current search opacities (node id -> opacity) */
+  getSearchOpacities?: () => Map<string, number> | undefined;
   /** Callback when chunk label container is created/updated for portal rendering */
   onChunkLabelContainer?: (chunkId: string, container: HTMLElement, content: string, visible: boolean, parentKeywordId?: string) => void;
   /** Callback when hovered keyword changes (for debug display) */
@@ -99,6 +101,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     onClusterLabelClick,
     onChunkLabelContainer,
     onKeywordHover,
+    getSearchOpacities,
   } = options;
 
   // Create overlay for cluster labels
@@ -150,6 +153,21 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     const rect = container.getBoundingClientRect();
     const clusterColors = getClusterColors();
     const nodeToCluster = getNodeToCluster?.() ?? undefined;
+    const searchOpacities = getSearchOpacities?.();
+
+    // Compute per-cluster max search opacity (for dimming non-matching clusters)
+    let clusterSearchOpacities: Map<number, number> | null = null;
+    if (searchOpacities && searchOpacities.size > 0 && nodeToCluster) {
+      clusterSearchOpacities = new Map();
+      for (const node of nodes) {
+        if (node.type !== "keyword") continue;
+        const clusterId = nodeToCluster.get(node.id);
+        if (clusterId === undefined) continue;
+        const opacity = searchOpacities.get(node.id) ?? 1.0;
+        const current = clusterSearchOpacities.get(clusterId) ?? 0;
+        clusterSearchOpacities.set(clusterId, Math.max(current, opacity));
+      }
+    }
 
     // Compute labels from current node positions
     const labelData = computeClusterLabels({
@@ -209,7 +227,11 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
       labelEl.style.left = `${screenPos.x}px`;
       labelEl.style.top = `${screenPos.y}px`;
       labelEl.style.color = data.color;
-      labelEl.style.opacity = String(Math.max(0.2, data.visibilityRatio) * 0.7);
+      let clusterOpacity = Math.max(0.2, data.visibilityRatio) * 0.7;
+      if (clusterSearchOpacities) {
+        clusterOpacity *= clusterSearchOpacities.get(data.communityId) ?? 0.1;
+      }
+      labelEl.style.opacity = String(clusterOpacity);
 
       // Split label into words for multi-line display
       if (labelEl.textContent !== data.label) {
@@ -483,10 +505,18 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
   function updateLabelOpacity(scales: { keywordLabelOpacity: number; chunkLabelOpacity: number }) {
     // Optimization: Only update if opacity changed significantly (CSS transition handles smoothing)
     // This reduces layout thrashing from 5-20ms to <2ms per frame
-    for (const labelEl of keywordLabelCache.values()) {
+    const searchOpacities = getSearchOpacities?.();
+
+    for (const [nodeId, labelEl] of keywordLabelCache) {
       if (labelEl.style.display !== "none") {
         const baseOpacity = parseFloat(labelEl.dataset.baseOpacity || "1");
-        const newOpacity = baseOpacity * scales.keywordLabelOpacity;
+        let newOpacity = baseOpacity * scales.keywordLabelOpacity;
+
+        // Apply search opacity to keyword labels
+        if (searchOpacities && searchOpacities.size > 0) {
+          newOpacity *= searchOpacities.get(nodeId) ?? 1.0;
+        }
+
         const currentOpacity = parseFloat(labelEl.style.opacity || "1");
 
         // Only update if change is significant (>5%)
@@ -499,7 +529,16 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     // Same optimization for chunk labels
     for (const labelEl of chunkLabelCache.values()) {
       if (labelEl.style.display !== "none") {
-        const newOpacity = scales.chunkLabelOpacity;
+        let newOpacity = scales.chunkLabelOpacity;
+
+        // Apply search opacity from parent keyword
+        if (searchOpacities && searchOpacities.size > 0) {
+          const parentId = labelEl.dataset.parentKeywordId;
+          if (parentId) {
+            newOpacity *= searchOpacities.get(parentId) ?? 1.0;
+          }
+        }
+
         const currentOpacity = parseFloat(labelEl.style.opacity || "0");
 
         if (Math.abs(newOpacity - currentOpacity) > 0.05) {

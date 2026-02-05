@@ -37,6 +37,8 @@ export interface ChunkEdgesProps {
   colorMixRatio: number;
   colorDesaturation: number;
   pcaTransform?: PCATransform;
+  /** Search opacity map (node id -> opacity) for semantic search highlighting */
+  searchOpacities?: Map<string, number>;
 }
 
 export function ChunkEdges({
@@ -47,6 +49,7 @@ export function ChunkEdges({
   colorMixRatio,
   colorDesaturation,
   pcaTransform,
+  searchOpacities,
 }: ChunkEdgesProps): React.JSX.Element | null {
   const lineRef = useRef<THREE.Line>(null);
   const tempColor = useRef(new THREE.Color());
@@ -150,6 +153,13 @@ export function ChunkEdges({
       }
 
       tempColor.current.set(getEdgeColor(edge, nodeMap, pcaTransform, clusterColors, colorMixRatio, undefined, colorDesaturation));
+
+      // Apply search opacity from source keyword
+      if (searchOpacities && searchOpacities.size > 0) {
+        const searchOpacity = searchOpacities.get(sourceId) ?? 1.0;
+        tempColor.current.multiplyScalar(searchOpacity);
+      }
+
       for (let i = 0; i < VERTICES_PER_EDGE; i++) {
         tempColor.current.toArray(colArray, baseOffset + i * 3);
       }

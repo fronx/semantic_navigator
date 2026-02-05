@@ -3,6 +3,8 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { TopicsView } from "@/components/TopicsView";
 import { ErrorBanner } from "@/components/ErrorBanner";
+import { SearchBar } from "@/components/SearchBar";
+import type { SearchResult } from "@/components/SearchBar";
 import { useErrorNotification } from "@/hooks/useErrorNotification";
 import { useTopicsSettings } from "@/hooks/useTopicsSettings";
 import { useChunkLoading } from "@/hooks/useChunkLoading";
@@ -15,6 +17,7 @@ import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queri
 import type { SemanticFilter } from "@/lib/topics-filter";
 import { CAMERA_Z_SCALE_BASE } from "@/lib/three/camera-controller";
 import { BASE_CAMERA_Z } from "@/lib/chunk-zoom-config";
+import { searchResultsToKeywordIds, extractMatchedKeywords } from "@/lib/search-filter";
 
 /** Debounce a value - returns the value after it stops changing for `delay` ms */
 function useDebouncedValue<T>(value: T, delay: number): T {
@@ -47,6 +50,17 @@ export default function TopicsPage() {
 
   // Track cluster count for debug display
   const [clusterCount, setClusterCount] = useState(0);
+
+  // Search state: query for highlighting, results for filter, active flag for locking
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchFilterActive, setSearchFilterActive] = useState(false);
+
+  // Derive filtered keywords from results (only when filter is active)
+  const searchFilterKeywords = useMemo(
+    () => searchFilterActive ? extractMatchedKeywords(searchResults) : [],
+    [searchFilterActive, searchResults]
+  );
 
   // Derive cluster resolution from zoom + slider
   // Resolution determines cluster granularity (higher = more clusters)
@@ -147,6 +161,12 @@ export default function TopicsPage() {
     if (!projectKeywords) return null;
     return new Set(projectKeywords.map((label) => `kw:${label}`));
   }, [projectKeywords]);
+
+  // Convert search results to filter set
+  const searchFilter = useMemo(() => {
+    if (!searchFilterActive || searchResults.length === 0 || !data) return null;
+    return searchResultsToKeywordIds(searchResults, data.nodes);
+  }, [searchFilterActive, searchResults, data]);
 
   // Handle project creation request from TopicsView (N key press)
   const handleCreateProject = useCallback((worldPos: { x: number; y: number }, screenPos: { x: number; y: number }) => {
@@ -318,6 +338,26 @@ export default function TopicsPage() {
     }
   }, []);
 
+  // Handle search filter button click - locks current results as filter
+  const handleSearchFilter = useCallback(() => {
+    if (searchQuery.trim() && searchResults.length > 0) {
+      setSearchFilterActive(true);
+    }
+  }, [searchQuery, searchResults]);
+
+  // Handle clear search filter - resets all search state
+  const handleClearSearchFilter = useCallback(() => {
+    setSearchFilterActive(false);
+    setSearchQuery("");
+    setSearchResults([]);
+  }, []);
+
+  // Handle search callback from SearchBar
+  const handleSearch = useCallback((query: string, results: SearchResult[]) => {
+    setSearchQuery(query);
+    setSearchResults(results);
+  }, []);
+
   // Fetch data with localStorage cache fallback
   useEffect(() => {
     const CACHE_KEY = "topics-data-cache";
@@ -410,6 +450,19 @@ export default function TopicsPage() {
             onSelect={setSelectedProject}
           />
 
+          {/* Search Bar */}
+          <div className="flex-1 max-w-md">
+            <SearchBar
+              displayMode="inline"
+              placeholder="Search topics..."
+              nodeType={settings.nodeType}
+              onSearch={handleSearch}
+              showFilterButton={true}
+              onFilter={handleSearchFilter}
+              filterActive={searchFilterActive}
+            />
+          </div>
+
           <h1 className="text-sm font-medium text-zinc-600 dark:text-zinc-400">
             {projectFilter ? (
               <>
@@ -459,6 +512,8 @@ export default function TopicsPage() {
           hoveredChunkId={hoveredChunkId}
           hoveredChunkContent={hoveredChunkContent}
           keywordChunksDebug={keywordChunksDebug}
+          searchFilterKeywords={searchFilterKeywords}
+          onClearSearchFilter={handleClearSearchFilter}
           semanticFilter={semanticFilterData?.semanticFilter ?? null}
           filterHistory={semanticFilterData?.filterHistory ?? []}
           keywordNodes={semanticFilterData?.keywordNodes ?? []}
@@ -494,6 +549,7 @@ export default function TopicsPage() {
             }}
             rendererType={settings.rendererType}
             externalFilter={projectFilter}
+            searchFilter={searchFilter}
             onCreateProject={handleCreateProject}
             onProjectDrag={handleProjectDrag}
             onError={notifyError}
@@ -506,6 +562,7 @@ export default function TopicsPage() {
             onSemanticFilterChange={setSemanticFilterData}
             onChunkHover={handleChunkHover}
             onKeywordHover={handleKeywordHover}
+            searchQuery={searchQuery}
           />
 
           {creatingAt && (

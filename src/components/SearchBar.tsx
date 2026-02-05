@@ -1,46 +1,141 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import type { SearchResult, MatchedKeyword } from "@/lib/search-filter";
 
-interface MatchedKeyword {
-  keyword: string;
-  similarity: number;
-}
-
-interface SearchResult {
-  id: string;
-  content: string;
-  summary: string;
-  node_type: string;
-  source_path: string;
-  similarity: number;
-  matched_keywords: MatchedKeyword[];
-}
+export type { SearchResult, MatchedKeyword };
 
 interface Props {
-  onSelectNode: (id: string) => void;
+  /** Callback when a search result node is selected (Map view) */
+  onSelectNode?: (id: string) => void;
+  /** Callback when search query changes (Topics view) */
+  onSearch?: (query: string, results: SearchResult[]) => void;
+  /** Display mode: "results" shows result panel, "inline" is just the input */
+  displayMode?: "results" | "inline";
+  /** Placeholder text for search input */
+  placeholder?: string;
+  /** Node type filter for search API */
+  nodeType?: 'article' | 'chunk';
+  /** Show filter button (inline mode only) */
+  showFilterButton?: boolean;
+  /** Callback when filter button clicked */
+  onFilter?: () => void;
+  /** Whether filter is currently active */
+  filterActive?: boolean;
 }
 
-export function SearchBar({ onSelectNode }: Props) {
+export function SearchBar({
+  onSelectNode,
+  onSearch,
+  displayMode = "results",
+  placeholder = "Search your knowledge base...",
+  nodeType,
+  showFilterButton = false,
+  onFilter,
+  filterActive = false,
+}: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // For inline mode, perform debounced search automatically on query change
+  useEffect(() => {
+    if (displayMode === "inline") {
+      if (!query.trim()) {
+        setResults([]);
+        onSearch?.("", []);
+        return;
+      }
+
+      setLoading(true);
+      const timer = setTimeout(async () => {
+        try {
+          const res = await fetch("/api/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query, limit: 50, nodeType }),
+          });
+          const data = await res.json();
+          const searchResults = data.results || [];
+          setResults(searchResults);
+          onSearch?.(query, searchResults);
+        } catch (err) {
+          console.error("Search failed:", err);
+          setResults([]);
+          onSearch?.(query, []);
+        } finally {
+          setLoading(false);
+        }
+      }, 300);
+
+      return () => clearTimeout(timer);
+    }
+  }, [query, displayMode, nodeType, onSearch]);
+
+  // For results mode, search on form submit
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
     if (!query.trim()) return;
 
     setLoading(true);
-    const res = await fetch("/api/search", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query, limit: 10 }),
-    });
-    const data = await res.json();
-    setResults(data.results || []);
-    setLoading(false);
+    try {
+      const res = await fetch("/api/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, limit: 10, nodeType }),
+      });
+      const data = await res.json();
+      const searchResults = data.results || [];
+      setResults(searchResults);
+      onSearch?.(query, searchResults);
+    } catch (err) {
+      console.error("Search failed:", err);
+      setResults([]);
+      onSearch?.(query, []);
+    } finally {
+      setLoading(false);
+    }
   }
 
+  // Inline mode: just the input field (optionally with filter button)
+  if (displayMode === "inline") {
+    if (showFilterButton) {
+      return (
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={placeholder}
+            className="flex-1 px-3 py-1 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:border-zinc-700"
+          />
+          <button
+            onClick={onFilter}
+            disabled={!query.trim()}
+            className={`px-3 py-1 text-xs rounded transition-colors ${
+              filterActive
+                ? "bg-amber-500 text-white hover:bg-amber-600"
+                : "bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            }`}
+          >
+            {filterActive ? "Filtered" : "Filter"}
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder={placeholder}
+        className="w-full px-3 py-1 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-zinc-800 dark:border-zinc-700"
+      />
+    );
+  }
+
+  // Results mode: input + result panel
   return (
     <div className="space-y-4">
       <form onSubmit={handleSearch} className="flex gap-2">
@@ -48,7 +143,7 @@ export function SearchBar({ onSelectNode }: Props) {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search your knowledge base..."
+          placeholder={placeholder}
           className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-800 dark:border-zinc-700"
         />
         <button
@@ -65,7 +160,7 @@ export function SearchBar({ onSelectNode }: Props) {
           {results.map((result) => (
             <button
               key={result.id}
-              onClick={() => onSelectNode(result.id)}
+              onClick={() => onSelectNode?.(result.id)}
               className="w-full text-left p-3 border rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800 dark:border-zinc-700"
             >
               <div className="flex items-center gap-2 mb-1 flex-wrap">

@@ -10,6 +10,8 @@ import { useD3TopicsRenderer } from "@/hooks/useD3TopicsRenderer";
 import { useThreeTopicsRenderer } from "@/hooks/useThreeTopicsRenderer";
 import { useR3FTopicsRenderer } from "@/hooks/useR3FTopicsRenderer";
 import { useChunkLoading } from "@/hooks/useChunkLoading";
+import { useTopicsSearch } from "@/hooks/useTopicsSearch";
+import { useTopicsSearchOpacity } from "@/hooks/useTopicsSearchOpacity";
 import { R3FTopicsCanvas } from "@/components/topics-r3f/R3FTopicsCanvas";
 import { createChunkNodes, applyConstrainedForces } from "@/lib/chunk-layout";
 import { convertToThreeNodes } from "@/lib/topics-graph-nodes";
@@ -59,6 +61,8 @@ export interface TopicsViewProps {
   rendererType?: RendererType;
   /** External filter from project selection - keywords in this set are shown */
   externalFilter?: Set<string> | null;
+  /** Search filter from semantic search - keywords in this set are shown */
+  searchFilter?: Set<string> | null;
   /** Callback when user presses 'N' to create a project at cursor position */
   onCreateProject?: (worldPos: { x: number; y: number }, screenPos: { x: number; y: number }) => void;
   /** Callback when a project node is dragged to a new position */
@@ -92,6 +96,8 @@ export interface TopicsViewProps {
   onChunkHover?: (chunkId: string | null, content: string | null) => void;
   /** Handler for keyword hover (passes keyword ID for debug display) */
   onKeywordHover?: (keywordId: string | null) => void;
+  /** Search query for semantic search highlighting */
+  searchQuery?: string;
 }
 
 // ============================================================================
@@ -114,6 +120,7 @@ export function TopicsView({
   onZoomChange,
   rendererType = "d3",
   externalFilter,
+  searchFilter,
   onCreateProject,
   onProjectDrag,
   onError,
@@ -127,6 +134,7 @@ export function TopicsView({
   onSemanticFilterChange,
   onChunkHover,
   onKeywordHover,
+  searchQuery = "",
 }: TopicsViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -177,6 +185,7 @@ export function TopicsView({
     keywordNodes,
     edges,
     externalFilter,
+    searchFilter,
     clusters: baseClusters,
   });
 
@@ -191,6 +200,14 @@ export function TopicsView({
       goToHistoryIndex,
     });
   }, [semanticFilter, filterHistory, keywordNodes, clearSemanticFilter, goBackInHistory, goToHistoryIndex, onSemanticFilterChange]);
+
+  // Search functionality
+  const { keywordSimilarities, loading: searchLoading } = useTopicsSearch(searchQuery, nodeType);
+  const { nodeOpacities } = useTopicsSearchOpacity({
+    keywordNodes: activeNodes,
+    keywordSimilarities,
+    enabled: true,
+  });
 
   // Chunk loading for visible keywords
   // If semantic filter active, only load chunks for selected + 1-hop
@@ -312,6 +329,7 @@ export function TopicsView({
     pcaTransform,
     getSavedPosition,
     chunkZDepth,
+    searchOpacities: nodeOpacities,
     onKeywordClick: handleKeywordClickInternal,
     onProjectClick: handleProjectClick,
     onProjectDrag: handleProjectDrag,
@@ -479,6 +497,7 @@ export function TopicsView({
           chunkSizeMultiplier={chunkSizeMultiplier}
           keywordTiers={keywordTiers}
           nodeToCluster={nodeToCluster}
+          searchOpacities={nodeOpacities}
           onKeywordClick={handleKeywordClickInternal}
           onKeywordLabelClick={handleKeywordLabelClick}
           onClusterLabelClick={handleClusterLabelClick}

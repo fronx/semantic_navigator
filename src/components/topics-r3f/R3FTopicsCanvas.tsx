@@ -39,6 +39,8 @@ export interface R3FTopicsCanvasProps {
   keywordTiers?: KeywordTierMap | null;
   /** Runtime cluster IDs from useClusterLabels (for label rendering) */
   nodeToCluster?: Map<string, number>;
+  /** Search opacity map (node id -> opacity) for semantic search highlighting */
+  searchOpacities?: Map<string, number>;
   onKeywordClick?: (keyword: string) => void;
   onKeywordLabelClick?: (keywordId: string) => void;
   onClusterLabelClick?: (clusterId: number) => void;
@@ -72,6 +74,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     chunkSizeMultiplier,
     keywordTiers,
     nodeToCluster,
+    searchOpacities,
     onKeywordClick,
     onKeywordLabelClick,
     onClusterLabelClick,
@@ -207,6 +210,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
             chunkTextDepthScale={chunkTextDepthScale}
             chunkSizeMultiplier={chunkSizeMultiplier}
             keywordTiers={keywordTiers}
+            searchOpacities={searchOpacities}
             onProjectClick={onProjectClick}
             onProjectDrag={onProjectDrag}
             onZoomChange={onZoomChange}
@@ -221,6 +225,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
           labelRefs={labelRefs}
           keywordLabelRange={zoomPhaseConfig.keywordLabels}
           chunksByKeyword={chunksByKeyword}
+          searchOpacities={searchOpacities}
           onKeywordLabelClick={onKeywordLabelClick}
           onClusterLabelClick={onClusterLabelClick}
           onKeywordHover={onKeywordHover}

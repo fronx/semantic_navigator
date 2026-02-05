@@ -69,6 +69,8 @@ export interface R3FTopicsSceneProps {
   /** Size multiplier for chunk/article nodes (default 1.5) */
   chunkSizeMultiplier?: number;
   keywordTiers?: KeywordTierMap | null;
+  /** Search opacity map (node id -> opacity) for semantic search highlighting */
+  searchOpacities?: Map<string, number>;
   onProjectClick?: (projectId: string) => void;
   onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
   onZoomChange?: (zoomScale: number) => void;
@@ -95,6 +97,7 @@ export function R3FTopicsScene({
   chunkTextDepthScale = -15.0,
   chunkSizeMultiplier = 1.5,
   keywordTiers,
+  searchOpacities,
   onProjectClick,
   onProjectDrag,
   onZoomChange,
@@ -210,6 +213,7 @@ export function R3FTopicsScene({
           chunkTextDepthScale={chunkTextDepthScale}
           chunkSizeMultiplier={chunkSizeMultiplier}
           chunkScreenRectsRef={labelRefs.chunkScreenRectsRef}
+          searchOpacities={searchOpacities}
         />
       )}
 
@@ -230,6 +234,7 @@ export function R3FTopicsScene({
           colorMixRatio={colorMixRatio}
           colorDesaturation={colorDesaturation}
           pcaTransform={pcaTransform ?? undefined}
+          searchOpacities={searchOpacities}
         />
       )}
 
@@ -244,6 +249,7 @@ export function R3FTopicsScene({
           colorDesaturation={colorDesaturation}
           pcaTransform={pcaTransform ?? undefined}
           showKNNEdges={showKNNEdges}
+          searchOpacities={searchOpacities}
         />
       )}
 
@@ -256,6 +262,7 @@ export function R3FTopicsScene({
           pcaTransform={pcaTransform}
           zoomRange={zoomPhaseConfig.chunkCrossfade}
           keywordTiers={keywordTiers}
+          searchOpacities={searchOpacities}
         />
       )}
     </>

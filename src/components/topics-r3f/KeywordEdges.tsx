@@ -27,6 +27,8 @@ export interface KeywordEdgesProps {
   pcaTransform?: PCATransform;
   /** Show k-NN connectivity edges (usually hidden, only affect force simulation) */
   showKNNEdges?: boolean;
+  /** Search opacity map (node id -> opacity) for semantic search highlighting */
+  searchOpacities?: Map<string, number>;
 }
 
 export function KeywordEdges({
@@ -38,6 +40,7 @@ export function KeywordEdges({
   colorDesaturation,
   pcaTransform,
   showKNNEdges = false,
+  searchOpacities,
 }: KeywordEdgesProps): React.JSX.Element {
   const lineRef = useRef<THREE.Line>(null);
   const tempColor = useRef(new THREE.Color());
@@ -139,6 +142,15 @@ export function KeywordEdges({
       posArray[breakIdx + 2] = NaN;
 
       tempColor.current.set(getEdgeColor(edge, nodeMap, pcaTransform, clusterColors, colorMixRatio, undefined, colorDesaturation));
+
+      // Apply search opacity if search is active - use min(source, target) opacity
+      if (searchOpacities && searchOpacities.size > 0) {
+        const sourceOpacity = searchOpacities.get(sourceId) ?? 1.0;
+        const targetOpacity = searchOpacities.get(targetId) ?? 1.0;
+        const edgeOpacity = Math.min(sourceOpacity, targetOpacity);
+        tempColor.current.multiplyScalar(edgeOpacity);
+      }
+
       // Write colors for all vertices including break vertex (18 total)
       for (let i = 0; i < VERTICES_PER_EDGE; i++) {
         tempColor.current.toArray(colArray, baseOffset + i * 3);

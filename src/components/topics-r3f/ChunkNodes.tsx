@@ -40,6 +40,8 @@ export interface ChunkNodesProps {
   chunkSizeMultiplier?: number;
   /** Ref to share chunk screen rects with label system (data sharing, not duplication) */
   chunkScreenRectsRef?: React.MutableRefObject<Map<string, ChunkScreenRect>>;
+  /** Search opacity map (node id -> opacity) for semantic search highlighting */
+  searchOpacities?: Map<string, number>;
 }
 
 export function ChunkNodes({
@@ -54,6 +56,7 @@ export function ChunkNodes({
   chunkTextDepthScale = -15.0,
   chunkSizeMultiplier = 1.5,
   chunkScreenRectsRef,
+  searchOpacities,
 }: ChunkNodesProps) {
   const { camera, size, viewport } = useThree();
   const { meshRef, handleMeshRef } = useInstancedMeshMaterial(chunkNodes.length);
@@ -140,9 +143,16 @@ export function ChunkNodes({
       const y = node.y ?? 0;
       const z = chunkZDepth;
 
+      // Calculate scale - incorporate search opacity so non-matching chunks stay small
+      let nodeScale = chunkScale;
+      if (searchOpacities && searchOpacities.size > 0) {
+        const searchOpacity = searchOpacities.get(node.parentId) ?? 1.0;
+        nodeScale *= searchOpacity;
+      }
+
       // Compose matrix with position and scale
       positionRef.current.set(x, y, z);
-      scaleRef.current.setScalar(chunkScale);
+      scaleRef.current.setScalar(nodeScale);
       matrixRef.current.compose(positionRef.current, quaternionRef.current, scaleRef.current);
       meshRef.current.setMatrixAt(i, matrixRef.current);
 
@@ -163,6 +173,13 @@ export function ChunkNodes({
         // Fallback gray if parent not found
         colorRef.current.set("#e0e0e0");
       }
+
+      // Apply search opacity from parent keyword
+      if (searchOpacities && searchOpacities.size > 0) {
+        const searchOpacity = searchOpacities.get(node.parentId) ?? 1.0;
+        colorRef.current.multiplyScalar(searchOpacity);
+      }
+
       meshRef.current.setColorAt(i, colorRef.current);
 
       // Calculate screen rect for label positioning (data sharing with label system)
@@ -174,7 +191,8 @@ export function ChunkNodes({
 
         // Project edge point to get accurate screen size (accounts for perspective)
         // Use same Z as center for consistent text positioning
-        const edgeWorld = new THREE.Vector3(x + chunkRadius * chunkScale, y, textFrontZ);
+        // Note: use nodeScale (includes search opacity) not chunkScale
+        const edgeWorld = new THREE.Vector3(x + chunkRadius * nodeScale, y, textFrontZ);
         edgeWorld.project(camera);
 
         // Convert NDC to CSS pixels (not drawing buffer pixels)
