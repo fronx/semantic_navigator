@@ -38,6 +38,8 @@ export interface R3FTopicsSceneProps {
   zoomPhaseConfig: ZoomPhaseConfig;
   /** Z-depth offset for chunk nodes (negative = behind keywords) */
   chunkZDepth?: number;
+  /** Scale factor for converting panel thickness to chunk text depth offset */
+  chunkTextDepthScale?: number;
   onKeywordClick?: (keyword: string) => void;
   onProjectClick?: (projectId: string) => void;
   onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
@@ -65,6 +67,7 @@ export function R3FTopicsScene({
   panelThickness,
   zoomPhaseConfig,
   chunkZDepth = -150,
+  chunkTextDepthScale = -15.0,
   onKeywordClick,
   onProjectClick,
   onProjectDrag,
@@ -140,6 +143,8 @@ export function R3FTopicsScene({
           pcaTransform={pcaTransform}
           zoomRange={zoomPhaseConfig.chunkCrossfade}
           chunkZDepth={chunkZDepth}
+          panelThickness={panelThickness}
+          chunkTextDepthScale={chunkTextDepthScale}
           onChunkClick={onChunkClick}
           onChunkHover={setHoveredChunkId}
           chunkScreenRectsRef={labelRefs.chunkScreenRectsRef}

@@ -404,6 +404,7 @@ export default function TopicsPage() {
             blurEnabled={settings.blurEnabled}
             showKNNEdges={settings.showKNNEdges}
             chunkZDepth={chunkZDepth}
+            chunkTextDepthScale={settings.chunkTextDepthScale}
           />
 
           {creatingAt && (

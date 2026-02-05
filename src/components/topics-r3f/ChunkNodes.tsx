@@ -26,6 +26,14 @@ export interface ChunkNodesProps {
   zoomRange: ZoomRange;
   /** Z-depth offset for chunks (negative = behind keywords) */
   chunkZDepth?: number;
+  /** Panel material thickness (shader parameter, 0-20) */
+  panelThickness?: number;
+  /**
+   * Scale factor for converting panel thickness to chunk text depth offset.
+   * Positive values move text toward keywords (away from camera).
+   * Negative values move text toward camera (away from keywords).
+   */
+  chunkTextDepthScale?: number;
   /** Handler for chunk click (locks/unlocks chunk label) */
   onChunkClick?: (chunkId: string) => void;
   /** Handler for chunk hover (for text preview) */
@@ -41,6 +49,8 @@ export function ChunkNodes({
   pcaTransform,
   zoomRange,
   chunkZDepth = CHUNK_Z_DEPTH,
+  panelThickness = 0,
+  chunkTextDepthScale = -15.0,
   onChunkClick,
   onChunkHover,
   chunkScreenRectsRef,
@@ -97,6 +107,18 @@ export function ChunkNodes({
     // Hide mesh entirely if below visibility threshold
     meshRef.current.visible = chunkScale >= VISIBILITY_THRESHOLD;
     if (!meshRef.current.visible) return;
+
+    // Calculate Z position for text labels based on transmission panel blur
+    // Converts panel thickness (shader units 0-20) to world-space offset
+    //
+    // Direction (scene: camera at z=1000, chunks at z=500, keywords at z=0):
+    // - Positive chunkTextDepthScale: textFrontZ decreases (500 → 400)
+    //   Moves text AWAY from camera, TOWARD keywords (visual "front face")
+    // - Negative chunkTextDepthScale: textFrontZ increases (500 → 600)
+    //   Moves text TOWARD camera, AWAY from keywords
+    // - Zero: textFrontZ = chunkZDepth (text at chunk center plane)
+    const physicalThickness = panelThickness * chunkTextDepthScale;
+    const textFrontZ = chunkZDepth - physicalThickness;
 
     // Debug first few chunks
     if (Math.random() < 0.01 && chunkNodes.length > 0) {
@@ -167,12 +189,14 @@ export function ChunkNodes({
 
       // Calculate screen rect for label positioning (data sharing with label system)
       if (chunkScreenRectsRef) {
-        // Project center to screen space
-        const centerWorld = new THREE.Vector3(x, y, z);
+        // Project center to screen space using front Z (where text labels should appear)
+        // This aligns text with the visual "front face" of the cube-like appearance
+        const centerWorld = new THREE.Vector3(x, y, textFrontZ);
         centerWorld.project(camera);
 
         // Project edge point to get accurate screen size (accounts for perspective)
-        const edgeWorld = new THREE.Vector3(x + chunkRadius * chunkScale, y, z);
+        // Use same Z as center for consistent text positioning
+        const edgeWorld = new THREE.Vector3(x + chunkRadius * chunkScale, y, textFrontZ);
         edgeWorld.project(camera);
 
         // Convert NDC to CSS pixels (not drawing buffer pixels)
@@ -192,7 +216,7 @@ export function ChunkNodes({
           y: screenCenterY,
           width: screenWidth,
           height: screenWidth, // Square
-          z: z,
+          z: textFrontZ, // Front Z for text alignment
         });
       }
     }

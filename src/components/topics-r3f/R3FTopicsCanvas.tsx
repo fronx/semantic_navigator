@@ -31,6 +31,7 @@ export interface R3FTopicsCanvasProps {
   panelThickness: number;
   zoomPhaseConfig: ZoomPhaseConfig;
   chunkZDepth?: number;
+  chunkTextDepthScale?: number;
   onKeywordClick?: (keyword: string) => void;
   onProjectClick?: (projectId: string) => void;
   onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
@@ -51,6 +52,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     panelThickness,
     zoomPhaseConfig,
     chunkZDepth,
+    chunkTextDepthScale,
     onKeywordClick,
     onProjectClick,
     onProjectDrag,
@@ -155,6 +157,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
             panelThickness={panelThickness}
             zoomPhaseConfig={zoomPhaseConfig}
             chunkZDepth={chunkZDepth}
+            chunkTextDepthScale={chunkTextDepthScale}
             onKeywordClick={onKeywordClick}
             onProjectClick={onProjectClick}
             onProjectDrag={onProjectDrag}

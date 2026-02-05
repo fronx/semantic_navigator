@@ -68,6 +68,8 @@ export interface TopicsViewProps {
   showKNNEdges?: boolean;
   /** Z-depth offset for chunk nodes (negative = behind keywords) */
   chunkZDepth?: number;
+  /** Scale factor for converting panel thickness to chunk text depth offset */
+  chunkTextDepthScale?: number;
   /** Callback when cluster count changes */
   onClusterCountChange?: (count: number) => void;
 }
@@ -97,6 +99,7 @@ export function TopicsView({
   blurEnabled = true,
   showKNNEdges = false,
   chunkZDepth = -150,
+  chunkTextDepthScale = -15.0,
   onClusterCountChange,
 }: TopicsViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -375,6 +378,7 @@ export function TopicsView({
           panelThickness={panelThickness}
           zoomPhaseConfig={zoomPhaseConfig ?? DEFAULT_ZOOM_PHASE_CONFIG}
           chunkZDepth={chunkZDepth}
+          chunkTextDepthScale={chunkTextDepthScale}
           onKeywordClick={handleKeywordClick}
           onProjectClick={handleProjectClick}
           onProjectDrag={handleProjectDrag}

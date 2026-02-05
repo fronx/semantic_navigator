@@ -342,6 +342,15 @@ export function ControlSidebar({
                   step={0.1}
                   format={(value) => value.toFixed(1)}
                 />
+                <Slider
+                  label="Text depth"
+                  value={settings.chunkTextDepthScale}
+                  onChange={(value) => update("chunkTextDepthScale", value)}
+                  min={-20}
+                  max={20}
+                  step={0.5}
+                  format={(value) => value.toFixed(1)}
+                />
               </div>
 
             </div>
