@@ -79,6 +79,7 @@ export function useD3TopicsRenderer(
     onProjectDrag,
     onZoomChange,
     onFilterClick,
+    onKeywordHover,
     isHoveringRef,
     cursorWorldPosRef,
     cursorScreenPosRef,
@@ -261,6 +262,7 @@ export function useD3TopicsRenderer(
       projectInteractionRef,
       highlightedIdsRef,
       onFilterClick,
+      onKeywordHover,
       renderer: {
         getTransform: () => renderer.getTransform(),
         screenToWorld: (screen) => renderer.screenToWorld(screen),

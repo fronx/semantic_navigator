@@ -80,7 +80,7 @@ export function TransmissionPanel({ enabled = true, distanceRatio, thickness }: 
 
   const resolution = thickness > 0 ? 1024 : undefined;
   return (
-    <mesh ref={meshRef} visible={false}>
+    <mesh ref={meshRef} visible={false} raycast={() => null}>
       {/* Base size panel, scaled in useFrame to match viewport */}
       <planeGeometry args={[BASE_PANEL_SIZE, BASE_PANEL_SIZE]} />
       <MeshTransmissionMaterial

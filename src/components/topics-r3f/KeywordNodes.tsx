@@ -13,6 +13,7 @@ import type { KeywordTierMap } from "@/lib/topics-filter";
 import { calculateScales } from "@/lib/chunk-scale";
 import { getNodeColor, BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/three/node-renderer";
 import { KEYWORD_TIER_SCALES } from "@/lib/semantic-filter-config";
+import { useInstancedMeshMaterial } from "@/hooks/useInstancedMeshMaterial";
 
 const VISIBILITY_THRESHOLD = 0.01;
 
@@ -22,7 +23,6 @@ export interface KeywordNodesProps {
   pcaTransform: PCATransform | null;
   zoomRange: ZoomRange;
   keywordTiers?: KeywordTierMap | null;
-  onKeywordClick?: (keyword: string) => void;
 }
 
 export function KeywordNodes({
@@ -31,57 +31,17 @@ export function KeywordNodes({
   pcaTransform,
   zoomRange,
   keywordTiers,
-  onKeywordClick,
 }: KeywordNodesProps) {
   const { camera } = useThree();
-  const meshRef = useRef<THREE.InstancedMesh>(null);
+  const { meshRef, handleMeshRef } = useInstancedMeshMaterial(simNodes.length);
   const matrixRef = useRef(new THREE.Matrix4());
   const positionRef = useRef(new THREE.Vector3());
   const quaternionRef = useRef(new THREE.Quaternion());
   const scaleRef = useRef(new THREE.Vector3(1, 1, 1));
   const colorRef = useRef(new THREE.Color());
-  const materialRef = useRef<THREE.MeshBasicMaterial | null>(null);
 
   // Create geometry once - match Three.js renderer size
   const geometry = useMemo(() => new THREE.CircleGeometry(BASE_DOT_RADIUS * DOT_SCALE_FACTOR, 64), []);
-
-  // Initialize instanceColor AND material synchronously using ref callback
-  const handleMeshRef = (mesh: THREE.InstancedMesh | null) => {
-    meshRef.current = mesh;
-
-    if (mesh && !mesh.instanceColor) {
-      // FIRST: Create instanceColor attribute with default white color
-      const colors = new Float32Array(simNodes.length * 3);
-      for (let i = 0; i < simNodes.length; i++) {
-        colors[i * 3] = 1; // R
-        colors[i * 3 + 1] = 1; // G
-        colors[i * 3 + 2] = 1; // B
-      }
-      mesh.instanceColor = new THREE.InstancedBufferAttribute(colors, 3);
-      mesh.instanceColor.needsUpdate = true;
-
-      // SECOND: Create and attach material AFTER instanceColor exists
-      // This ensures the shader compiles with vertex color support from the start
-
-      // Dispose old material if it exists
-      if (mesh.material) {
-        (mesh.material as THREE.Material).dispose();
-      }
-
-      const material = new THREE.MeshBasicMaterial({
-        color: new THREE.Color(0xffffff),
-        transparent: false,
-        depthTest: true,
-        depthWrite: true,
-      });
-      material.toneMapped = false;
-      mesh.material = material;
-      materialRef.current = material;
-
-      // CRITICAL: Force shader recompilation to include instanceColor support
-      material.needsUpdate = true;
-    }
-  };
 
   // Update positions, scales, and colors every frame
   useFrame(() => {
@@ -155,19 +115,6 @@ export function KeywordNodes({
       ref={handleMeshRef}
       args={[geometry, undefined, simNodes.length]}
       frustumCulled={false}
-      onPointerOver={() => {
-        document.body.style.cursor = "pointer";
-      }}
-      onPointerOut={() => {
-        document.body.style.cursor = "default";
-      }}
-      onClick={(e) => {
-        e.stopPropagation();
-        const instanceId = e.instanceId;
-        if (instanceId !== undefined && simNodes[instanceId]) {
-          onKeywordClick?.(simNodes[instanceId].label);
-        }
-      }}
     >
       {/* Important: do not reactivate the following line that is commented out. Doing so causes the dots to be black. */}
       {/* <meshBasicMaterial vertexColors transparent depthTest={false} /> */}

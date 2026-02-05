@@ -5,6 +5,7 @@ import { TopicsView } from "@/components/TopicsView";
 import { ErrorBanner } from "@/components/ErrorBanner";
 import { useErrorNotification } from "@/hooks/useErrorNotification";
 import { useTopicsSettings } from "@/hooks/useTopicsSettings";
+import { useChunkLoading } from "@/hooks/useChunkLoading";
 import { ProjectSelector, type Project } from "@/components/ProjectSelector";
 import { ProjectSidebar, type Project as SidebarProject } from "@/components/ProjectSidebar";
 import { InlineTitleInput } from "@/components/InlineTitleInput";
@@ -94,6 +95,18 @@ export default function TopicsPage() {
 
   // Camera Z state for debug display
   const [currentCameraZ, setCurrentCameraZ] = useState<number | undefined>(undefined);
+
+  // Hovered chunk debug info
+  const [hoveredChunkId, setHoveredChunkId] = useState<string | null>(null);
+  const [hoveredChunkContent, setHoveredChunkContent] = useState<string | null>(null);
+
+  // Hovered keyword debug info
+  const [hoveredKeywordId, setHoveredKeywordId] = useState<string | null>(null);
+  const [keywordChunksDebug, setKeywordChunksDebug] = useState<string>("");
+
+  useEffect(() => {
+    console.log("hoveredChunkId changed:", hoveredChunkId);
+  }, [hoveredChunkId]);
 
   // Semantic filter state (for breadcrumb navigation UI in ControlSidebar)
   const [semanticFilterData, setSemanticFilterData] = useState<{
@@ -186,6 +199,60 @@ export default function TopicsPage() {
   const handleCancelCreate = useCallback(() => {
     setCreatingAt(null);
   }, []);
+
+  // Fetch chunks for visible keywords (needed for keyword hover debug)
+  const { chunksByKeyword } = useChunkLoading({
+    visibleKeywordIds: useMemo(() => {
+      if (!data) return new Set();
+      return new Set(data.nodes.map(n => n.id));
+    }, [data]),
+    enabled: true,
+    nodeType: settings.nodeType,
+  });
+
+  // Handle chunk hover (for debug info)
+  const handleChunkHover = useCallback((chunkId: string | null, content: string | null) => {
+    setHoveredChunkId(chunkId);
+    setHoveredChunkContent(content);
+  }, []);
+
+  // Handle keyword hover (for debug info) - build debug string showing chunks
+  useEffect(() => {
+    if (!hoveredKeywordId) {
+      setKeywordChunksDebug("");
+      return;
+    }
+
+    const chunks = chunksByKeyword.get(hoveredKeywordId) || [];
+    const keywordNode = data?.nodes.find(n => n.id === hoveredKeywordId);
+    const keywordLabel = keywordNode?.label || hoveredKeywordId;
+
+    const debugLines: string[] = [];
+    debugLines.push(`Keyword: ${keywordLabel} (${hoveredKeywordId})`);
+    debugLines.push(`  Chunks: ${chunks.length}`);
+
+    chunks.forEach((chunk, i) => {
+      const preview = chunk.content.slice(0, 50).replace(/\n/g, ' ');
+      debugLines.push(`  ${i + 1}. ${chunk.id} - "${preview}${chunk.content.length > 50 ? '...' : ''}"`);
+    });
+
+    if (chunks.length === 0) {
+      debugLines.push("  (no chunks loaded)");
+    }
+
+    setKeywordChunksDebug(debugLines.join('\n'));
+  }, [hoveredKeywordId, chunksByKeyword, data?.nodes]);
+
+  // Handle keyword hover callback
+  const handleKeywordHover = useCallback((keywordId: string | null) => {
+    console.log('[page] handleKeywordHover called with:', keywordId);
+    console.log('[page] chunksByKeyword has', chunksByKeyword.size, 'keywords');
+    if (keywordId) {
+      const chunks = chunksByKeyword.get(keywordId);
+      console.log('[page] Chunks for', keywordId, ':', chunks?.length ?? 0, chunks);
+    }
+    setHoveredKeywordId(keywordId);
+  }, [chunksByKeyword]);
 
   // Update project via API
   const handleUpdateProject = useCallback(async (id: string, updates: { title?: string; content?: string }) => {
@@ -389,6 +456,9 @@ export default function TopicsPage() {
             nodeCount,
             clusterCount,
           }}
+          hoveredChunkId={hoveredChunkId}
+          hoveredChunkContent={hoveredChunkContent}
+          keywordChunksDebug={keywordChunksDebug}
           semanticFilter={semanticFilterData?.semanticFilter ?? null}
           filterHistory={semanticFilterData?.filterHistory ?? []}
           keywordNodes={semanticFilterData?.keywordNodes ?? []}
@@ -433,6 +503,8 @@ export default function TopicsPage() {
             chunkTextDepthScale={settings.chunkTextDepthScale}
             chunkSizeMultiplier={settings.chunkSizeMultiplier}
             onSemanticFilterChange={setSemanticFilterData}
+            onChunkHover={handleChunkHover}
+            onKeywordHover={handleKeywordHover}
           />
 
           {creatingAt && (

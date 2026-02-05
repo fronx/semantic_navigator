@@ -29,6 +29,7 @@ export interface BaseRendererOptions {
   onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
   onZoomChange?: (zoomScale: number) => void;
   onFilterClick: () => void;
+  onKeywordHover?: (keywordId: string | null) => void;
   // Cursor tracking refs (from useProjectCreation)
   isHoveringRef: React.MutableRefObject<boolean>;
   cursorWorldPosRef: React.MutableRefObject<{ x: number; y: number } | null>;

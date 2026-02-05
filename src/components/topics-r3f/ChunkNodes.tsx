@@ -15,6 +15,7 @@ import type { ChunkScreenRect } from "./R3FLabelContext";
 import { CHUNK_Z_DEPTH } from "@/lib/chunk-zoom-config";
 import { calculateScales } from "@/lib/chunk-scale";
 import { getNodeColor, BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/three/node-renderer";
+import { useInstancedMeshMaterial } from "@/hooks/useInstancedMeshMaterial";
 
 const VISIBILITY_THRESHOLD = 0.01;
 
@@ -36,10 +37,6 @@ export interface ChunkNodesProps {
   chunkTextDepthScale?: number;
   /** Size multiplier for chunk nodes (default 1.5) */
   chunkSizeMultiplier?: number;
-  /** Handler for chunk click (locks/unlocks chunk label) */
-  onChunkClick?: (chunkId: string) => void;
-  /** Handler for chunk hover (for text preview) */
-  onChunkHover?: (chunkId: string | null) => void;
   /** Ref to share chunk screen rects with label system (data sharing, not duplication) */
   chunkScreenRectsRef?: React.MutableRefObject<Map<string, ChunkScreenRect>>;
 }
@@ -54,12 +51,10 @@ export function ChunkNodes({
   panelThickness = 0,
   chunkTextDepthScale = -15.0,
   chunkSizeMultiplier = 1.5,
-  onChunkClick,
-  onChunkHover,
   chunkScreenRectsRef,
 }: ChunkNodesProps) {
   const { camera, size, viewport } = useThree();
-  const meshRef = useRef<THREE.InstancedMesh>(null);
+  const { meshRef, handleMeshRef } = useInstancedMeshMaterial(chunkNodes.length);
   const matrixRef = useRef(new THREE.Matrix4());
   const positionRef = useRef(new THREE.Vector3());
   const quaternionRef = useRef(new THREE.Quaternion());
@@ -108,7 +103,14 @@ export function ChunkNodes({
     const chunkScale = scales.chunkScale;
 
     // Hide mesh entirely if below visibility threshold
+    const wasVisible = meshRef.current.visible;
     meshRef.current.visible = chunkScale >= VISIBILITY_THRESHOLD;
+
+    // Log visibility changes
+    if (wasVisible !== meshRef.current.visible) {
+      console.log('[ChunkNodes] Visibility changed:', meshRef.current.visible, 'chunkScale:', chunkScale.toFixed(4), 'cameraZ:', cameraZ.toFixed(1));
+    }
+
     if (!meshRef.current.visible) return;
 
     // Calculate Z position for text labels based on transmission panel blur
@@ -203,34 +205,9 @@ export function ChunkNodes({
 
   return (
     <instancedMesh
-      ref={meshRef}
+      ref={handleMeshRef}
       args={[geometry, undefined, chunkNodes.length]}
       frustumCulled={false}
-      onClick={(e) => {
-        if (!onChunkClick) return;
-        e.stopPropagation();
-
-        // Get instance index from event
-        const instanceId = e.instanceId;
-        if (instanceId !== undefined && instanceId < chunkNodes.length) {
-          const clickedChunk = chunkNodes[instanceId];
-          onChunkClick(clickedChunk.id);
-        }
-      }}
-      onPointerOver={(e) => {
-        if (!onChunkHover) return;
-        e.stopPropagation();
-
-        const instanceId = e.instanceId;
-        if (instanceId !== undefined && instanceId < chunkNodes.length) {
-          const hoveredChunk = chunkNodes[instanceId];
-          onChunkHover(hoveredChunk.id);
-        }
-      }}
-      onPointerOut={() => {
-        if (!onChunkHover) return;
-        onChunkHover(null);
-      }}
     >
       {/* Important: do not reactivate the following line that is commented out. Doing so causes the dots to be black. */}
       {/* <meshBasicMaterial vertexColors transparent depthTest={false} /> */}

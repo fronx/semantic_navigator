@@ -55,6 +55,7 @@ export function useThreeTopicsRenderer(
     onProjectDrag,
     onZoomChange,
     onFilterClick,
+    onKeywordHover,
     isHoveringRef,
     cursorWorldPosRef,
     cursorScreenPosRef,
@@ -188,6 +189,7 @@ export function useThreeTopicsRenderer(
           projectInteractionRef,
           highlightedIdsRef,
           onFilterClick,
+          onKeywordHover,
           renderer: threeRenderer,
         });
 

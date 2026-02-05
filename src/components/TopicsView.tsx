@@ -86,6 +86,10 @@ export interface TopicsViewProps {
     goBackInHistory: () => void;
     goToHistoryIndex: (index: number) => void;
   }) => void;
+  /** Handler for chunk hover (passes ID and content for debug display) */
+  onChunkHover?: (chunkId: string | null, content: string | null) => void;
+  /** Handler for keyword hover (passes keyword ID for debug display) */
+  onKeywordHover?: (keywordId: string | null) => void;
 }
 
 // ============================================================================
@@ -118,6 +122,8 @@ export function TopicsView({
   chunkSizeMultiplier = 1.5,
   onClusterCountChange,
   onSemanticFilterChange,
+  onChunkHover,
+  onKeywordHover,
 }: TopicsViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -308,6 +314,7 @@ export function TopicsView({
     onProjectDrag: handleProjectDrag,
     onZoomChange: handleZoomChange,
     onFilterClick: handleFilterClick,
+    onKeywordHover,
     isHoveringRef,
     cursorWorldPosRef,
     cursorScreenPosRef,
@@ -474,6 +481,8 @@ export function TopicsView({
           onProjectClick={handleProjectClick}
           onProjectDrag={handleProjectDrag}
           onZoomChange={handleZoomChange}
+          onChunkHover={onChunkHover}
+          onKeywordHover={onKeywordHover ?? (() => {})}
         />
         {isLoading && (
           <div className="absolute top-4 right-4 px-3 py-2 bg-black/70 text-white text-sm rounded-md">

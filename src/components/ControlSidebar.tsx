@@ -152,6 +152,10 @@ export interface ControlSidebarProps {
     nodeCount: number;
     clusterCount: number;
   };
+  // Hover debug info
+  hoveredChunkId?: string | null;
+  hoveredChunkContent?: string | null;
+  keywordChunksDebug?: string;
   // Semantic filter navigation
   semanticFilter?: SemanticFilter | null;
   filterHistory?: string[];
@@ -174,6 +178,9 @@ export function ControlSidebar({
   goBackInHistory,
   goToHistoryIndex,
   clusterResolutionDebug,
+  hoveredChunkId,
+  hoveredChunkContent,
+  keywordChunksDebug,
 }: ControlSidebarProps) {
   const section = (title: string) => ({
     title,
@@ -437,6 +444,28 @@ export function ControlSidebar({
                   <div>Effective res: {clusterResolutionDebug.effectiveResolution.toFixed(2)}</div>
                   <div>Debounced res: {clusterResolutionDebug.debouncedResolution.toFixed(2)}</div>
                   <div>Clusters: {clusterResolutionDebug.clusterCount}</div>
+                </>
+              )}
+              {hoveredChunkId && (
+                <>
+                  <div className="pt-1 border-t border-zinc-300 dark:border-zinc-600 mt-1" />
+                  <div className="text-zinc-600 dark:text-zinc-400">Hovered chunk:</div>
+                  <div className="text-[10px] break-all">{hoveredChunkId}</div>
+                  {hoveredChunkContent && (
+                    <div className="text-[10px] text-zinc-600 dark:text-zinc-400 line-clamp-3">
+                      {hoveredChunkContent.slice(0, 100)}
+                      {hoveredChunkContent.length > 100 ? "..." : ""}
+                    </div>
+                  )}
+                </>
+              )}
+              {keywordChunksDebug && (
+                <>
+                  <div className="pt-1 border-t border-zinc-300 dark:border-zinc-600 mt-1" />
+                  <div className="text-zinc-600 dark:text-zinc-400">Hovered keyword chunks:</div>
+                  <pre className="text-[10px] text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap max-h-60 overflow-y-auto">
+                    {keywordChunksDebug}
+                  </pre>
                 </>
               )}
             </div>

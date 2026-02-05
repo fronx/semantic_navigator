@@ -75,6 +75,8 @@ export interface LabelOverlayOptions {
   onClusterLabelClick?: (clusterId: number) => void;
   /** Callback when chunk label container is created/updated for portal rendering */
   onChunkLabelContainer?: (chunkId: string, container: HTMLElement, content: string, visible: boolean) => void;
+  /** Callback when hovered keyword changes (for debug display) */
+  onKeywordHover?: (keywordId: string | null) => void;
 }
 
 // ============================================================================
@@ -96,6 +98,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     onKeywordLabelClick,
     onClusterLabelClick,
     onChunkLabelContainer,
+    onKeywordHover,
   } = options;
 
   // Create overlay for cluster labels
@@ -572,6 +575,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
   }
 
   function setHoveredKeyword(node: SimNode | null): void {
+    console.log("Hovered keyword set to:", node?.id ?? null);
     // Only accept keyword nodes
     if (node && node.type !== "keyword") {
       hoveredKeyword = null;
@@ -591,7 +595,10 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     const cursorPos = getCursorWorldPos();
     if (!cursorPos) {
       hoverLabelOverlay.style.display = "none";
-      hoveredKeyword = null;
+      if (hoveredKeyword !== null) {
+        hoveredKeyword = null;
+        onKeywordHover?.(null);
+      }
       return;
     }
 
@@ -602,7 +609,10 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     if (cameraZ >= keywordStart) {
       // Too zoomed out - cluster labels dominate, disable hover
       hoverLabelOverlay.style.display = "none";
-      hoveredKeyword = null;
+      if (hoveredKeyword !== null) {
+        hoveredKeyword = null;
+        onKeywordHover?.(null);
+      }
       return;
     }
 
@@ -626,6 +636,15 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     // Update hovered keyword (will be used by updateKeywordLabels to scale up the label)
     if (nearestKeyword !== hoveredKeyword) {
       hoveredKeyword = nearestKeyword;
+      // Call debug callback when hovered keyword changes
+      console.log('[label-overlays] Keyword hover changed:', nearestKeyword?.id, nearestKeyword?.label);
+      console.log('[label-overlays] onKeywordHover callback exists?', !!onKeywordHover);
+      if (onKeywordHover) {
+        console.log('[label-overlays] Calling onKeywordHover with:', nearestKeyword?.id ?? null);
+        onKeywordHover(nearestKeyword?.id ?? null);
+      } else {
+        console.log('[label-overlays] onKeywordHover is undefined!');
+      }
     }
 
     // Hide the separate hover label overlay (we'll scale the regular label instead)

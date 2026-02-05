@@ -44,8 +44,12 @@ export interface R3FTopicsCanvasProps {
   onProjectClick?: (projectId: string) => void;
   onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
   onZoomChange?: (zoomScale: number) => void;
-  /** Handler for chunk hover (for debug info) */
   onChunkHover?: (chunkId: string | null, content: string | null) => void;
+  /**
+   * Handler for keyword hover.
+   * Required because R3F renderer always detects hover and expects a handler.
+   */
+  onKeywordHover: (keywordId: string | null) => void;
 }
 
 export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasProps>(
@@ -72,6 +76,8 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     onProjectClick,
     onProjectDrag,
     onZoomChange,
+    onChunkHover,
+    onKeywordHover,
   }, ref) {
     // Theme-aware background color that updates when system theme changes
     const [backgroundColor, setBackgroundColor] = useState(getBackgroundColor);
@@ -84,9 +90,6 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
 
     // Cursor position tracking for 3D text proximity
     const [cursorPosition, setCursorPosition] = useState<{ x: number; y: number } | null>(null);
-
-    // Locked chunks (clicked chunks stay visible until background click)
-    const [lockedChunkIds, setLockedChunkIds] = useState<Set<string>>(new Set());
 
     // Cursor position handler
     const handlePointerMove = (e: React.PointerEvent) => {
@@ -119,24 +122,6 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     const handlePointerLeave = () => {
       setCursorPosition(null);
       cursorWorldPosRef.current = null;
-    };
-
-    // Chunk click handler (locks chunk visible)
-    const handleChunkClick = (chunkId: string) => {
-      setLockedChunkIds((prev) => {
-        const next = new Set(prev);
-        if (next.has(chunkId)) {
-          next.delete(chunkId); // Toggle: clicking locked chunk unlocks it
-        } else {
-          next.add(chunkId); // Lock new chunk
-        }
-        return next;
-      });
-    };
-
-    // Background click handler (clears all locks)
-    const handleBackgroundClick = () => {
-      setLockedChunkIds(new Set());
     };
 
     // Container ref for DOM overlay positioning
@@ -198,7 +183,6 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
           }}
           gl={{ antialias: true, alpha: false }}
           style={{ width: "100%", height: "100%" }}
-          onClick={handleBackgroundClick}
         >
           <color attach="background" args={[backgroundColor]} />
           <ambientLight intensity={1} />
@@ -220,14 +204,11 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
             chunkTextDepthScale={chunkTextDepthScale}
             chunkSizeMultiplier={chunkSizeMultiplier}
             keywordTiers={keywordTiers}
-            onKeywordClick={onKeywordClick}
             onProjectClick={onProjectClick}
             onProjectDrag={onProjectDrag}
             onZoomChange={onZoomChange}
             labelRefs={labelRefs}
             cursorPosition={cursorPosition}
-            lockedChunkIds={lockedChunkIds}
-            onChunkClick={handleChunkClick}
           />
         </Canvas>
 
@@ -238,6 +219,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
           keywordLabelRange={zoomPhaseConfig.keywordLabels}
           onKeywordLabelClick={onKeywordLabelClick}
           onClusterLabelClick={onClusterLabelClick}
+          onKeywordHover={onKeywordHover}
         />
       </div>
     );

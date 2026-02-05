@@ -38,6 +38,7 @@ export interface HoverControllerOptions {
   highlightedIdsRef: React.MutableRefObject<Set<string>>;
   // Callbacks
   onFilterClick: () => void;
+  onKeywordHover?: (keywordId: string | null) => void;
   // Renderer adapter
   renderer: RendererAdapter;
 }
@@ -69,6 +70,7 @@ export function createHoverController(options: HoverControllerOptions): HoverCon
     projectInteractionRef,
     highlightedIdsRef,
     onFilterClick,
+    onKeywordHover,
     renderer,
   } = options;
 
@@ -98,6 +100,7 @@ export function createHoverController(options: HoverControllerOptions): HoverCon
     if (renderer.isHoveringProject()) {
       highlightedIdsRef.current = new Set();
       renderer.applyHighlight(new Set(), baseDim);
+      onKeywordHover?.(null);
       return;
     }
 
@@ -127,9 +130,13 @@ export function createHoverController(options: HoverControllerOptions): HoverCon
     if (isEmptySpace) {
       highlightedIdsRef.current = new Set();
       renderer.applyHighlight(null, baseDim);
+      onKeywordHover?.(null);
     } else {
       highlightedIdsRef.current = keywordHighlightedIds;
       renderer.applyHighlight(keywordHighlightedIds, baseDim);
+      // Call with first highlighted keyword ID for debug (D3/Three.js may highlight multiple)
+      const firstId = keywordHighlightedIds.size > 0 ? Array.from(keywordHighlightedIds)[0] : null;
+      onKeywordHover?.(firstId);
     }
   }
 
@@ -196,6 +203,7 @@ export function createHoverController(options: HoverControllerOptions): HoverCon
       const { baseDim } = hoverConfigRef.current;
       highlightedIdsRef.current = new Set();
       renderer.applyHighlight(new Set(), baseDim);
+      onKeywordHover?.(null);
       // Clear cursor tracking state
       isHoveringRef.current = false;
       cursorWorldPosRef.current = null;

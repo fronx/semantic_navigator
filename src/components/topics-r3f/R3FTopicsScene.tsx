@@ -4,7 +4,7 @@
  */
 
 import { useState, useMemo, useEffect } from "react";
-import { useThree } from "@react-three/fiber";
+import { useThree, useFrame } from "@react-three/fiber";
 import { CameraController } from "./CameraController";
 import { ForceSimulation } from "./ForceSimulation";
 import { KeywordNodes } from "./KeywordNodes";
@@ -14,11 +14,14 @@ import { KeywordEdges } from "./KeywordEdges";
 import { ChunkEdges } from "./ChunkEdges";
 import { LabelsUpdater } from "./LabelsUpdater";
 import { useEdgeCurveDirections } from "@/hooks/useEdgeCurveDirections";
+import { useChunkSimulation } from "@/hooks/useChunkSimulation";
+import { createChunkNodes } from "@/lib/chunk-layout";
 import { computeNodeDegrees } from "@/lib/label-overlays";
 import { groupNodesByCommunity } from "@/lib/hull-renderer";
 import { computeClusterColors } from "@/lib/semantic-colors";
 import { calculateBoundingBox, calculateCameraZForBounds } from "@/lib/dynamic-zoom-bounds";
 import { CAMERA_Z_MAX } from "@/lib/chunk-zoom-config";
+import { BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/three/node-renderer";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 import type { PCATransform } from "@/lib/semantic-colors";
 import type { SimNode, SimLink } from "@/lib/map-renderer";
@@ -65,7 +68,6 @@ export interface R3FTopicsSceneProps {
   /** Size multiplier for chunk/article nodes (default 1.5) */
   chunkSizeMultiplier?: number;
   keywordTiers?: KeywordTierMap | null;
-  onKeywordClick?: (keyword: string) => void;
   onProjectClick?: (projectId: string) => void;
   onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
   onZoomChange?: (zoomScale: number) => void;
@@ -73,10 +75,6 @@ export interface R3FTopicsSceneProps {
   labelRefs: LabelRefs;
   /** Cursor position for 3D text proximity filtering */
   cursorPosition: { x: number; y: number } | null;
-  /** Locked chunk IDs (clicked chunks stay visible) */
-  lockedChunkIds: Set<string>;
-  /** Handler for chunk click (locks/unlocks chunk) */
-  onChunkClick: (chunkId: string) => void;
 }
 
 export function R3FTopicsScene({
@@ -95,35 +93,51 @@ export function R3FTopicsScene({
   chunkTextDepthScale = -15.0,
   chunkSizeMultiplier = 1.5,
   keywordTiers,
-  onKeywordClick,
   onProjectClick,
   onProjectDrag,
   onZoomChange,
   labelRefs,
   cursorPosition,
-  lockedChunkIds,
-  onChunkClick,
 }: R3FTopicsSceneProps) {
-  // Simulation nodes shared between ForceSimulation and rendering components
-  // Contains both keywords and chunks, positioned by d3-force
-  const [simNodes, setSimNodes] = useState<SimNode[]>([]);
+  // Level 1: Keyword simulation nodes (from ForceSimulation)
+  const [keywordNodes, setKeywordNodes] = useState<SimNode[]>([]);
 
-  // Track hovered chunk for text preview when zoomed out
-  const [hoveredChunkId, setHoveredChunkId] = useState<string | null>(null);
+  // Level 2: Create chunk nodes from chunks data
+  const chunkNodes = useMemo(() => {
+    if (!chunksByKeyword || chunksByKeyword.size === 0 || keywordNodes.length === 0) {
+      console.log('[R3FTopicsScene] No chunks - chunksByKeyword size:', chunksByKeyword?.size, 'keywordNodes:', keywordNodes.length);
+      return [];
+    }
 
-  // Extract keyword and chunk nodes from simulation results
-  const { keywordNodes, chunkNodes } = useMemo(() => {
-    const keywords = simNodes.filter(n => n.type === "keyword");
-    const chunks = simNodes.filter(n => n.type === "chunk");
+    const { chunkNodes: chunks } = createChunkNodes(keywordNodes, chunksByKeyword);
+    console.log('[R3FTopicsScene] Created', chunks.length, 'chunk nodes');
 
-    console.log('[R3F Scene] Simulation nodes:', {
-      total: simNodes.length,
-      keywords: keywords.length,
-      chunks: chunks.length,
-    });
+    return chunks;
+  }, [keywordNodes, chunksByKeyword]);
 
-    return { keywordNodes: keywords, chunkNodes: chunks };
-  }, [simNodes]);
+  // Build keyword map for chunk simulation
+  const keywordMap = useMemo(() => {
+    return new Map<string, SimNode>(keywordNodes.map(n => [n.id, n]));
+  }, [keywordNodes]);
+
+  // Level 2: Chunk simulation (separate from keyword simulation)
+  const keywordRadius = BASE_DOT_RADIUS * DOT_SCALE_FACTOR;
+  const chunkSimulation = useChunkSimulation({
+    chunks: chunkNodes,
+    keywords: keywordMap,
+    keywordRadius,
+    chunkSizeMultiplier,
+  });
+
+  // Tick chunk simulation every frame
+  useFrame(() => {
+    chunkSimulation.tick();
+  });
+
+  // Combine keyword and chunk nodes for rendering
+  const simNodes = useMemo(() => {
+    return [...keywordNodes, ...chunkNodes];
+  }, [keywordNodes, chunkNodes]);
 
   // Update labelRefs when simNodes change (for label rendering)
   useEffect(() => {
@@ -177,8 +191,7 @@ export function R3FTopicsScene({
       <ForceSimulation
         nodes={nodes}
         edges={edges}
-        chunksByKeyword={chunksByKeyword}
-        onSimulationReady={setSimNodes}
+        onSimulationReady={setKeywordNodes}
       />
 
       {/* Chunk layer (furthest back, z < 0) */}
@@ -193,8 +206,6 @@ export function R3FTopicsScene({
           panelThickness={panelThickness}
           chunkTextDepthScale={chunkTextDepthScale}
           chunkSizeMultiplier={chunkSizeMultiplier}
-          onChunkClick={onChunkClick}
-          onChunkHover={setHoveredChunkId}
           chunkScreenRectsRef={labelRefs.chunkScreenRectsRef}
         />
       )}
@@ -239,7 +250,6 @@ export function R3FTopicsScene({
           pcaTransform={pcaTransform}
           zoomRange={zoomPhaseConfig.chunkCrossfade}
           keywordTiers={keywordTiers}
-          onKeywordClick={onKeywordClick}
         />
       )}
     </>
