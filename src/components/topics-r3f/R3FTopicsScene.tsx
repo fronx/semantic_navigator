@@ -4,6 +4,7 @@
  */
 
 import { useState, useMemo, useEffect } from "react";
+import { useThree } from "@react-three/fiber";
 import { CameraController } from "./CameraController";
 import { ForceSimulation } from "./ForceSimulation";
 import { KeywordNodes } from "./KeywordNodes";
@@ -16,6 +17,8 @@ import { useEdgeCurveDirections } from "@/hooks/useEdgeCurveDirections";
 import { computeNodeDegrees } from "@/lib/label-overlays";
 import { groupNodesByCommunity } from "@/lib/hull-renderer";
 import { computeClusterColors } from "@/lib/semantic-colors";
+import { calculateBoundingBox, calculateCameraZForBounds } from "@/lib/dynamic-zoom-bounds";
+import { CAMERA_Z_MAX } from "@/lib/chunk-zoom-config";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 import type { PCATransform } from "@/lib/semantic-colors";
 import type { SimNode, SimLink } from "@/lib/map-renderer";
@@ -145,9 +148,25 @@ export function R3FTopicsScene({
   // Compute curve directions ONLY for similarity edges
   const curveDirections = useEdgeCurveDirections(simNodes, edges as SimLink[]);
 
+  // Calculate dynamic max zoom distance based on visible node positions
+  const { size } = useThree();
+  const maxDistance = useMemo(() => {
+    if (simNodes.length === 0) {
+      return CAMERA_Z_MAX; // Fallback to default
+    }
+
+    const bounds = calculateBoundingBox(simNodes);
+    if (!bounds) {
+      return CAMERA_Z_MAX; // No valid positions yet
+    }
+
+    // Calculate required camera Z with 50% margin (1.5x multiplier)
+    return calculateCameraZForBounds(bounds, size, 1.5);
+  }, [simNodes, size]);
+
   return (
     <>
-      <CameraController onZoomChange={onZoomChange} />
+      <CameraController onZoomChange={onZoomChange} maxDistance={maxDistance} />
 
       {/* Labels updater - updates camera state and triggers label renders */}
       <LabelsUpdater labelRefs={labelRefs} />

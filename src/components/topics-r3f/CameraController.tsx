@@ -17,6 +17,7 @@ import { createPanHandler } from "@/lib/three/pan-handler";
 
 export interface CameraControllerProps {
   onZoomChange?: (zoomScale: number) => void;
+  maxDistance?: number;
 }
 
 /**
@@ -58,7 +59,7 @@ function usePanHandler(
   }, [camera, gl, controlsRef, onZoomChange]);
 }
 
-export function CameraController({ onZoomChange }: CameraControllerProps) {
+export function CameraController({ onZoomChange, maxDistance = CAMERA_Z_MAX }: CameraControllerProps) {
   const controlsRef = useRef<OrbitControlsType>(null);
   const { camera, gl, size } = useThree();
 
@@ -91,7 +92,7 @@ export function CameraController({ onZoomChange }: CameraControllerProps) {
 
       // Calculate zoom delta with sensitivity based on current zoom level
       const zoomSensitivity = camera.position.z * 0.003;
-      const newZ = Math.max(CAMERA_Z_MIN, Math.min(CAMERA_Z_MAX, oldZ + event.deltaY * zoomSensitivity));
+      const newZ = Math.max(CAMERA_Z_MIN, Math.min(maxDistance, oldZ + event.deltaY * zoomSensitivity));
 
       if (Math.abs(newZ - oldZ) < 0.01) return;
 
@@ -130,7 +131,7 @@ export function CameraController({ onZoomChange }: CameraControllerProps) {
     return () => {
       canvas.removeEventListener('wheel', handleWheel);
     };
-  }, [camera, gl, size, onZoomChange]);
+  }, [camera, gl, size, onZoomChange, maxDistance]);
 
   return (
     <OrbitControls
@@ -140,7 +141,7 @@ export function CameraController({ onZoomChange }: CameraControllerProps) {
       enableDamping
       dampingFactor={0.05}
       minDistance={CAMERA_Z_MIN}  // Match our zoom limits
-      maxDistance={CAMERA_Z_MAX}  // Match our zoom limits
+      maxDistance={maxDistance}  // Dynamic zoom limit based on graph size
       enableZoom={false}  // Disable built-in zoom (we handle it manually)
       onChange={handleChange}
     />
