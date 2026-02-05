@@ -75,13 +75,50 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
         };
       }
 
+      /**
+       * Convert 3D world coordinates to screen coordinates with perspective projection.
+       * Uses proper perspective projection accounting for Z depth and parallax.
+       */
+      function worldToScreen3D(world: { x: number; y: number; z: number }): { x: number; y: number } | null {
+        const rect = containerEl.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return null;
+
+        const camera = cameraStateRef.current;
+
+        // Calculate perspective-corrected position
+        // Using similar math to Three.js perspective projection
+        const dx = world.x - camera.x;
+        const dy = world.y - camera.y;
+        const dz = world.z - camera.z;
+
+        // Check if behind camera (negative Z in view space)
+        if (dz >= 0) return null;
+
+        // Perspective division: project onto near plane
+        // FOV determines the projection scale
+        const halfFovTan = Math.tan(CAMERA_FOV_RADIANS / 2);
+        const aspect = rect.width / rect.height;
+
+        // Project X and Y with perspective
+        const ndcX = (dx / (-dz * halfFovTan * aspect));
+        const ndcY = (dy / (-dz * halfFovTan));
+
+        // Convert NDC to screen coordinates
+        return {
+          x: ((ndcX + 1) / 2) * rect.width,
+          y: ((1 - ndcY) / 2) * rect.height, // Flip Y (screen Y down, world Y up)
+        };
+      }
+
       const labelManager = createLabelOverlayManager({
         container,
         worldToScreen,
+        worldToScreen3D,
         getCameraZ: () => cameraStateRef.current.z,
         getNodeRadius: (node: SimNode) => getNodeRadius(node, 1) * DOT_SCALE_FACTOR,
         getClusterColors: () => clusterColorsRef.current,
         getKeywordLabelRange: () => keywordLabelRange,
+        getChunkScreenRects: () => labelRefs.chunkScreenRectsRef.current,
       });
 
       labelManagerRef.current = labelManager;

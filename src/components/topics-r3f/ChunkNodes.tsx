@@ -11,6 +11,7 @@ import type { SimNode } from "@/lib/map-renderer";
 import type { ChunkSimNode } from "@/lib/chunk-layout";
 import type { PCATransform } from "@/lib/semantic-colors";
 import type { ZoomRange } from "@/lib/zoom-phase-config";
+import type { ChunkScreenRect } from "./R3FLabelContext";
 import { CHUNK_Z_DEPTH } from "@/lib/chunk-zoom-config";
 import { calculateScales } from "@/lib/chunk-scale";
 import { getNodeColor, BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/three/node-renderer";
@@ -25,6 +26,12 @@ export interface ChunkNodesProps {
   zoomRange: ZoomRange;
   /** Z-depth offset for chunks (negative = behind keywords) */
   chunkZDepth?: number;
+  /** Handler for chunk click (locks/unlocks chunk label) */
+  onChunkClick?: (chunkId: string) => void;
+  /** Handler for chunk hover (for text preview) */
+  onChunkHover?: (chunkId: string | null) => void;
+  /** Ref to share chunk screen rects with label system (data sharing, not duplication) */
+  chunkScreenRectsRef?: React.MutableRefObject<Map<string, ChunkScreenRect>>;
 }
 
 export function ChunkNodes({
@@ -34,8 +41,11 @@ export function ChunkNodes({
   pcaTransform,
   zoomRange,
   chunkZDepth = CHUNK_Z_DEPTH,
+  onChunkClick,
+  onChunkHover,
+  chunkScreenRectsRef,
 }: ChunkNodesProps) {
-  const { camera } = useThree();
+  const { camera, size, viewport } = useThree();
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const matrixRef = useRef(new THREE.Matrix4());
   const positionRef = useRef(new THREE.Vector3());
@@ -51,7 +61,29 @@ export function ChunkNodes({
 
   // Chunks are larger than keywords
   const chunkRadius = BASE_DOT_RADIUS * DOT_SCALE_FACTOR * 1.5;
-  const geometry = useMemo(() => new THREE.CircleGeometry(chunkRadius, 64), [chunkRadius]);
+
+  // Create rounded square geometry
+  const geometry = useMemo(() => {
+    const size = chunkRadius * 2; // Square size (side length)
+    const radius = chunkRadius * 0.2; // Corner radius (20% of chunk radius)
+
+    // Create rounded rectangle shape
+    const shape = new THREE.Shape();
+    const x = -size / 2;
+    const y = -size / 2;
+
+    shape.moveTo(x + radius, y);
+    shape.lineTo(x + size - radius, y);
+    shape.quadraticCurveTo(x + size, y, x + size, y + radius);
+    shape.lineTo(x + size, y + size - radius);
+    shape.quadraticCurveTo(x + size, y + size, x + size - radius, y + size);
+    shape.lineTo(x + radius, y + size);
+    shape.quadraticCurveTo(x, y + size, x, y + size - radius);
+    shape.lineTo(x, y + radius);
+    shape.quadraticCurveTo(x, y, x + radius, y);
+
+    return new THREE.ShapeGeometry(shape);
+  }, [chunkRadius]);
 
   // Update positions, scales, and colors every frame
   useFrame(() => {
@@ -82,13 +114,18 @@ export function ChunkNodes({
       }, null, 2));
     }
 
+    // Clear screen rects map before populating with current frame data
+    if (chunkScreenRectsRef) {
+      chunkScreenRectsRef.current.clear();
+    }
+
     for (let i = 0; i < chunkNodes.length; i++) {
       const node = chunkNodes[i] as ChunkSimNode;
 
       // Position at parent keyword's location but on a different Z plane
       const x = node.x ?? 0;
       const y = node.y ?? 0;
-      const z = chunkZDepth; // Behind keywords (negative z)
+      const z = chunkZDepth;
 
       // Compose matrix with position and scale
       positionRef.current.set(x, y, z);
@@ -127,6 +164,37 @@ export function ChunkNodes({
         }
       }
       meshRef.current.setColorAt(i, colorRef.current);
+
+      // Calculate screen rect for label positioning (data sharing with label system)
+      if (chunkScreenRectsRef) {
+        // Project center to screen space
+        const centerWorld = new THREE.Vector3(x, y, z);
+        centerWorld.project(camera);
+
+        // Project edge point to get accurate screen size (accounts for perspective)
+        const edgeWorld = new THREE.Vector3(x + chunkRadius * chunkScale, y, z);
+        edgeWorld.project(camera);
+
+        // Convert NDC to CSS pixels (not drawing buffer pixels)
+        // Note: size from R3F is in rendering pixels, may include DPR
+        // For CSS pixel accuracy, we use the ratio which cancels out DPR
+        const screenCenterX = ((centerWorld.x + 1) / 2) * size.width;
+        const screenCenterY = ((1 - centerWorld.y) / 2) * size.height;
+
+        const screenEdgeX = ((edgeWorld.x + 1) / 2) * size.width;
+
+        // Calculate half-width from center to edge, then full width
+        const screenHalfWidth = Math.abs(screenEdgeX - screenCenterX);
+        const screenWidth = screenHalfWidth * 2;
+
+        chunkScreenRectsRef.current.set(node.id, {
+          x: screenCenterX,
+          y: screenCenterY,
+          width: screenWidth,
+          height: screenWidth, // Square
+          z: z,
+        });
+      }
     }
 
     meshRef.current.instanceMatrix.needsUpdate = true;
@@ -138,7 +206,36 @@ export function ChunkNodes({
   if (chunkNodes.length === 0) return null;
 
   return (
-    <instancedMesh ref={meshRef} args={[geometry, undefined, chunkNodes.length]} frustumCulled={false}>
+    <instancedMesh
+      ref={meshRef}
+      args={[geometry, undefined, chunkNodes.length]}
+      frustumCulled={false}
+      onClick={(e) => {
+        if (!onChunkClick) return;
+        e.stopPropagation();
+
+        // Get instance index from event
+        const instanceId = e.instanceId;
+        if (instanceId !== undefined && instanceId < chunkNodes.length) {
+          const clickedChunk = chunkNodes[instanceId];
+          onChunkClick(clickedChunk.id);
+        }
+      }}
+      onPointerOver={(e) => {
+        if (!onChunkHover) return;
+        e.stopPropagation();
+
+        const instanceId = e.instanceId;
+        if (instanceId !== undefined && instanceId < chunkNodes.length) {
+          const hoveredChunk = chunkNodes[instanceId];
+          onChunkHover(hoveredChunk.id);
+        }
+      }}
+      onPointerOut={() => {
+        if (!onChunkHover) return;
+        onChunkHover(null);
+      }}
+    >
       {/* Important: do not reactivate the following line that is commented out. Doing so causes the dots to be black. */}
       {/* <meshBasicMaterial vertexColors transparent depthTest={false} /> */}
     </instancedMesh>

@@ -108,7 +108,6 @@ body {
 /* Shows at camera Z <= 1800, replaces short .chunk-label with multi-line content */
 .chunk-content-label {
   position: absolute;
-  transform: translate(-50%, -100%);
 
   /* Sizing and wrapping */
   max-width: 180px;
@@ -124,14 +123,11 @@ body {
   overflow: hidden;
   text-overflow: clip;
 
-  /* Readability over graph edges */
+  /* Transparent background with black text */
   padding: 4px 6px;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.88);
-  backdrop-filter: blur(8px);
-  box-shadow:
-    0 4px 12px rgba(15, 23, 42, 0.12),
-    0 1px 3px rgba(15, 15, 15, 0.08);
+  background: transparent !important;
+  color: #000 !important;
 
   /* Smooth transitions */
   transition: opacity 0.15s ease-out;
@@ -143,11 +139,7 @@ body {
 
 @media (prefers-color-scheme: dark) {
   .chunk-content-label {
-    background: rgba(9, 9, 11, 0.85);
-    color: #f4f4f5;
-    box-shadow:
-      0 4px 12px rgba(0, 0, 0, 0.3),
-      0 1px 3px rgba(0, 0, 0, 0.2);
+    color: #000;
   }
 }
 

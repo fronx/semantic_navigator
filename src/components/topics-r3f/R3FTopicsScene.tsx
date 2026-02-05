@@ -44,6 +44,12 @@ export interface R3FTopicsSceneProps {
   onZoomChange?: (zoomScale: number) => void;
   /** Refs for label rendering (bridging to DOM overlay) */
   labelRefs: LabelRefs;
+  /** Cursor position for 3D text proximity filtering */
+  cursorPosition: { x: number; y: number } | null;
+  /** Locked chunk IDs (clicked chunks stay visible) */
+  lockedChunkIds: Set<string>;
+  /** Handler for chunk click (locks/unlocks chunk) */
+  onChunkClick: (chunkId: string) => void;
 }
 
 export function R3FTopicsScene({
@@ -64,10 +70,16 @@ export function R3FTopicsScene({
   onProjectDrag,
   onZoomChange,
   labelRefs,
+  cursorPosition,
+  lockedChunkIds,
+  onChunkClick,
 }: R3FTopicsSceneProps) {
   // Simulation nodes shared between ForceSimulation and rendering components
   // Contains both keywords and chunks, positioned by d3-force
   const [simNodes, setSimNodes] = useState<SimNode[]>([]);
+
+  // Track hovered chunk for text preview when zoomed out
+  const [hoveredChunkId, setHoveredChunkId] = useState<string | null>(null);
 
   // Extract keyword and chunk nodes from simulation results
   const { keywordNodes, chunkNodes } = useMemo(() => {
@@ -128,6 +140,9 @@ export function R3FTopicsScene({
           pcaTransform={pcaTransform}
           zoomRange={zoomPhaseConfig.chunkCrossfade}
           chunkZDepth={chunkZDepth}
+          onChunkClick={onChunkClick}
+          onChunkHover={setHoveredChunkId}
+          chunkScreenRectsRef={labelRefs.chunkScreenRectsRef}
         />
       )}
 

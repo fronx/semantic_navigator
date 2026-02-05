@@ -24,6 +24,23 @@ export interface CameraState {
 }
 
 /**
+ * Screen-space bounding rectangle for a chunk node.
+ * Calculated by ChunkNodes during rendering, shared with label system.
+ */
+export interface ChunkScreenRect {
+  /** Screen X position (center, pixels) */
+  x: number;
+  /** Screen Y position (center, pixels) */
+  y: number;
+  /** Screen width (pixels) */
+  width: number;
+  /** Screen height (pixels) */
+  height: number;
+  /** World Z position */
+  z: number;
+}
+
+/**
  * All refs needed for label rendering.
  * These are created in R3FTopicsCanvas and passed to child components.
  */
@@ -40,6 +57,8 @@ export interface LabelRefs {
   clusterColorsRef: React.MutableRefObject<Map<number, ClusterColorInfo>>;
   /** Label manager (created by LabelsOverlay) */
   labelManagerRef: React.MutableRefObject<LabelOverlayManager | null>;
+  /** Chunk screen rects (updated by ChunkNodes every frame, read by label system) */
+  chunkScreenRectsRef: React.MutableRefObject<Map<string, ChunkScreenRect>>;
 }
 
 /**

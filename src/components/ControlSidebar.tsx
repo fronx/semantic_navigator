@@ -143,8 +143,6 @@ export interface ControlSidebarProps {
   updateZoomPhaseConfig: (mutator: (prev: ZoomPhaseConfig) => ZoomPhaseConfig) => void;
   toggleSection: (section: string) => void;
   cameraZ?: number;
-  chunkZDepth?: number;
-  onChunkZDepthChange?: (value: number) => void;
   clusterResolutionDebug?: {
     zoomScale: number;
     effectiveResolution: number;
@@ -160,8 +158,6 @@ export function ControlSidebar({
   updateZoomPhaseConfig,
   toggleSection,
   cameraZ,
-  chunkZDepth = -150,
-  onChunkZDepthChange,
   clusterResolutionDebug,
 }: ControlSidebarProps) {
   const section = (title: string) => ({
@@ -338,56 +334,16 @@ export function ControlSidebar({
                   }
                 />
                 <Slider
-                  label="Z-depth"
-                  value={chunkZDepth}
-                  onChange={(value) => onChunkZDepthChange?.(value)}
-                  min={-1000}
-                  max={1000}
-                  step={10}
-                  format={(value) => value.toFixed(0)}
+                  label="Depth"
+                  value={settings.chunkZOffset}
+                  onChange={(value) => update("chunkZOffset", value)}
+                  min={0.1}
+                  max={2.0}
+                  step={0.1}
+                  format={(value) => value.toFixed(1)}
                 />
               </div>
 
-              {/* Blur overlay */}
-              <div className="space-y-1">
-                <div className="text-[10px] uppercase tracking-wider text-zinc-400 font-medium">
-                  Blur overlay
-                </div>
-                <ZoomSlider
-                  label="Fade out"
-                  value={settings.zoomPhaseConfig.blur.far}
-                  onChange={(z) =>
-                    updateZoomPhaseConfig((prev) => ({
-                      ...prev,
-                      blur: { ...prev.blur, far: z },
-                    }))
-                  }
-                />
-                <ZoomSlider
-                  label="Peak"
-                  value={settings.zoomPhaseConfig.blur.near}
-                  onChange={(z) =>
-                    updateZoomPhaseConfig((prev) => ({
-                      ...prev,
-                      blur: { ...prev.blur, near: z },
-                    }))
-                  }
-                />
-                <Slider
-                  label="Max radius"
-                  value={settings.zoomPhaseConfig.blur.maxRadius}
-                  onChange={(v) =>
-                    updateZoomPhaseConfig((prev) => ({
-                      ...prev,
-                      blur: { ...prev.blur, maxRadius: v },
-                    }))
-                  }
-                  min={0}
-                  max={20}
-                  step={0.5}
-                  format={(v) => `${v.toFixed(1)}px`}
-                />
-              </div>
             </div>
           </Section>
 

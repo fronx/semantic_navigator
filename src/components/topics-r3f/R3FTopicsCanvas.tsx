@@ -14,7 +14,7 @@ import type { PCATransform, ClusterColorInfo } from "@/lib/semantic-colors";
 import type { SimNode } from "@/lib/map-renderer";
 import type { ZoomPhaseConfig } from "@/lib/zoom-phase-config";
 import type { LabelOverlayManager } from "@/lib/label-overlays";
-import type { CameraState, LabelRefs, LabelsOverlayHandle } from "./R3FLabelContext";
+import type { CameraState, ChunkScreenRect, LabelRefs, LabelsOverlayHandle } from "./R3FLabelContext";
 import type { ChunkNode } from "@/lib/chunk-loader";
 
 export interface R3FTopicsCanvasProps {
@@ -65,6 +65,41 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
       });
     }, []);
 
+    // Cursor position tracking for 3D text proximity
+    const [cursorPosition, setCursorPosition] = useState<{ x: number; y: number } | null>(null);
+
+    // Locked chunks (clicked chunks stay visible until background click)
+    const [lockedChunkIds, setLockedChunkIds] = useState<Set<string>>(new Set());
+
+    // Cursor position handler
+    const handlePointerMove = (e: React.PointerEvent) => {
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      setCursorPosition({
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+      });
+    };
+
+    // Chunk click handler (locks chunk visible)
+    const handleChunkClick = (chunkId: string) => {
+      setLockedChunkIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(chunkId)) {
+          next.delete(chunkId); // Toggle: clicking locked chunk unlocks it
+        } else {
+          next.add(chunkId); // Lock new chunk
+        }
+        return next;
+      });
+    };
+
+    // Background click handler (clears all locks)
+    const handleBackgroundClick = () => {
+      setLockedChunkIds(new Set());
+    };
+
     // Container ref for DOM overlay positioning
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -74,6 +109,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     const nodeDegreesRef = useRef<Map<string, number>>(new Map());
     const clusterColorsRef = useRef<Map<number, ClusterColorInfo>>(new Map());
     const labelManagerRef = useRef<LabelOverlayManager | null>(null);
+    const chunkScreenRectsRef = useRef<Map<string, ChunkScreenRect>>(new Map());
 
     const labelRefs: LabelRefs = {
       cameraStateRef,
@@ -82,12 +118,14 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
       nodeDegreesRef,
       clusterColorsRef,
       labelManagerRef,
+      chunkScreenRectsRef,
     };
 
     return (
       <div
         ref={containerRef}
         style={{ position: "relative", width: "100%", height: "100%" }}
+        onPointerMove={handlePointerMove}
       >
         <Canvas
           camera={{
@@ -98,6 +136,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
           }}
           gl={{ antialias: true, alpha: false }}
           style={{ width: "100%", height: "100%" }}
+          onClick={handleBackgroundClick}
         >
           <color attach="background" args={[backgroundColor]} />
           <ambientLight intensity={1} />
@@ -121,6 +160,9 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
             onProjectDrag={onProjectDrag}
             onZoomChange={onZoomChange}
             labelRefs={labelRefs}
+            cursorPosition={cursorPosition}
+            lockedChunkIds={lockedChunkIds}
+            onChunkClick={handleChunkClick}
           />
         </Canvas>
 

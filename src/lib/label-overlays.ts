@@ -10,6 +10,8 @@ import { computeClusterLabels } from "@/lib/cluster-labels";
 import { communityColorScale } from "@/lib/hull-renderer";
 import { clusterColorToCSS, type ClusterColorInfo } from "@/lib/semantic-colors";
 import { CAMERA_FOV_DEGREES } from "@/lib/three/zoom-to-cursor";
+import { calculateScales } from "@/lib/chunk-scale";
+import { DEFAULT_ZOOM_PHASE_CONFIG } from "@/lib/zoom-phase-config";
 
 // ============================================================================
 // Types
@@ -34,10 +36,20 @@ export interface LabelOverlayManager {
   destroy: () => void;
 }
 
+export interface ChunkScreenRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  z: number;
+}
+
 export interface LabelOverlayOptions {
   container: HTMLElement;
   /** Function to convert world coordinates to screen coordinates */
   worldToScreen: (world: { x: number; y: number }) => { x: number; y: number } | null;
+  /** Function to convert 3D world coordinates to screen coordinates (with perspective) */
+  worldToScreen3D: (world: { x: number; y: number; z: number }) => { x: number; y: number } | null;
   /** Function to get current camera Z position (for zoom-based visibility) */
   getCameraZ: () => number;
   /** Function to get node radius in world units */
@@ -46,6 +58,8 @@ export interface LabelOverlayOptions {
   getClusterColors: () => Map<number, ClusterColorInfo>;
   /** Function to read current keyword label range thresholds */
   getKeywordLabelRange: () => { start: number; full: number };
+  /** Function to get chunk screen rects (calculated by ChunkNodes, shared via ref) */
+  getChunkScreenRects?: () => Map<string, ChunkScreenRect>;
 }
 
 // ============================================================================
@@ -56,10 +70,12 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
   const {
     container,
     worldToScreen,
+    worldToScreen3D,
     getCameraZ,
     getNodeRadius,
     getClusterColors,
     getKeywordLabelRange,
+    getChunkScreenRects,
   } = options;
 
   // Create overlay for cluster labels
@@ -124,7 +140,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
 
       // Skip if off-screen (with some padding)
       if (screenPos.x < -100 || screenPos.x > rect.width + 100 ||
-          screenPos.y < -100 || screenPos.y > rect.height + 100) {
+        screenPos.y < -100 || screenPos.y > rect.height + 100) {
         // Hide existing label if off-screen
         const existing = clusterLabelCache.get(data.communityId);
         if (existing) existing.style.display = "none";
@@ -221,7 +237,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
 
       // Skip if off-screen (with padding)
       if (screenPos.x < -50 || screenPos.x > rect.width + 50 ||
-          screenPos.y < -50 || screenPos.y > rect.height + 50) {
+        screenPos.y < -50 || screenPos.y > rect.height + 50) {
         const existing = keywordLabelCache.get(node.id);
         if (existing) existing.style.display = "none";
         continue;
@@ -273,19 +289,14 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
 
   function updateChunkLabels(nodes: SimNode[], parentColors: Map<string, string>) {
     const rect = container.getBoundingClientRect();
-    const cameraZ = getCameraZ();
 
-    // Determine if we should show full content based on zoom
-    const showFullContent = cameraZ <= 1800;
+    // Get screen rects calculated by ChunkNodes (data sharing, not duplication)
+    // If not available (legacy renderer), return early
+    if (!getChunkScreenRects) return;
+    const screenRects = getChunkScreenRects();
 
-    // Font size scales with zoom: smaller when zoomed out
-    // Base size: 21px for short labels, 10px for full content (reduced to 2-2.5x smaller)
-    // Adjusted for 10deg FOV (3x higher baseline due to increased camera distance)
-    const baseFontSize = showFullContent ? 10 : 21;
-    const zoomScale = Math.min(1, 1500 / cameraZ);
-
-    // Max-width for content labels (only used when showFullContent is true)
-    const baseMaxWidth = 200;
+    // Minimum screen size threshold
+    const minScreenSize = 50;
 
     // Track which nodes we've processed (for cleanup)
     const seenNodes = new Set<string>();
@@ -294,9 +305,25 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
       // Only show labels for chunk nodes
       if (node.type !== "chunk") continue;
 
-      // Skip if not zoomed in enough to show full content
-      // We only want multi-line content labels, not short single-line labels
-      if (!showFullContent) {
+      // Get screen rect from ChunkNodes (single source of truth)
+      const screenRect = screenRects.get(node.id);
+      if (!screenRect) {
+        // Chunk not rendered or off-screen
+        const existing = chunkLabelCache.get(node.id);
+        if (existing) existing.style.display = "none";
+        continue;
+      }
+
+      // Skip if off-screen (with padding)
+      if (screenRect.x < -50 || screenRect.x > rect.width + 50 ||
+        screenRect.y < -50 || screenRect.y > rect.height + 50) {
+        const existing = chunkLabelCache.get(node.id);
+        if (existing) existing.style.display = "none";
+        continue;
+      }
+
+      // Skip if chunk is too small on screen
+      if (screenRect.width < minScreenSize) {
         const existing = chunkLabelCache.get(node.id);
         if (existing) existing.style.display = "none";
         continue;
@@ -304,68 +331,48 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
 
       seenNodes.add(node.id);
 
-      // Convert node position to screen coordinates
-      const worldX = node.x ?? 0;
-      const worldY = node.y ?? 0;
-      const screenPos = worldToScreen({ x: worldX, y: worldY });
-      if (!screenPos) continue;
-
-      // Skip if off-screen (with padding)
-      if (screenPos.x < -50 || screenPos.x > rect.width + 50 ||
-          screenPos.y < -50 || screenPos.y > rect.height + 50) {
-        const existing = chunkLabelCache.get(node.id);
-        if (existing) existing.style.display = "none";
-        continue;
-      }
-
       // Get or create label element
       let labelEl = chunkLabelCache.get(node.id);
       if (!labelEl) {
         labelEl = document.createElement("div");
-        // Don't set className here - will be set below based on zoom
+        labelEl.className = "chunk-content-label";
         chunkOverlay.appendChild(labelEl);
         chunkLabelCache.set(node.id, labelEl);
       }
 
-      // Update CSS class based on zoom level (only if changed)
-      const targetClass = showFullContent ? "chunk-content-label" : "chunk-label";
-      if (labelEl.className !== targetClass) {
-        labelEl.className = targetClass;
-      }
+      // Calculate font size based on chunk screen size
+      // Smaller base font size for better fit within bounds
+      const baseFontSize = 6;
+      const baseChunkSize = 100;
+      const fontSize = (screenRect.width / baseChunkSize) * baseFontSize;
 
-      // Calculate offset from node center (above the dot)
-      const worldRadius = getNodeRadius(node);
-      // Convert world radius to screen pixels (using camera FOV)
-      const fovRadians = CAMERA_FOV_DEGREES * Math.PI / 180;
-      const pixelsPerUnit = rect.height / (2 * cameraZ * Math.tan(fovRadians / 2));
-      const screenRadius = worldRadius * pixelsPerUnit;
+      // Position text box to fit exactly inside square bounds
+      const paddingHorizontal = 12; // 6px left + 6px right from .chunk-content-label
+      const paddingVertical = 8;    // 4px top + 4px bottom
 
-      // Update label content and position (above node)
+      // Calculate square edges
+      const squareLeft = screenRect.x - (screenRect.width / 2);
+      const squareTop = screenRect.y - (screenRect.height / 2);
+
+      // Update label content and position (inside square, top-left aligned with padding)
       labelEl.style.display = "block";
-      labelEl.style.left = `${screenPos.x}px`;
-      labelEl.style.top = `${screenPos.y - screenRadius - 8}px`;
-      labelEl.style.fontSize = `${baseFontSize * zoomScale}px`;
+      labelEl.style.left = `${squareLeft + (paddingHorizontal / 2)}px`;
+      labelEl.style.top = `${squareTop + (paddingVertical / 2)}px`;
+      labelEl.style.width = `${screenRect.width - paddingHorizontal}px`;
+      labelEl.style.height = `${screenRect.height - paddingVertical}px`;
+      labelEl.style.fontSize = `${fontSize}px`;
+      labelEl.style.maxWidth = `${screenRect.width - paddingHorizontal}px`;
+      labelEl.style.maxHeight = `${screenRect.height - paddingVertical}px`;
+      labelEl.style.overflow = "hidden"; // Clip overflow text
+      labelEl.style.transform = "none"; // Disable any CSS centering transforms
 
-      // Apply max-width only for content labels
-      if (showFullContent) {
-        labelEl.style.maxWidth = `${baseMaxWidth * zoomScale}px`;
-      } else {
-        // Clear max-width for single-line labels (only if previously set)
-        if (labelEl.style.maxWidth) {
-          labelEl.style.maxWidth = "";
-        }
-      }
+      // Force text wrapping for long lines
+      labelEl.style.whiteSpace = "normal";
+      labelEl.style.wordWrap = "break-word";
+      labelEl.style.overflowWrap = "break-word";
 
-      // Use parent keyword color if available
-      const color = parentColors.get(node.id);
-      if (color) {
-        labelEl.style.color = color;
-      }
-
-      // Display full content when zoomed in, otherwise short label
-      const targetContent = showFullContent
-        ? ((node as ChunkSimNode).content || node.label)
-        : node.label;
+      // Display full content
+      const targetContent = (node as ChunkSimNode).content || node.label;
 
       if (labelEl.textContent !== targetContent) {
         labelEl.textContent = targetContent;

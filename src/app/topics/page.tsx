@@ -11,6 +11,7 @@ import { InlineTitleInput } from "@/components/InlineTitleInput";
 import { ControlSidebar } from "@/components/ControlSidebar";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 import { CAMERA_Z_SCALE_BASE } from "@/lib/three/camera-controller";
+import { BASE_CAMERA_Z } from "@/lib/chunk-zoom-config";
 
 /** Debounce a value - returns the value after it stops changing for `delay` ms */
 function useDebouncedValue<T>(value: T, delay: number): T {
@@ -91,6 +92,10 @@ export default function TopicsPage() {
 
   // Camera Z state for debug display
   const [currentCameraZ, setCurrentCameraZ] = useState<number | undefined>(undefined);
+
+  // Calculate chunk Z depth from offset multiplier
+  // BASE_CAMERA_Z is 1000, so default offset of 0.5 gives depth of 500
+  const chunkZDepth = BASE_CAMERA_Z * settings.chunkZOffset;
 
   // Fetch project neighborhood when project selected
   useEffect(() => {
@@ -358,8 +363,6 @@ export default function TopicsPage() {
           updateZoomPhaseConfig={updateZoomPhaseConfig}
           toggleSection={toggleSection}
           cameraZ={currentCameraZ}
-          chunkZDepth={settings.chunkZDepth}
-          onChunkZDepthChange={(value) => update("chunkZDepth", value)}
           clusterResolutionDebug={{
             zoomScale,
             effectiveResolution,
@@ -400,7 +403,7 @@ export default function TopicsPage() {
             zoomPhaseConfig={settings.zoomPhaseConfig}
             blurEnabled={settings.blurEnabled}
             showKNNEdges={settings.showKNNEdges}
-            chunkZDepth={settings.chunkZDepth}
+            chunkZDepth={chunkZDepth}
           />
 
           {creatingAt && (
