@@ -136,7 +136,7 @@ export function useChunkSimulation({
     return counts;
   }, [chunks]);
 
-  // Create simulation once
+  // Create simulation (recreate only on structural changes, not size changes)
   useEffect(() => {
     const simulation = d3.forceSimulation<ChunkSimNode>()
       .alphaDecay(0.02) // Slower cooling than default (0.0228)
@@ -162,7 +162,7 @@ export function useChunkSimulation({
     return () => {
       simulation.stop();
     };
-  }, [keywords, keywordRadius, chunkRadius, chunkCountsByParent, collisionStrength, chunkSpreadFactor]);
+  }, [keywords, keywordRadius, chunkCountsByParent, collisionStrength, chunkSpreadFactor]);
 
   // Update nodes when chunks change
   useEffect(() => {
@@ -176,17 +176,30 @@ export function useChunkSimulation({
     }
   }, [chunks]);
 
-  // Update collision radius when chunkSizeMultiplier changes
+  // Update forces when chunk size changes (e.g., during zoom)
   useEffect(() => {
     if (!simulationRef.current) return;
 
+    // Update collision force radius
     const collideForce = simulationRef.current.force("collide") as d3.ForceCollide<ChunkSimNode>;
     if (collideForce) {
       collideForce.radius(chunkRadius);
-      // Restart with low heat to adjust positions
-      simulationRef.current.alpha(0.2).restart();
     }
-  }, [chunkRadius]);
+
+    // Recreate tether force with new chunk radius (affects max distance)
+    simulationRef.current.force("tether", tetherToParent(
+      keywords,
+      chunkCountsByParent,
+      keywordRadius,
+      chunkRadius,
+      0.1, // springStrength
+      2.5, // baseDistanceMultiplier
+      chunkSpreadFactor
+    ));
+
+    // Reignite simulation with moderate heat to let nodes adjust
+    simulationRef.current.alpha(0.3).restart();
+  }, [chunkRadius, keywords, chunkCountsByParent, keywordRadius, chunkSpreadFactor]);
 
   return useMemo(() => ({
     tick: () => simulationRef.current?.tick(),
