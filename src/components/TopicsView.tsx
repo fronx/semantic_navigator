@@ -498,6 +498,7 @@ export function TopicsView({
           keywordTiers={keywordTiers}
           nodeToCluster={nodeToCluster}
           searchOpacities={nodeOpacities}
+          cameraZ={cameraZ}
           onKeywordClick={handleKeywordClickInternal}
           onKeywordLabelClick={handleKeywordLabelClick}
           onClusterLabelClick={handleClusterLabelClick}

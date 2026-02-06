@@ -42,6 +42,8 @@ export interface R3FTopicsCanvasProps {
   nodeToCluster?: Map<string, number>;
   /** Search opacity map (node id -> opacity) for semantic search highlighting */
   searchOpacities?: Map<string, number>;
+  /** Current camera Z position for zoom-dependent effects */
+  cameraZ?: number;
   onKeywordClick?: (keyword: string) => void;
   onKeywordLabelClick?: (keywordId: string) => void;
   onClusterLabelClick?: (clusterId: number) => void;
@@ -76,6 +78,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     keywordTiers,
     nodeToCluster,
     searchOpacities,
+    cameraZ,
     onKeywordClick,
     onKeywordLabelClick,
     onClusterLabelClick,
@@ -200,6 +203,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
             contentSizeMultiplier={contentSizeMultiplier}
             keywordTiers={keywordTiers}
             searchOpacities={searchOpacities}
+            cameraZ={cameraZ}
             onProjectClick={onProjectClick}
             onProjectDrag={onProjectDrag}
             onZoomChange={onZoomChange}

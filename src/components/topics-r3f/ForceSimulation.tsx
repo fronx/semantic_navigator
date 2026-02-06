@@ -8,26 +8,38 @@ import { useEffect, useRef } from "react";
 import * as d3 from "d3";
 import type { KeywordNode, SimilarityEdge } from "@/lib/graph-queries";
 import type { SimNode } from "@/lib/map-renderer";
+import {
+  calculateSimulationAlpha,
+  calculateVelocityDecay,
+} from "@/lib/simulation-zoom-config";
 
 export interface ForceSimulationProps {
   nodes: KeywordNode[];
   edges: SimilarityEdge[];
   /** Callback to get keyword simulation nodes (keywords only, no chunks) */
   onSimulationReady?: (keywordNodes: SimNode[]) => void;
+  /** Current camera Z position for zoom-dependent simulation energy */
+  cameraZ?: number;
 }
+
+/** Base D3 defaults for initial layout (full energy) */
+const INITIAL_ALPHA = 0.3;
+const INITIAL_VELOCITY_DECAY = 0.5;
+const SAFETY_TIMEOUT_MS = 20000;
 
 export function ForceSimulation({
   nodes,
   edges,
   onSimulationReady,
+  cameraZ,
 }: ForceSimulationProps) {
   const simulationRef = useRef<d3.Simulation<SimNode, undefined> | null>(null);
-  const simNodesRef = useRef<SimNode[]>([]);
+  const prevCameraZRef = useRef<number | undefined>(undefined);
 
+  // Create / recreate simulation when nodes or edges change
   useEffect(() => {
-    // Convert keyword nodes to simulation nodes
-    // At z=10500 with FOV 10°, visible height ≈ 1837 units
-    // Use moderate initial spread - simulation will tighten it
+    prevCameraZRef.current = undefined;
+
     const keywordSimNodes: SimNode[] = nodes.map((n) => ({
       id: n.id,
       type: "keyword" as const,
@@ -36,24 +48,18 @@ export function ForceSimulation({
       embedding: n.embedding,
       communityMembers: undefined,
       hullLabel: undefined,
-      // Initialize with random positions if not set
       x: Math.random() * 1000 - 500,
       y: Math.random() * 1000 - 500,
     }));
 
-    simNodesRef.current = keywordSimNodes;
-
-    // Notify parent about keyword simulation nodes
     onSimulationReady?.(keywordSimNodes);
 
-    // Convert edges to links (similarity edges between keywords only)
     const links = edges.map((e) => ({
       source: e.source,
       target: e.target,
       similarity: e.similarity,
     }));
 
-    // Create force simulation for keywords only
     const simulation = d3
       .forceSimulation(keywordSimNodes)
       .force(
@@ -62,12 +68,10 @@ export function ForceSimulation({
           .forceLink(links)
           .id((d: any) => d.id)
           .distance((d: any) => {
-            // Distance varies by semantic similarity
             const sim = d.similarity ?? 0.5;
             return 40 + (1 - sim) * 150;
           })
           .strength((d: any) => {
-            // Strength varies by semantic similarity
             const sim = d.similarity ?? 0.5;
             return 0.2 + sim * 0.8;
           })
@@ -75,13 +79,10 @@ export function ForceSimulation({
       .force("charge", d3.forceManyBody().strength(-200))
       .force("center", d3.forceCenter(0, 0))
       .alphaDecay(0.01)
-      .velocityDecay(0.5);
+      .velocityDecay(INITIAL_VELOCITY_DECAY)
+      .alpha(INITIAL_ALPHA);
 
-    // Safety timeout: force stop after 20 seconds
-    const stopTimeout = setTimeout(() => {
-      simulation.stop();
-    }, 20000);
-
+    const stopTimeout = setTimeout(() => simulation.stop(), SAFETY_TIMEOUT_MS);
     simulationRef.current = simulation;
 
     return () => {
@@ -89,8 +90,30 @@ export function ForceSimulation({
       simulation.stop();
       simulationRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // cameraZ intentionally excluded -- handled by the zoom effect below
   }, [nodes, edges, onSimulationReady]);
 
-  // No visual output - this just drives the simulation
+  // Adjust simulation energy when zoom changes
+  useEffect(() => {
+    const simulation = simulationRef.current;
+    if (!simulation || cameraZ === undefined) return;
+
+    // Skip first render -- let simulation start with full energy
+    if (prevCameraZRef.current === undefined) {
+      prevCameraZRef.current = cameraZ;
+      return;
+    }
+
+    simulation.velocityDecay(calculateVelocityDecay(cameraZ));
+
+    const targetAlpha = calculateSimulationAlpha(cameraZ);
+    if (Math.abs(targetAlpha - simulation.alpha()) > 0.01) {
+      simulation.alpha(targetAlpha);
+    }
+
+    prevCameraZRef.current = cameraZ;
+  }, [cameraZ]);
+
   return null;
 }

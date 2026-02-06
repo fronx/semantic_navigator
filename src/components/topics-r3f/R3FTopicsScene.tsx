@@ -71,6 +71,8 @@ export interface R3FTopicsSceneProps {
   keywordTiers?: KeywordTierMap | null;
   /** Search opacity map (node id -> opacity) for semantic search highlighting */
   searchOpacities?: Map<string, number>;
+  /** Current camera Z position for zoom-dependent effects */
+  cameraZ?: number;
   onProjectClick?: (projectId: string) => void;
   onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
   onZoomChange?: (zoomScale: number) => void;
@@ -98,6 +100,7 @@ export function R3FTopicsScene({
   contentSizeMultiplier = 1.5,
   keywordTiers,
   searchOpacities,
+  cameraZ,
   onProjectClick,
   onProjectDrag,
   onZoomChange,
@@ -197,6 +200,7 @@ export function R3FTopicsScene({
         nodes={nodes}
         edges={edges}
         onSimulationReady={setKeywordNodes}
+        cameraZ={cameraZ}
       />
 
       {/* Content layer (furthest back, z < 0) */}
