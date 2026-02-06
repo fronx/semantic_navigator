@@ -155,7 +155,7 @@ export function TopicsView({
     keywordNodes,
     edges,
     clusterResolution,
-    { onError }
+    { onError, nodeType }
   );
 
   // Report cluster count changes
@@ -481,6 +481,7 @@ export function TopicsView({
         <R3FTopicsCanvas
           ref={r3fRendererResult.labelsRef}
           nodes={activeNodes}
+          totalKeywordCount={keywordNodes.length}
           edges={activeEdges}
           projectNodes={projectNodes}
           contentsByKeyword={contentsByKeyword}

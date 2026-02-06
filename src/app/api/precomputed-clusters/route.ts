@@ -2,12 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase";
 import { errorResponse } from "@/lib/api-error";
 
-export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const resolution = parseFloat(searchParams.get("resolution") || "1.0");
-  const nodeIdsParam = searchParams.get("nodeIds"); // comma-separated
-
-  const nodeIds = nodeIdsParam ? nodeIdsParam.split(",") : null;
+export async function POST(request: NextRequest) {
+  const body = await request.json();
+  const resolution = parseFloat(body.resolution ?? "1.0");
+  const nodeIds: string[] | null = body.nodeIds ?? null;
+  const nodeType: string = body.nodeType ?? "article";
 
   try {
     const supabase = createServerClient();
@@ -15,6 +14,7 @@ export async function GET(request: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (supabase.rpc as any)("get_precomputed_clusters", {
       target_resolution: resolution,
+      filter_node_type: nodeType,
       node_ids: nodeIds,
     });
 

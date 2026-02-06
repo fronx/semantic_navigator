@@ -78,6 +78,8 @@ export interface UseClusterLabelsOptions {
   onError?: (message: string) => void;
   /** Use precomputed clusters instead of computing fresh (default: true) */
   usePrecomputed?: boolean;
+  /** Node type for precomputed cluster lookup (default: 'article') */
+  nodeType?: 'article' | 'chunk';
 }
 
 /**
@@ -104,8 +106,9 @@ export function useClusterLabels(
   // Track semantic labels from Haiku
   const [semanticLabels, setSemanticLabels] = useState<Record<number, string>>({});
 
-  // Stable ref for usePrecomputed option
+  // Stable refs for options
   const usePrecomputed = options?.usePrecomputed !== false; // Default true
+  const nodeType = options?.nodeType ?? 'article';
 
   // Fetch precomputed data when enabled
   useEffect(() => {
@@ -115,10 +118,15 @@ export function useClusterLabels(
 
     async function fetchPrecomputed() {
       try {
-        const nodeIds = nodes.map(n => n.id).join(",");
-        const response = await fetch(
-          `/api/precomputed-clusters?resolution=${resolution}&nodeIds=${nodeIds}`
-        );
+        const response = await fetch("/api/precomputed-clusters", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            resolution,
+            nodeIds: nodes.map(n => n.id),
+            nodeType,
+          }),
+        });
 
         if (!response.ok) {
           console.warn("[precomputed-clusters] Failed, falling back to client-side");
@@ -147,7 +155,7 @@ export function useClusterLabels(
     return () => {
       cancelled = true;
     };
-  }, [nodes, resolution, usePrecomputed]);
+  }, [nodes, resolution, usePrecomputed, nodeType]);
 
   // Compute clustering (use precomputed when available)
   const clustering = useMemo(() => {

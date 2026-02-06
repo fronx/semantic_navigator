@@ -50,6 +50,8 @@ function groupNodesByMap(nodes: SimNode[], nodeToCluster: Map<string, number>): 
 
 export interface R3FTopicsSceneProps {
   nodes: KeywordNode[];
+  /** Total keyword count before filtering — used for stable instancedMesh allocation */
+  totalKeywordCount: number;
   edges: SimilarityEdge[];
   projectNodes: ProjectNode[];
   contentsByKeyword?: Map<string, ContentNode[]>;
@@ -86,6 +88,7 @@ export interface R3FTopicsSceneProps {
 
 export function R3FTopicsScene({
   nodes,
+  totalKeywordCount,
   edges,
   projectNodes,
   contentsByKeyword,
@@ -278,7 +281,7 @@ export function R3FTopicsScene({
       {/* Keyword layer */}
       {keywordNodes.length > 0 && (
         <KeywordNodes
-          nodeCount={nodes.length}
+          nodeCount={totalKeywordCount}
           simNodes={keywordNodes}
           colorMixRatio={colorMixRatio}
           colorDesaturation={colorDesaturation}

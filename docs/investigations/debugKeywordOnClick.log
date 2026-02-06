@@ -1,0 +1,310 @@
+## Working
+
+[cluster-cache] Refined 10 labels
+KeywordNodes.tsx:157 [KeywordNodes] onClick fired! {instanceId: 470, simNodesLength: 489, hasCallback: true}
+page.tsx:537 Clicked keyword: belief systems
+useContentLoading.ts:54 [Content Loading] Effect triggered. Enabled: true Keywords: 3
+useContentLoading.ts:68 [Content Loading] Checking 3 visible keywords
+useContentLoading.ts:69 [Content Loading] Cache size: 412
+useContentLoading.ts:76 [Content Loading] Uncached keywords: 1
+content-loader.ts:28 [Content Loader] Fetching chunks for 1 keywords
+content-loader.ts:41 [Content Loader] Received 0 chunks
+
+## Not working
+
+[KeywordNodes] onClick fired! {instanceId: 100, simNodesLength: 489, hasCallback: true}
+page.tsx:537 Clicked keyword: latent potential
+useContentLoading.ts:54 [Content Loading] Effect triggered. Enabled: true Keywords: 3
+useContentLoading.ts:68 [Content Loading] Checking 3 visible keywords
+useContentLoading.ts:69 [Content Loading] Cache size: 412
+useContentLoading.ts:76 [Content Loading] Uncached keywords: 0
+useContentLoading.ts:79 [Content Loading] All keywords cached, skipping fetch
+useClusterLabels.ts:180 [cluster-labels] Computing clusters client-side with Leiden
+useClusterLabels.ts:180 [cluster-labels] Computing clusters client-side with Leiden
+useClusterLabels.ts:291 [cluster-cache] 14 exact hits, 9 near-matches, 0 misses
+useContentLoading.ts:54 [Content Loading] Effect triggered. Enabled: true Keywords: 521
+useClusterLabels.ts:119  GET http://localhost:3000/api/precomputed-clusters?resolution=0.5&nodeIds=kw:relationship%20commitment,kw:commitment,kw:relationship%20composition,kw:risk%20of%20commitment,kw:emotional%20commitment,kw:relationship%20sustainability,kw:relationship%20dynamics,kw:relationship%20dimensions,kw:authentic%20commitment,kw:relational%20dissonance,kw:dissonance,kw:cognitive%20dissonance,kw:relational%20framing,kw:cognitive%20conflict,kw:relational%20systems,kw:inner%20contradiction,kw:world%20reduction,kw:primitive%20reduction,kw:hierarchy%20reduction,kw:total%20reduction,kw:hierarchical%20reduction,kw:threshold%20reduction,kw:reductionism,kw:agent%20reduction,kw:reduction%20resistance,kw:dimensionality%20reduction,kw:intensity%20reduction,kw:meaning%20generation,kw:text%20generation,kw:embedding%20generation,kw:meaning%20creation,kw:generative%20model,kw:spirit%20complexity,kw:spirit%20dynamics,kw:spiritual%20complexity,kw:spirit%20implementation,kw:spirit%20emergence,kw:spirit%20perception,kw:spirit%20substrate,kw:spirit,kw:morning%20choices,kw:morning%20routine,kw:lifestyle%20choices,kw:personal%20choice,kw:choices,kw:arbitrary%20choices,kw:choice,kw:habitual%20behavior,kw:habits,kw:habit%20consistency,kw:behavior%20patterns,kw:habit%20mechanism,kw:ritualistic%20behavior,kw:programmed%20behavior,kw:habit%20implementation,kw:habit,kw:transcendence,kw:self-transformation,kw:transformation,kw:collective%20consciousness,kw:shared%20consciousness,kw:collective%20self,kw:collective%20identity,kw:collective%20intelligence,kw:collective%20memory,kw:unity,kw:oneness,kw:uniformity,kw:interpersonal%20unity,kw:unified%20agent,kw:unified%20controller,kw:conceptual%20unity,kw:identity,kw:narrative,kw:narrative%20technique,kw:narrative%20structure,kw:narrative%20flow,kw:narrative%20control,kw:cult%20narrative,kw:personal%20narrative,kw:narrative%20resistance,kw:religious%20narrative,kw:care,kw:comfort,kw:respect,kw:control,kw:perspective,kw:emotional%20authenticity,kw:authenticity,kw:emotional%20autonomy,kw:emotional%20awareness,kw:authentic%20self,kw:emotional%20acceptance,kw:communication%20ethics,kw:communication%20effectiveness,kw:communication%20strategies,kw:communication%20strategy,kw:communication%20awareness,kw:communication%20constraints,kw:effective%20communication,kw:communication%20models,kw:communication,kw:obedience,kw:conformity,kw:cooperation,kw:fidelity,kw:social%20conformity,kw:inherited%20structures,kw:explanatory%20structures,kw:predictive%20structures,kw:social%20structures,kw:seed%20structure,kw:framework%20structure,kw:action%20structures,kw:self-authorship,kw:self-authored%20meaning,kw:fiction%20of%20self,kw:self-communication,kw:self-identity,kw:collaborative%20writing,kw:self-understanding,kw:self-image,kw:social%20scripts,kw:life%20scripts,kw:personal%20scripts,kw:identity%20scripts,kw:social%20conventions,kw:social%20signals,kw:social%20patterns,kw:social%20narrative,kw:social%20roles,kw:high-dimensional%20spirit,kw:low-dimensional%20spirit,kw:high-dimensional%20space,kw:high-dimensional%20vector,kw:multi-dimensional%20self,kw:global%20spirit,kw:global%20spirits,kw:religious%20systems,kw:belief%20systems,kw:religions,kw:belief%20system,kw:religious%20practice,kw:religion,kw:living%20systems,kw:symbolic%20cognition,kw:social%20cognition,kw:distributed%20cognition,kw:organizational%20cognition,kw:cognition,kw:cognitive%20systems,kw:cognitive%20process,kw:cultural%20transmission,kw:cultural%20domination,kw:meaning%20transmission,kw:cultural%20manipulation,kw:cultural%20signaling,kw:cultural%20entrenchment,kw:cultural%20practices,kw:cultural%20programming,kw:mental%20transmission,kw:transmission%20of%20insights,kw:pattern%20transmission,kw:transition,kw:migration,kw:change,kw:presence,kw:experiential%20process,kw:experiential%20learning,kw:experiential%20development,kw:experiential%20understanding,kw:experiential%20analysis,kw:experiential%20knowledge,kw:experiential%20philosophy,kw:experiential%20properties,kw:cult%20experience,kw:experiential%20limits,kw:direct%20experience,kw:system%20tension,kw:system%20pressure,kw:tension,kw:system%20constraints,kw:system%20maintenance,kw:systems%20variables,kw:muscle%20tension,kw:system%20dynamics,kw:release%20mechanism,kw:communication%20mechanism,kw:mechanism,kw:choice%20mechanism,kw:agency%20mechanism,kw:excuse%20mechanism,kw:coupling%20mechanism,kw:mechanism%20agreement,kw:release,kw:feminism,kw:sexism,kw:gender%20oppression,kw:Living%20A%20Feminist%20Life,kw:transmisogyny,kw:misogyny,kw:masculinity,kw:cisheteropatriarchy,kw:liberalism,kw:comparative%20understanding,kw:comparative%20analysis,kw:understanding,kw:conceptual%20understanding,kw:knowledge%20transfer,kw:knowledge%20sharing,kw:knowledge%20activation,kw:knowledge%20discovery,kw:knowledge%20representation,kw:knowledge%20gaps,kw:knowledge%20accessibility,kw:knowledge%20limits,kw:communicability,kw:leading%20questions,kw:question%20structure,kw:persuasion%20techniques,kw:questions%20and%20answers,kw:existential%20questioning,kw:theory%20testing,kw:verbal%20persuasion,kw:persuasion%20challenge,kw:questions,kw:mental%20objects,kw:mental%20structures,kw:mental%20spaces,kw:mind%20and%20object,kw:mental%20models,kw:mental%20instantiations,kw:mental%20constructions,kw:mental%20representation,kw:mental%20constructs,kw:V_prec,kw:V_dir,kw:emergent%20agent,kw:emergent%20property,kw:emergence,kw:emergent%20purpose,kw:transient%20agent,kw:potential%20agent,kw:potential%20agents,kw:conversation%20flow,kw:conversation%20dynamics,kw:conversation%20structure,kw:conversation,kw:conversation%20management,kw:conversational%20dynamics,kw:semantic%20flow,kw:conversation%20coupling,kw:identity%20fluidity,kw:identity%20fiction,kw:identity%20questioning,kw:identity%20transformation,kw:trans%20identity,kw:identity%20exploration,kw:identity%20formation,kw:self-perception,kw:agency%20dynamics,kw:organizational%20dynamics,kw:agency%20theory,kw:team%20dynamics,kw:organizational%20behavior,kw:organizational%20effectiveness,kw:organizational%20leadership,kw:organizational%20perspective,kw:psychological%20patterns,kw:thought%20patterns,kw:Self-Patterns,kw:self-patterns,kw:permeability,kw:openness,kw:vulnerability,kw:boundaries,kw:physical%20boundaries,kw:identity%20boundaries,kw:boundary%20formation,kw:social%20boundaries,kw:group%20identity,kw:social%20identity,kw:group%20dynamics,kw:social%20belonging,kw:social%20interaction,kw:social%20cohesion,kw:social%20participation,kw:community%20formation,kw:social%20group%20formation,kw:group%20formation%20mechanisms,kw:team%20formation,kw:social%20coordination,kw:collective%20action,kw:abstraction%20boundary,kw:abstraction,kw:interface,kw:interfaces,kw:implements,kw:connection,kw:alignment,kw:Markov%20blanket,kw:mortality,kw:entity%20mortality,kw:concept%20mortality,kw:model%20mortality,kw:survival,kw:impermanence,kw:life%20investment,kw:strength%20depletion,kw:fatigue,kw:diminishment,kw:resource%20collapse,kw:self-limitation,kw:demotivation,kw:sleep%20deprivation,kw:cognitive%20fatigue,kw:low%20energy,kw:energy%20minimum,kw:conceptual%20navigation,kw:thought%20navigation,kw:awareness%20navigation,kw:mental%20navigation,kw:creative%20navigation,kw:navigating%20ideas,kw:goal%20navigation,kw:life%20navigation,kw:conceptual%20paths,kw:spatial%20thinking,kw:spatial%20awareness,kw:spatial%20perception,kw:spatial%20metaphor,kw:spatial%20sound,kw:spatial%20translation,kw:spatial%20audio,kw:conceptual%20space,kw:language,kw:language%20function,kw:emotional%20perception,kw:mental%20perception,kw:personal%20perception,kw:emotional%20response,kw:emotional%20valence,kw:sensory%20perception,kw:emotional%20communication,kw:self-awareness,kw:self-knowledge,kw:sadness,kw:depression,kw:grief,kw:happiness,kw:seriousness,kw:madness,kw:feelings,kw:surrender,kw:passivity,kw:acceptance,kw:consent,kw:detachment,kw:stakes,kw:non-dual%20joy,kw:no%20dualism,kw:duality,kw:blissful%20state,kw:bliss,kw:blissful%20states,kw:enjoyment,kw:joy,kw:sensitivity,kw:sensation,kw:flow,kw:flow%20states,kw:movement,kw:forms,kw:expression,kw:beauty%20reception,kw:beauty,kw:moment%20of%20beauty,kw:elegance,kw:rest,kw:aesthetic%20transformation,kw:audience%20receptivity,kw:invitation,kw:critique,kw:social%20critique,kw:theoretical%20critique,kw:dialogue%20critique,kw:AI%20critique,kw:critical%20dialogue,kw:self-criticism,kw:intelligence%20critique,kw:LLMs,kw:LLM,kw:LLM%20training,kw:LLM%20limitations,kw:LLM%20as%20perceptual%20organ,kw:language%20membership,kw:justice,kw:latent%20world,kw:active%20inference,kw:idea-space,kw:agency,kw:substrate,kw:wave%20motion,kw:wave%20dynamics,kw:relative%20motion,kw:collective%20motion,kw:cyclical%20movement,kw:movement%20pattern,kw:thought%20movement,kw:action,kw:physical%20movement,kw:Platonic%20realm,kw:platonic%20realm,kw:Platonic%20patterns,kw:Platonic%20pattern%20space,kw:conceptual%20realm,kw:abstract%20reality,kw:material%20reality,kw:sub-spheres,kw:ontological%20layers,kw:two%20agents,kw:internal%20agents,kw:multiple%20agents,kw:third%20agent,kw:agent%20models,kw:agent%20definition,kw:generative%20models,kw:accuracy,kw:precision,kw:accuracy%20gain,kw:truth,kw:complexity,kw:persistence,kw:persistence%20conditions,kw:pattern%20persistence,kw:model%20persistence,kw:agentic%20abilities,kw:agentic%20pattern,kw:agentic%20materials,kw:interpersonal%20agency,kw:mental%20agility,kw:personal%20agency,kw:creative%20energy,kw:systemic%20thinking,kw:systemic%20view,kw:systems%20thinking,kw:systemic%20change,kw:conceptual%20thinking,kw:systemic%20impact,kw:systemic%20variety,kw:strategic%20thinking,kw:organizational%20resource%20utilization,kw:resource%20allocation,kw:resource%20budgets,kw:justification%20cost,kw:justification%20investment,kw:justification,kw:justification%20management,kw:cognitive%20investment,kw:cognitive%20effort,kw:meaning%20investment,kw:cognitive%20load,kw:cognitive%20connection,kw:cognitive%20adaptation,kw:cognitive%20bias,kw:entropic%20decay,kw:precision%20decay,kw:complexity%20collapse,kw:energy%20conservation,kw:coherence%20collapse,kw:latent%20space%20dynamics,kw:instability,kw:self-evolution,kw:cyclical%20process,kw:belief%20revision,kw:belief%20update,kw:belief%20propagation,kw:belief%20justification,kw:belief%20construction,kw:belief%20commitments,kw:model%20revision,kw:belief%20pruning,kw:belief,kw:structural%20pruning,kw:semantic%20pruning,kw:model%20pruning,kw:framework%20refinement,kw:idea%20refinement,kw:agency%20parameters,kw:agency%20components,kw:agency%20computation,kw:agency%20patterns,kw:agency%20definition,kw:future%20orientation,kw:meaning%20orientation,kw:future%20goal,kw:process%20orientation,kw:possible%20futures,kw:semantic%20orientation,kw:orientation,kw:support,kw:support%20systems,kw:trust,kw:coverage,kw:grounding,kw:roots,kw:technical%20foundations,kw:stable%20coupling,kw:boundary%20condition,kw:impulse,kw:creative%20impulse,kw:creative%20urge,kw:involuntary%20action,kw:momentum,kw:intuition,kw:personal%20development,kw:personal%20growth,kw:personal%20transformation,kw:self-definition,kw:self-identification,kw:self-concept 500 (Internal Server Error)
+useClusterLabels.ts:124 [precomputed-clusters] Failed, falling back to client-side
+[Content Loading] Checking 521 visible keywords
+useContentLoading.ts:69 [Content Loading] Cache size: 412
+useContentLoading.ts:76 [Content Loading] Uncached keywords: 397
+content-loader.ts:28 [Content Loader] Fetching chunks for 397 keywords
+content-loader.ts:41 [Content Loader] Received 672 chunks
+useClusterLabels.ts:339 [cluster-cache] Refined 9 labels
+useContentLoading.ts:54 [Content Loading] Effect triggered. Enabled: true Keywords: 521
+useContentLoading.ts:68 [Content Loading] Checking 521 visible keywords
+useContentLoading.ts:69 [Content Loading] Cache size: 412
+useContentLoading.ts:76 [Content Loading] Uncached keywords: 397
+content-loader.ts:28 [Content Loader] Fetching chunks for 397 keywords
+content-loader.ts:41 [Content Loader] Received 672 chunks
+
+## Working again
+
+[Fast Refresh] rebuilding
+forward-logs-shared.ts:95 [Fast Refresh] done in 117ms
+KeywordNodes.tsx:183 [KeywordNodes] onPointerDown 517
+events-5a94e5eb.esm.js:16027 [Violation] 'requestAnimationFrame' handler took 53ms
+KeywordNodes.tsx:184 [KeywordNodes] onPointerUp 517
+KeywordNodes.tsx:163 [KeywordNodes] onClick fired! {instanceId: 517, simNodesLength: 521, hasCallback: true}
+page.tsx:537 Clicked keyword: personal transformation
+useContentLoading.ts:54 [Content Loading] Effect triggered. Enabled: true Keywords: 3
+useContentLoading.ts:68 [Content Loading] Checking 3 visible keywords
+useContentLoading.ts:69 [Content Loading] Cache size: 809
+useContentLoading.ts:76 [Content Loading] Uncached keywords: 0
+useContentLoading.ts:79 [Content Loading] All keywords cached, skipping fetch
+forward-logs-shared.ts:95 [Fast Refresh] rebuilding
+forward-logs-shared.ts:95 [Fast Refresh] done in 69ms
+KeywordNodes.tsx:183 [KeywordNodes] onPointerDown 1
+KeywordNodes.tsx:184 [KeywordNodes] onPointerUp 1
+KeywordNodes.tsx:163 [KeywordNodes] onClick fired! {instanceId: 1, simNodesLength: 7, hasCallback: true}
+page.tsx:537 Clicked keyword: self-transformation
+useContentLoading.ts:54 [Content Loading] Effect triggered. Enabled: true Keywords: 5
+useContentLoading.ts:68 [Content Loading] Checking 5 visible keywords
+useContentLoading.ts:69 [Content Loading] Cache size: 809
+useContentLoading.ts:76 [Content Loading] Uncached keywords: 0
+useContentLoading.ts:79 [Content Loading] All keywords cached, skipping fetch
+KeywordNodes.tsx:183 [KeywordNodes] onPointerDown 1
+KeywordNodes.tsx:184 [KeywordNodes] onPointerUp 1
+KeywordNodes.tsx:163 [KeywordNodes] onClick fired! {instanceId: 1, simNodesLength: 10, hasCallback: true}
+page.tsx:537 Clicked keyword: self-transformation
+useContentLoading.ts:54 [Content Loading] Effect triggered. Enabled: true Keywords: 5
+useContentLoading.ts:68 [Content Loading] Checking 5 visible keywords
+useContentLoading.ts:69 [Content Loading] Cache size: 809
+useContentLoading.ts:76 [Content Loading] Uncached keywords: 0
+useContentLoading.ts:79 [Content Loading] All keywords cached, skipping fetch
+KeywordNodes.tsx:183 [KeywordNodes] onPointerDown 4
+KeywordNodes.tsx:184 [KeywordNodes] onPointerUp 4
+KeywordNodes.tsx:163 [KeywordNodes] onClick fired! {instanceId: 4, simNodesLength: 10, hasCallback: true}
+page.tsx:537 Clicked keyword: identity transformation
+useContentLoading.ts:54 [Content Loading] Effect triggered. Enabled: true Keywords: 5
+useContentLoading.ts:68 [Content Loading] Checking 5 visible keywords
+useContentLoading.ts:69 [Content Loading] Cache size: 809
+useContentLoading.ts:76 [Content Loading] Uncached keywords: 0
+useContentLoading.ts:79 [Content Loading] All keywords cached, skipping fetch
+KeywordNodes.tsx:183 [KeywordNodes] onPointerDown 5
+KeywordNodes.tsx:184 [KeywordNodes] onPointerUp 5
+KeywordNodes.tsx:163 [KeywordNodes] onClick fired! {instanceId: 5, simNodesLength: 16, hasCallback: true}
+page.tsx:537 Clicked keyword: identity fluidity
+useContentLoading.ts:54 [Content Loading] Effect triggered. Enabled: true Keywords: 8
+useContentLoading.ts:68 [Content Loading] Checking 8 visible keywords
+useContentLoading.ts:69 [Content Loading] Cache size: 809
+useContentLoading.ts:76 [Content Loading] Uncached keywords: 0
+useContentLoading.ts:79 [Content Loading] All keywords cached, skipping fetch
+KeywordNodes.tsx:183 [KeywordNodes] onPointerDown 10
+KeywordNodes.tsx:184 [KeywordNodes] onPointerUp 10
+KeywordNodes.tsx:163 [KeywordNodes] onClick fired! {instanceId: 10, simNodesLength: 13, hasCallback: true}
+page.tsx:537 Clicked keyword: identity exploration
+useContentLoading.ts:54 [Content Loading] Effect triggered. Enabled: true Keywords: 4
+useContentLoading.ts:68 [Content Loading] Checking 4 visible keywords
+useContentLoading.ts:69 [Content Loading] Cache size: 809
+useContentLoading.ts:76 [Content Loading] Uncached keywords: 0
+useContentLoading.ts:79 [Content Loading] All keywords cached, skipping fetch
+KeywordNodes.tsx:183 [KeywordNodes] onPointerDown 2
+KeywordNodes.tsx:184 [KeywordNodes] onPointerUp 2
+KeywordNodes.tsx:163 [KeywordNodes] onClick fired! {instanceId: 2, simNodesLength: 8, hasCallback: true}
+page.tsx:537 Clicked keyword: identity fiction
+useContentLoading.ts:54 [Content Loading] Effect triggered. Enabled: true Keywords: 5
+useContentLoading.ts:68 [Content Loading] Checking 5 visible keywords
+useContentLoading.ts:69 [Content Loading] Cache size: 809
+useContentLoading.ts:76 [Content Loading] Uncached keywords: 0
+useContentLoading.ts:79 [Content Loading] All keywords cached, skipping fetch
+
+So multiple times even. Now let me reload and try again…
+
+## Not working after reload
+
+[Content Loading] Checking 0 visible keywords
+useContentLoading.ts:69 [Content Loading] Cache size: 0
+useContentLoading.ts:76 [Content Loading] Uncached keywords: 0
+useContentLoading.ts:79 [Content Loading] All keywords cached, skipping fetch
+useClusterLabels.ts:188 [cluster-labels] Computing clusters client-side with Leiden
+useClusterLabels.ts:188 [cluster-labels] Computing clusters client-side with Leiden
+useClusterLabels.ts:299 [cluster-cache] 3 exact hits, 11 near-matches, 0 misses
+useContentLoading.ts:54 [Content Loading] Effect triggered. Enabled: true Keywords: 489
+useContentLoading.ts:54 [Content Loading] Effect triggered. Enabled: true Keywords: 489
+useClusterLabels.ts:299 [cluster-cache] 3 exact hits, 11 near-matches, 0 misses
+useContentLoading.ts:54 [Content Loading] Effect triggered. Enabled: true Keywords: 489
+useClusterLabels.ts:188 [cluster-labels] Computing clusters client-side with Leiden
+useClusterLabels.ts:188 [cluster-labels] Computing clusters client-side with Leiden
+useContentLoading.ts:68 [Content Loading] Checking 489 visible keywords
+useContentLoading.ts:69 [Content Loading] Cache size: 0
+useContentLoading.ts:76 [Content Loading] Uncached keywords: 489
+content-loader.ts:28 [Content Loader] Fetching chunks for 489 keywords
+useContentLoading.ts:68 [Content Loading] Checking 489 visible keywords
+useContentLoading.ts:69 [Content Loading] Cache size: 0
+useContentLoading.ts:76 [Content Loading] Uncached keywords: 489
+content-loader.ts:28 [Content Loader] Fetching chunks for 489 keywords
+useClusterLabels.ts:188 [cluster-labels] Computing clusters client-side with Leiden
+useClusterLabels.ts:188 [cluster-labels] Computing clusters client-side with Leiden
+useClusterLabels.ts:188 [cluster-labels] Computing clusters client-side with Leiden
+useClusterLabels.ts:188 [cluster-labels] Computing clusters client-side with Leiden
+KeywordNodes.tsx:58 [KeywordNodes] MOUNTED, stableCount: 489 nodeCount: 489
+KeywordNodes.tsx:59 [KeywordNodes] UNMOUNTED
+KeywordNodes.tsx:58 [KeywordNodes] MOUNTED, stableCount: 489 nodeCount: 489
+useClusterLabels.ts:230 [cluster-labels] Using precomputed labels (44 clusters)
+2content-loader.ts:41 [Content Loader] Received 1000 chunks
+useClusterLabels.ts:188 [cluster-labels] Computing clusters client-side with Leiden
+useClusterLabels.ts:188 [cluster-labels] Computing clusters client-side with Leiden
+useClusterLabels.ts:230 [cluster-labels] Using precomputed labels (44 clusters)
+useContentLoading.ts:54 [Content Loading] Effect triggered. Enabled: true Keywords: 521
+useContentLoading.ts:54 [Content Loading] Effect triggered. Enabled: true Keywords: 521
+[Content Loading] Checking 521 visible keywords
+useContentLoading.ts:69 [Content Loading] Cache size: 412
+useContentLoading.ts:76 [Content Loading] Uncached keywords: 397
+content-loader.ts:28 [Content Loader] Fetching chunks for 397 keywords
+useContentLoading.ts:68 [Content Loading] Checking 521 visible keywords
+useContentLoading.ts:69 [Content Loading] Cache size: 412
+useContentLoading.ts:76 [Content Loading] Uncached keywords: 397
+content-loader.ts:28 [Content Loader] Fetching chunks for 397 keywords
+useClusterLabels.ts:170 [cluster-labels] Using precomputed clusters (521/521 nodes)
+useClusterLabels.ts:170 [cluster-labels] Using precomputed clusters (521/521 nodes)
+useClusterLabels.ts:230 [cluster-labels] Using precomputed labels (56 clusters)
+2content-loader.ts:41 [Content Loader] Received 672 chunks
+12R3FTopicsCanvas.tsx:187 [Canvas] onPointerMissed - click reached R3F but hit nothing
+
+No. Not working now.
+
+
+Claude:
+
+  The logs reveal two critical findings:
+
+  KeywordNodes UNMOUNTS and REMOUNTS: stableCountRef gets reset to 489, then later nodeCount becomes 521, changing args and recreating the mesh.
+  12x onPointerMissed — R3F sees the clicks but the raycast misses the instancedMesh entirely. Zero onPointerDown events on the mesh.
+  Also: Leiden runs 8 times client-side. The precomputed cluster fix may not be working.
+
+  But the core issue is: after the mesh is recreated (489→521), raycasts miss it. Let me check why. The onPointerMissed tells us the raycast hits nothing — the bounding sphere or geometry intersection is failing.
+
+  The key finding: 12 onPointerMissed, zero onPointerDown. R3F's raycast completely misses the instancedMesh. Let me add a test mesh to determine if this is an instancedMesh-specific issue or a scene-level problem.
+
+Now it's working egain (without full reload):
+
+## Working
+
+[Fast Refresh] rebuilding
+forward-logs-shared.ts:95 [Fast Refresh] done in 396ms
+forward-logs-shared.ts:95 [Fast Refresh] rebuilding
+KeywordNodes.tsx:59 [KeywordNodes] UNMOUNTED
+KeywordNodes.tsx:58 [KeywordNodes] MOUNTED, stableCount: 521 nodeCount: 521
+KeywordNodes.tsx:59 [KeywordNodes] UNMOUNTED
+KeywordNodes.tsx:58 [KeywordNodes] MOUNTED, stableCount: 521 nodeCount: 521
+forward-logs-shared.ts:95 [Fast Refresh] done in 882ms
+R3FTopicsCanvas.tsx:187 [Canvas] onPointerMissed - click reached R3F but hit nothing
+[KeywordNodes] onPointerDown 244
+KeywordNodes.tsx:184 [KeywordNodes] onPointerUp 244
+KeywordNodes.tsx:163 [KeywordNodes] onClick fired! {instanceId: 244, simNodesLength: 521, hasCallback: true}
+page.tsx:537 Clicked keyword: conversation flow
+useContentLoading.ts:54 [Content Loading] Effect triggered. Enabled: true Keywords: 8
+useContentLoading.ts:68 [Content Loading] Checking 8 visible keywords
+useContentLoading.ts:69 [Content Loading] Cache size: 809
+useContentLoading.ts:76 [Content Loading] Uncached keywords: 0
+useContentLoading.ts:79 [Content Loading] All keywords cached, skipping fetch
+useContentLoading.ts:54 [Content Loading] Effect triggered. Enabled: true Keywords: 521
+useContentLoading.ts:68 [Content Loading] Checking 521 visible keywords
+useContentLoading.ts:69 [Content Loading] Cache size: 809
+useContentLoading.ts:76 [Content Loading] Uncached keywords: 0
+useContentLoading.ts:79 [Content Loading] All keywords cached, skipping fetch
+R3FTopicsScene.tsx:214 [TEST MESH] pointerDown
+R3FTopicsScene.tsx:213 [TEST MESH] clicked!
+R3FTopicsScene.tsx:214 [TEST MESH] pointerDown
+R3FTopicsScene.tsx:213 [TEST MESH] clicked!
+KeywordNodes.tsx:183 [KeywordNodes] onPointerDown 378
+KeywordNodes.tsx:184 [KeywordNodes] onPointerUp 378
+KeywordNodes.tsx:163 [KeywordNodes] onClick fired! {instanceId: 378, simNodesLength: 521, hasCallback: true}
+page.tsx:537 Clicked keyword: rest
+useContentLoading.ts:54 [Content Loading] Effect triggered. Enabled: true Keywords: 5
+useContentLoading.ts:68 [Content Loading] Checking 5 visible keywords
+useContentLoading.ts:69 [Content Loading] Cache size: 809
+useContentLoading.ts:76 [Content Loading] Uncached keywords: 0
+useContentLoading.ts:79 [Content Loading] All keywords cached, skipping fetch
+KeywordNodes.tsx:183 [KeywordNodes] onPointerDown 3
+KeywordNodes.tsx:184 [KeywordNodes] onPointerUp 3
+KeywordNodes.tsx:163 [KeywordNodes] onClick fired! {instanceId: 3, simNodesLength: 17, hasCallback: true}
+page.tsx:537 Clicked keyword: beauty reception
+useContentLoading.ts:54 [Content Loading] Effect triggered. Enabled: true Keywords: 8
+useContentLoading.ts:68 [Content Loading] Checking 8 visible keywords
+useContentLoading.ts:69 [Content Loading] Cache size: 809
+useContentLoading.ts:76 [Content Loading] Uncached keywords: 0
+useContentLoading.ts:79 [Content Loading] All keywords cached, skipping fetch
+
+Claude:
+
+  Good, this confirms: after Fast Refresh (data already loaded at 521), clicks work perfectly. The bug is during full reload when totalKeywordCount changes from 489→521, causing args to change and the mesh to be recreated.
+
+  Let me check why keywordNodes.length starts at 489 and later becomes 521.
+
+Another fresh reload:
+
+[HMR] connected
+content-zoom-config.ts:64 [Content Zoom Config] {BASE_CAMERA_Z: 1000, cameraRange: Array(2), transitionRange: Array(2), contentDepth: 500}
+2useContentLoading.ts:54 [Content Loading] Effect triggered. Enabled: true Keywords: 0
+useContentLoading.ts:68 [Content Loading] Checking 0 visible keywords
+useContentLoading.ts:69 [Content Loading] Cache size: 0
+useContentLoading.ts:76 [Content Loading] Uncached keywords: 0
+useContentLoading.ts:79 [Content Loading] All keywords cached, skipping fetch
+[cluster-labels] Computing clusters client-side with Leiden
+useClusterLabels.ts:188 [cluster-labels] Computing clusters client-side with Leiden
+useClusterLabels.ts:299 [cluster-cache] 4 exact hits, 9 near-matches, 0 misses
+useContentLoading.ts:54 [Content Loading] Effect triggered. Enabled: true Keywords: 489
+useContentLoading.ts:54 [Content Loading] Effect triggered. Enabled: true Keywords: 489
+useClusterLabels.ts:299 [cluster-cache] 4 exact hits, 9 near-matches, 0 misses
+useContentLoading.ts:54 [Content Loading] Effect triggered. Enabled: true Keywords: 489
+useContentLoading.ts:68 [Content Loading] Checking 489 visible keywords
+useContentLoading.ts:69 [Content Loading] Cache size: 0
+useContentLoading.ts:76 [Content Loading] Uncached keywords: 489
+content-loader.ts:28 [Content Loader] Fetching chunks for 489 keywords
+useContentLoading.ts:68 [Content Loading] Checking 489 visible keywords
+useContentLoading.ts:69 [Content Loading] Cache size: 0
+useContentLoading.ts:76 [Content Loading] Uncached keywords: 489
+content-loader.ts:28 [Content Loader] Fetching chunks for 489 keywords
+useClusterLabels.ts:188 [cluster-labels] Computing clusters client-side with Leiden
+useClusterLabels.ts:188 [cluster-labels] Computing clusters client-side with Leiden
+useClusterLabels.ts:188 [cluster-labels] Computing clusters client-side with Leiden
+useClusterLabels.ts:188 [cluster-labels] Computing clusters client-side with Leiden
+[KeywordNodes] MOUNTED, stableCount: 489 nodeCount: 489
+KeywordNodes.tsx:59 [KeywordNodes] UNMOUNTED
+KeywordNodes.tsx:58 [KeywordNodes] MOUNTED, stableCount: 489 nodeCount: 489
+useClusterLabels.ts:188 [cluster-labels] Computing clusters client-side with Leiden
+useClusterLabels.ts:188 [cluster-labels] Computing clusters client-side with Leiden
+useClusterLabels.ts:230 [cluster-labels] Using precomputed labels (44 clusters)
+2content-loader.ts:41 [Content Loader] Received 1000 chunks
+useClusterLabels.ts:188 [cluster-labels] Computing clusters client-side with Leiden
+useClusterLabels.ts:188 [cluster-labels] Computing clusters client-side with Leiden
+[cluster-labels] Using precomputed labels (44 clusters)
+useContentLoading.ts:54 [Content Loading] Effect triggered. Enabled: true Keywords: 521
+useContentLoading.ts:54 [Content Loading] Effect triggered. Enabled: true Keywords: 521
+R3FTopicsCanvas.tsx:187 [Canvas] onPointerMissed - click reached R3F but hit nothing
+[Content Loading] Checking 521 visible keywords
+useContentLoading.ts:69 [Content Loading] Cache size: 412
+useContentLoading.ts:76 [Content Loading] Uncached keywords: 397
+content-loader.ts:28 [Content Loader] Fetching chunks for 397 keywords
+useContentLoading.ts:68 [Content Loading] Checking 521 visible keywords
+useContentLoading.ts:69 [Content Loading] Cache size: 412
+useContentLoading.ts:76 [Content Loading] Uncached keywords: 397
+content-loader.ts:28 [Content Loader] Fetching chunks for 397 keywords
+R3FTopicsCanvas.tsx:187 [Canvas] onPointerMissed - click reached R3F but hit nothing
+useClusterLabels.ts:170 [cluster-labels] Using precomputed clusters (521/521 nodes)
+useClusterLabels.ts:170 [cluster-labels] Using precomputed clusters (521/521 nodes)
+useClusterLabels.ts:230 [cluster-labels] Using precomputed labels (56 clusters)
+2content-loader.ts:41 [Content Loader] Received 672 chunks
+5R3FTopicsCanvas.tsx:187 [Canvas] onPointerMissed - click reached R3F but hit nothing
+[Fast Refresh] rebuilding
+forward-logs-shared.ts:95 [Fast Refresh] done in 218ms
+forward-logs-shared.ts:95 [Fast Refresh] rebuilding
+forward-logs-shared.ts:95 [Fast Refresh] done in 206ms
+10R3FTopicsCanvas.tsx:187 [Canvas] onPointerMissed - click reached R3F but hit nothing
+[Fast Refresh] rebuilding
+code_6da773e9._.js:8788 [KeywordNodes] UNMOUNTED
+KeywordNodes.tsx:59 [KeywordNodes] MOUNTED, stableCount: 782 nodeCount: 521
+KeywordNodes.tsx:60 [KeywordNodes] UNMOUNTED
+KeywordNodes.tsx:59 [KeywordNodes] MOUNTED, stableCount: 782 nodeCount: 521
+forward-logs-shared.ts:95 [Fast Refresh] done in 597ms
+KeywordNodes.tsx:184 [KeywordNodes] onPointerDown 110
+KeywordNodes.tsx:185 [KeywordNodes] onPointerUp 110
+KeywordNodes.tsx:164 [KeywordNodes] onClick fired! {instanceId: 110, simNodesLength: 521, hasCallback: true}
+page.tsx:537 Clicked keyword: social structures
+useContentLoading.ts:54 [Content Loading] Effect triggered. Enabled: true Keywords: 3
+useContentLoading.ts:68 [Content Loading] Checking 3 visible keywords
+useContentLoading.ts:69 [Content Loading] Cache size: 809
+useContentLoading.ts:76 [Content Loading] Uncached keywords: 0
+useContentLoading.ts:79 [Content Loading] All keywords cached, skipping fetch

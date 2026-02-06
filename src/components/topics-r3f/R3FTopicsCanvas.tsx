@@ -23,6 +23,8 @@ import type { KeywordTierMap } from "@/lib/topics-filter";
 
 export interface R3FTopicsCanvasProps {
   nodes: KeywordNode[];
+  /** Total keyword count before filtering — used for stable instancedMesh allocation */
+  totalKeywordCount: number;
   edges: SimilarityEdge[];
   projectNodes?: ProjectNode[];
   contentsByKeyword?: Map<string, ContentNode[]>;
@@ -62,6 +64,7 @@ export interface R3FTopicsCanvasProps {
 export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasProps>(
   function R3FTopicsCanvas({
     nodes,
+    totalKeywordCount,
     edges,
     projectNodes = [],
     contentsByKeyword,
@@ -181,6 +184,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
           }}
           gl={{ antialias: true, alpha: false }}
           style={{ width: "100%", height: "100%" }}
+          onPointerMissed={() => console.log('[Canvas] onPointerMissed - click reached R3F but hit nothing')}
         >
           <color attach="background" args={[backgroundColor]} />
           <ambientLight intensity={1} />
@@ -188,6 +192,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
 
           <R3FTopicsScene
             nodes={nodes}
+            totalKeywordCount={totalKeywordCount}
             edges={edges}
             projectNodes={projectNodes}
             contentsByKeyword={contentsByKeyword}

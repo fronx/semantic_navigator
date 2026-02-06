@@ -3,7 +3,7 @@
  * Updates positions imperatively in useFrame from simulation nodes.
  */
 
-import { useRef, useMemo } from "react";
+import { useRef, useMemo, useEffect } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import type { SimNode } from "@/lib/map-renderer";
@@ -45,13 +45,20 @@ export function KeywordNodes({
 }: KeywordNodesProps) {
   const { camera } = useThree();
 
-  // Stable instance count: only ever increases so args never changes.
-  // When filtering shrinks nodes, extra instances get scale=0 instead.
-  const stableCountRef = useRef(nodeCount);
+  // Stable instance count: over-allocate with 50% buffer so small count changes
+  // (e.g., 489→521 during data loading) don't change args and recreate the mesh.
+  // React Strict Mode remounts reset useRef, so the buffer absorbs growth.
+  const stableCountRef = useRef(Math.ceil(nodeCount * 1.5));
   if (nodeCount > stableCountRef.current) {
-    stableCountRef.current = nodeCount;
+    stableCountRef.current = Math.ceil(nodeCount * 1.5);
   }
   const stableCount = stableCountRef.current;
+
+  // Track mount/unmount for debugging click issues
+  useEffect(() => {
+    console.log('[KeywordNodes] MOUNTED, stableCount:', stableCount, 'nodeCount:', nodeCount);
+    return () => console.log('[KeywordNodes] UNMOUNTED');
+  }, []);
 
   const { meshRef, handleMeshRef } = useInstancedMeshMaterial(stableCount);
   const matrixRef = useRef(new THREE.Matrix4());
@@ -174,6 +181,8 @@ export function KeywordNodes({
       args={[geometry, undefined, stableCount]}
       frustumCulled={false}
       onClick={handleClick}
+      onPointerDown={(e: any) => console.log('[KeywordNodes] onPointerDown', e.instanceId)}
+      onPointerUp={(e: any) => console.log('[KeywordNodes] onPointerUp', e.instanceId)}
     >
       {/* Important: do not reactivate the following line that is commented out. Doing so causes the dots to be black. */}
       {/* <meshBasicMaterial vertexColors transparent depthTest={false} /> */}
