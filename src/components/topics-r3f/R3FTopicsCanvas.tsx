@@ -10,6 +10,7 @@ import { R3FTopicsScene } from "./R3FTopicsScene";
 import { LabelsOverlay } from "./LabelsOverlay";
 import { getBackgroundColor, watchThemeChanges } from "@/lib/theme";
 import { CAMERA_FOV_DEGREES } from "@/lib/three/zoom-to-cursor";
+import { useWheelEventForwarding } from "@/hooks/useWheelEventForwarding";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 import type { PCATransform, ClusterColorInfo } from "@/lib/semantic-colors";
 import type { SimNode } from "@/lib/map-renderer";
@@ -157,20 +158,8 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
       cursorWorldPosRef,
     };
 
-    // Disable default wheel behavior (must use imperative listener with passive: false)
-    useEffect(() => {
-      const container = containerRef.current;
-      if (!container) return;
-
-      const handleWheel = (e: WheelEvent) => {
-        e.preventDefault();
-      };
-
-      container.addEventListener("wheel", handleWheel, { passive: false });
-      return () => {
-        container.removeEventListener("wheel", handleWheel);
-      };
-    }, []);
+    // Forward wheel events from DOM overlays to canvas
+    useWheelEventForwarding(containerRef);
 
     return (
       <div
