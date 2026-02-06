@@ -48,3 +48,5 @@ test-results/
 tests/screenshots/
 
 public/music/*
+
+.playwright-mcp/*

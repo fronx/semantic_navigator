@@ -29,8 +29,17 @@ export function createPanHandler(options: PanHandlerOptions): () => void {
 
   // Pan state
   let isPanning = false;
+  let isPointerDown = false;
+  let startMouseX = 0;
+  let startMouseY = 0;
   let lastMouseX = 0;
   let lastMouseY = 0;
+
+  // Minimum pixels the mouse must move before panning starts.
+  // Prevents tiny movements during a click from triggering a pan,
+  // which would shift the camera and cause R3F's raycaster to miss
+  // the instancedMesh instance on pointerup.
+  const DRAG_THRESHOLD = 4;
 
   const handleMouseDown = (event: MouseEvent) => {
     // Only pan on left click
@@ -39,16 +48,27 @@ export function createPanHandler(options: PanHandlerOptions): () => void {
     // Allow caller to prevent pan (e.g., when dragging project nodes)
     if (shouldStartPan && !shouldStartPan(event)) return;
 
-    isPanning = true;
+    isPointerDown = true;
+    startMouseX = event.clientX;
+    startMouseY = event.clientY;
     lastMouseX = event.clientX;
     lastMouseY = event.clientY;
-    canvas.style.cursor = "grabbing";
-
-    onPanStart?.(event.clientX, event.clientY);
   };
 
   const handleMouseMove = (event: MouseEvent) => {
-    if (!isPanning) return;
+    if (!isPointerDown) return;
+
+    // Check drag threshold before starting pan
+    if (!isPanning) {
+      const dx = event.clientX - startMouseX;
+      const dy = event.clientY - startMouseY;
+      if (dx * dx + dy * dy < DRAG_THRESHOLD * DRAG_THRESHOLD) return;
+
+      // Threshold exceeded - start panning
+      isPanning = true;
+      canvas.style.cursor = "grabbing";
+      onPanStart?.(startMouseX, startMouseY);
+    }
 
     const deltaX = event.clientX - lastMouseX;
     const deltaY = event.clientY - lastMouseY;
@@ -70,10 +90,11 @@ export function createPanHandler(options: PanHandlerOptions): () => void {
 
   const handleMouseUp = () => {
     if (isPanning) {
-      isPanning = false;
       canvas.style.cursor = "grab";
       onPanEnd?.();
     }
+    isPanning = false;
+    isPointerDown = false;
   };
 
   // Attach event listeners

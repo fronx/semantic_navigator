@@ -20,6 +20,8 @@ import { useInstancedMeshMaterial } from "@/hooks/useInstancedMeshMaterial";
 const VISIBILITY_THRESHOLD = 0.01;
 
 export interface ContentNodesProps {
+  /** Total node count for stable instancedMesh allocation (from contentsByKeyword at parent) */
+  nodeCount: number;
   contentNodes: SimNode[];
   simNodes: SimNode[];
   colorMixRatio: number;
@@ -45,6 +47,7 @@ export interface ContentNodesProps {
 }
 
 export function ContentNodes({
+  nodeCount,
   contentNodes,
   simNodes,
   colorMixRatio,
@@ -59,7 +62,16 @@ export function ContentNodes({
   searchOpacities,
 }: ContentNodesProps) {
   const { camera, size, viewport } = useThree();
-  const { meshRef, handleMeshRef } = useInstancedMeshMaterial(contentNodes.length);
+
+  // Stable instance count: only ever increases so args never changes.
+  // When filtering shrinks nodes, extra instances get scale=0 instead.
+  const stableCountRef = useRef(nodeCount);
+  if (nodeCount > stableCountRef.current) {
+    stableCountRef.current = nodeCount;
+  }
+  const stableCount = stableCountRef.current;
+
+  const { meshRef, handleMeshRef } = useInstancedMeshMaterial(stableCount);
   const matrixRef = useRef(new THREE.Matrix4());
   const positionRef = useRef(new THREE.Vector3());
   const quaternionRef = useRef(new THREE.Quaternion());
@@ -108,14 +120,7 @@ export function ContentNodes({
     const contentScale = scales.contentScale;
 
     // Hide mesh entirely if below visibility threshold
-    const wasVisible = meshRef.current.visible;
     meshRef.current.visible = contentScale >= VISIBILITY_THRESHOLD;
-
-    // Log visibility changes
-    if (wasVisible !== meshRef.current.visible) {
-      console.log('[ContentNodes] Visibility changed:', meshRef.current.visible, 'contentScale:', contentScale.toFixed(4), 'cameraZ:', cameraZ.toFixed(1));
-    }
-
     if (!meshRef.current.visible) return;
 
     // Calculate Z position for text labels based on transmission panel blur
@@ -220,6 +225,14 @@ export function ContentNodes({
       }
     }
 
+    // Hide unused instances (stableCount may exceed contentNodes.length after filtering)
+    for (let i = contentNodes.length; i < stableCount; i++) {
+      positionRef.current.set(0, 0, 0);
+      scaleRef.current.setScalar(0);
+      matrixRef.current.compose(positionRef.current, quaternionRef.current, scaleRef.current);
+      meshRef.current.setMatrixAt(i, matrixRef.current);
+    }
+
     meshRef.current.instanceMatrix.needsUpdate = true;
     if (meshRef.current.instanceColor) {
       meshRef.current.instanceColor.needsUpdate = true;
@@ -231,7 +244,7 @@ export function ContentNodes({
   return (
     <instancedMesh
       ref={handleMeshRef}
-      args={[geometry, undefined, contentNodes.length]}
+      args={[geometry, undefined, stableCount]}
       frustumCulled={false}
     >
       {/* Important: do not reactivate the following line that is commented out. Doing so causes the dots to be black. */}

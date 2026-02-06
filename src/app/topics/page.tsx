@@ -118,10 +118,6 @@ export default function TopicsPage() {
   const [hoveredKeywordId, setHoveredKeywordId] = useState<string | null>(null);
   const [keywordChunksDebug, setKeywordChunksDebug] = useState<string>("");
 
-  useEffect(() => {
-    console.log("hoveredContentId changed:", hoveredContentId);
-  }, [hoveredContentId]);
-
   // Semantic filter state (for breadcrumb navigation UI in ControlSidebar)
   const [semanticFilterData, setSemanticFilterData] = useState<{
     semanticFilter: SemanticFilter | null;

@@ -3,9 +3,10 @@
  * Uses React Three Fiber's declarative component model.
  */
 
-import { useState, useEffect, useRef, forwardRef } from "react";
-import { Canvas } from "@react-three/fiber";
+import { useState, useEffect, useRef, useMemo, forwardRef } from "react";
+import { Canvas, useFrame } from "@react-three/fiber";
 import { Environment } from "@react-three/drei";
+
 import { R3FTopicsScene } from "./R3FTopicsScene";
 import { LabelsOverlay } from "./LabelsOverlay";
 import { getBackgroundColor, watchThemeChanges } from "@/lib/theme";
@@ -174,7 +175,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
         <Canvas
           camera={{
             position: [0, 0, 10500],
-            fov: 10,
+            fov: CAMERA_FOV_DEGREES,
             near: 0.1,
             far: 100000, // Need large far plane since camera starts far away
           }}
@@ -207,13 +208,14 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
             onProjectClick={onProjectClick}
             onProjectDrag={onProjectDrag}
             onZoomChange={onZoomChange}
+            onKeywordClick={onKeywordLabelClick}
             labelRefs={labelRefs}
             cursorPosition={cursorPosition}
           />
         </Canvas>
 
         {/* DOM-based label overlay (sibling to Canvas) */}
-        <LabelsOverlay
+        {/* <LabelsOverlay
           ref={ref}
           labelRefs={labelRefs}
           keywordLabelRange={zoomPhaseConfig.keywordLabels}
@@ -222,7 +224,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
           onKeywordLabelClick={onKeywordLabelClick}
           onClusterLabelClick={onClusterLabelClick}
           onKeywordHover={onKeywordHover}
-        />
+        /> */}
       </div>
     );
   }

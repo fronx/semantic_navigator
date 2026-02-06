@@ -206,17 +206,20 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
       if (!labelEl) {
         labelEl = document.createElement("div");
         labelEl.className = "cluster-label";
+        // Don't intercept pointer events on container - let them pass to canvas
+        labelEl.style.pointerEvents = "none";
         clusterOverlay.appendChild(labelEl);
         clusterLabelCache.set(data.communityId, labelEl);
 
-        // Add click handler
+        // Add click handler on inner span (only text is clickable)
         if (onClusterLabelClick) {
-          labelEl.style.cursor = "pointer";
-          labelEl.style.pointerEvents = "auto";
-          labelEl.addEventListener("click", (e) => {
-            e.stopPropagation();
+          const textSpan = document.createElement("span");
+          textSpan.style.pointerEvents = "auto";
+          textSpan.style.cursor = "pointer";
+          textSpan.addEventListener("click", () => {
             onClusterLabelClick(data.communityId);
           });
+          labelEl.appendChild(textSpan);
         }
       }
 
@@ -232,8 +235,13 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
       labelEl.style.opacity = String(clusterOpacity);
 
       // Split label into words for multi-line display
-      if (labelEl.textContent !== data.label) {
-        labelEl.textContent = data.label.split(/\s+/).join("\n");
+      // If we have a clickable span, update its text content
+      const textSpan = labelEl.querySelector("span");
+      const newText = data.label.split(/\s+/).join("\n");
+      if (textSpan && textSpan.textContent !== newText) {
+        textSpan.textContent = newText;
+      } else if (!textSpan && labelEl.textContent !== newText) {
+        labelEl.textContent = newText;
       }
     }
 
@@ -316,16 +324,19 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
       if (!labelEl) {
         labelEl = document.createElement("div");
         labelEl.className = "keyword-label";
+        // Don't intercept pointer events on container - let them pass to canvas
+        labelEl.style.pointerEvents = "none";
         keywordOverlay.appendChild(labelEl);
         keywordLabelCache.set(node.id, labelEl);
 
-        // Add click handler
-        labelEl.style.cursor = "pointer";
-        labelEl.style.pointerEvents = "auto";
-        labelEl.addEventListener("click", (e) => {
-          e.stopPropagation();
+        // Add click handler on inner span (only text is clickable)
+        const textSpan = document.createElement("span");
+        textSpan.style.pointerEvents = "auto";
+        textSpan.style.cursor = "pointer";
+        textSpan.addEventListener("click", () => {
           onKeywordLabelClick?.(node.id);
         });
+        labelEl.appendChild(textSpan);
       }
 
       // Calculate offset from node center (to the right of the dot)
@@ -353,7 +364,11 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
         { prop: "fontSize", key: "lastFontSize", value: newFontSize, threshold: 0.5 },
       ]);
 
-      if (labelEl.textContent !== node.label) {
+      // Update text content in the clickable span
+      const textSpan = labelEl.querySelector("span");
+      if (textSpan && textSpan.textContent !== node.label) {
+        textSpan.textContent = node.label;
+      } else if (!textSpan && labelEl.textContent !== node.label) {
         labelEl.textContent = node.label;
       }
     }

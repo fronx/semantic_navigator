@@ -146,6 +146,7 @@ When debugging rendering issues in Three.js/R3F:
 2. InstancedMesh requires explicit color setting per instance
 3. Check nodeType defaults in data queries when nodes are missing
 4. Frustum culling can hide instanced meshes — set `frustumCulled=false` when needed
+5. **Critical: Never let `args` change on `<instancedMesh>`** — R3F destroys/recreates the Three.js object without re-registering event handlers (onClick, onPointerOver, etc.). Use a monotonically increasing ref for the instance count, hide unused instances with scale=0, and reset `mesh.boundingSphere = null` each frame so raycasting stays accurate. See [investigation](docs/investigations/keyword-node-clicks-broken-2026-02-06.md) for full details.
 
 ### API Routes
 

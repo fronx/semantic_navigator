@@ -18,6 +18,8 @@ import { useInstancedMeshMaterial } from "@/hooks/useInstancedMeshMaterial";
 const VISIBILITY_THRESHOLD = 0.01;
 
 export interface KeywordNodesProps {
+  /** Total node count for stable instancedMesh allocation (from nodes.length at parent) */
+  nodeCount: number;
   simNodes: SimNode[];
   colorMixRatio: number;
   colorDesaturation: number;
@@ -26,9 +28,12 @@ export interface KeywordNodesProps {
   keywordTiers?: KeywordTierMap | null;
   /** Search opacity map (node id -> opacity) for semantic search highlighting */
   searchOpacities?: Map<string, number>;
+  /** Handler for keyword node click */
+  onKeywordClick?: (keywordId: string) => void;
 }
 
 export function KeywordNodes({
+  nodeCount,
   simNodes,
   colorMixRatio,
   colorDesaturation,
@@ -36,9 +41,19 @@ export function KeywordNodes({
   zoomRange,
   keywordTiers,
   searchOpacities,
+  onKeywordClick,
 }: KeywordNodesProps) {
   const { camera } = useThree();
-  const { meshRef, handleMeshRef } = useInstancedMeshMaterial(simNodes.length);
+
+  // Stable instance count: only ever increases so args never changes.
+  // When filtering shrinks nodes, extra instances get scale=0 instead.
+  const stableCountRef = useRef(nodeCount);
+  if (nodeCount > stableCountRef.current) {
+    stableCountRef.current = nodeCount;
+  }
+  const stableCount = stableCountRef.current;
+
+  const { meshRef, handleMeshRef } = useInstancedMeshMaterial(stableCount);
   const matrixRef = useRef(new THREE.Matrix4());
   const positionRef = useRef(new THREE.Vector3());
   const quaternionRef = useRef(new THREE.Quaternion());
@@ -61,6 +76,7 @@ export function KeywordNodes({
     meshRef.current.visible = keywordScale >= VISIBILITY_THRESHOLD;
     if (!meshRef.current.visible) return;
 
+    // Update matrices for active nodes (simNodes.length may be less than nodeCount initially)
     for (let i = 0; i < simNodes.length; i++) {
       const node = simNodes[i];
 
@@ -117,17 +133,47 @@ export function KeywordNodes({
       meshRef.current.setColorAt(i, colorRef.current);
     }
 
+    // Hide unused instances by setting their scale to 0
+    // This prevents raycasting issues with uninitialized instances
+    for (let i = simNodes.length; i < stableCount; i++) {
+      positionRef.current.set(0, 0, 0);
+      scaleRef.current.setScalar(0);
+      matrixRef.current.compose(positionRef.current, quaternionRef.current, scaleRef.current);
+      meshRef.current.setMatrixAt(i, matrixRef.current);
+    }
+
     meshRef.current.instanceMatrix.needsUpdate = true;
     if (meshRef.current.instanceColor) {
       meshRef.current.instanceColor.needsUpdate = true;
     }
+
+    // InstancedMesh.raycast() checks mesh.boundingSphere (not geometry.boundingSphere).
+    // Reset it each frame so it recomputes from current instance matrices.
+    meshRef.current.boundingSphere = null;
   });
+
+  // Handle click on keyword node
+  const handleClick = (event: any) => {
+    console.log('[KeywordNodes] onClick fired!', {
+      instanceId: event.instanceId,
+      simNodesLength: simNodes.length,
+      hasCallback: !!onKeywordClick,
+    });
+    if (!onKeywordClick) return;
+
+    // R3F provides instanceId for instancedMesh clicks
+    const instanceId = event.instanceId;
+    if (instanceId !== undefined && instanceId >= 0 && instanceId < simNodes.length) {
+      onKeywordClick(simNodes[instanceId].id);
+    }
+  };
 
   return (
     <instancedMesh
       ref={handleMeshRef}
-      args={[geometry, undefined, simNodes.length]}
+      args={[geometry, undefined, stableCount]}
       frustumCulled={false}
+      onClick={handleClick}
     >
       {/* Important: do not reactivate the following line that is commented out. Doing so causes the dots to be black. */}
       {/* <meshBasicMaterial vertexColors transparent depthTest={false} /> */}

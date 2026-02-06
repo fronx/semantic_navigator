@@ -76,6 +76,8 @@ export interface R3FTopicsSceneProps {
   onProjectClick?: (projectId: string) => void;
   onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
   onZoomChange?: (zoomScale: number) => void;
+  /** Handler for keyword node click */
+  onKeywordClick?: (keywordId: string) => void;
   /** Refs for label rendering (bridging to DOM overlay) */
   labelRefs: LabelRefs;
   /** Cursor position for 3D text proximity filtering */
@@ -104,22 +106,31 @@ export function R3FTopicsScene({
   onProjectClick,
   onProjectDrag,
   onZoomChange,
+  onKeywordClick,
   labelRefs,
   cursorPosition,
 }: R3FTopicsSceneProps) {
   // Level 1: Keyword simulation nodes (from ForceSimulation)
   const [keywordNodes, setKeywordNodes] = useState<SimNode[]>([]);
 
+  // Calculate stable max content node count (available immediately from contentsByKeyword)
+  const contentNodeCount = useMemo(() => {
+    if (!contentsByKeyword || contentsByKeyword.size === 0) return 0;
+
+    let count = 0;
+    for (const chunks of contentsByKeyword.values()) {
+      count += chunks.length;
+    }
+    return count;
+  }, [contentsByKeyword]);
+
   // Level 2: Create content nodes from content data
   const contentNodes = useMemo(() => {
     if (!contentsByKeyword || contentsByKeyword.size === 0 || keywordNodes.length === 0) {
-      console.log('[R3FTopicsScene] No content nodes - contentsByKeyword size:', contentsByKeyword?.size, 'keywordNodes:', keywordNodes.length);
       return [];
     }
 
     const { contentNodes: nodes } = createContentNodes(keywordNodes, contentsByKeyword);
-    console.log('[R3FTopicsScene] Created', nodes.length, 'content nodes');
-
     return nodes;
   }, [keywordNodes, contentsByKeyword]);
 
@@ -206,6 +217,7 @@ export function R3FTopicsScene({
       {/* Content layer (furthest back, z < 0) */}
       {contentNodes.length > 0 && (
         <ContentNodes
+          nodeCount={contentNodeCount}
           contentNodes={contentNodes}
           simNodes={simNodes}
           colorMixRatio={colorMixRatio}
@@ -263,9 +275,10 @@ export function R3FTopicsScene({
         />
       )}
 
-      {/* Keyword layer (front, z = 0) */}
+      {/* Keyword layer */}
       {keywordNodes.length > 0 && (
         <KeywordNodes
+          nodeCount={nodes.length}
           simNodes={keywordNodes}
           colorMixRatio={colorMixRatio}
           colorDesaturation={colorDesaturation}
@@ -273,6 +286,7 @@ export function R3FTopicsScene({
           zoomRange={zoomPhaseConfig.chunkCrossfade}
           keywordTiers={keywordTiers}
           searchOpacities={searchOpacities}
+          onKeywordClick={onKeywordClick}
         />
       )}
     </>
