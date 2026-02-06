@@ -4,7 +4,7 @@
  */
 
 import { createServerClient } from '../src/lib/supabase';
-import type { ChunkNode } from '../src/lib/chunk-loader';
+import type { ChunkNode } from '../src/lib/content-loader';
 
 async function testMapIterationOrder() {
   console.log('=== Testing Map Iteration Order ===\n');

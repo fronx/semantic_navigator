@@ -1,5 +1,5 @@
 /**
- * Test the actual API query used by /api/topics/chunks
+ * Test the actual API query used by /api/topics/content
  * to see if it returns content for all chunks.
  */
 
@@ -16,7 +16,7 @@ async function testAPIQuery() {
   console.log('Filter: keyword = "movement", nodes.node_type = "chunk"');
   console.log('');
 
-  // This is the EXACT query from /api/topics/chunks/route.ts
+  // This is the EXACT query from /api/topics/content/route.ts
   const { data, error } = await supabase
     .from('keywords')
     .select(`

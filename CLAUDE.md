@@ -2,6 +2,22 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Workflow Expectations
+
+Prefer producing working code changes over extended investigation. If exploring for more than 5 minutes without a concrete fix, present your best hypothesis and a minimal fix attempt rather than continuing to read files.
+
+## Development Principles
+
+When fixing bugs or implementing features, always check for existing patterns/systems before building new ones. Search for existing hover handlers, event systems, shared components, etc. before creating parallel implementations.
+
+## Project Tools
+
+This project has a code-simplifier agent. After implementing features or fixes, use the project's simplification tool rather than doing manual simplification. Ask the user before simplifying if unsure.
+
+## Common Pitfalls
+
+When implementing opacity/visibility features, check ALL code paths that set opacity on the same element. Multiple systems (base opacity, keyword label opacity, zoom-based fading) can conflict. Trace every opacity setter before proposing a fix.
+
 ## Commands
 
 ```bash
@@ -118,6 +134,14 @@ TopicsView supports three renderers. **R3F (React Three Fiber) is the primary re
 
 **R3F rule — never call React setState inside useFrame**: `useFrame` runs every animation frame (60fps). Calling `setState` there causes React to re-render every frame with no error or warning. When bridging imperative animation loops with React state, track previous values and only update on actual changes.
 
+## Three.js / R3F Patterns
+
+When debugging rendering issues in Three.js/R3F:
+1. THREE.Color does not accept chroma `.css()` output — use `.hex()` instead
+2. InstancedMesh requires explicit color setting per instance
+3. Check nodeType defaults in data queries when nodes are missing
+4. Frustum culling can hide instanced meshes — set `frustumCulled=false` when needed
+
 ### API Routes
 
 - `POST /api/search` - Vector similarity search
@@ -193,6 +217,10 @@ Example pattern:
 SELECT parent_id FROM containment_edges WHERE child_id = <chunk_id>
 -- parent_id will be the article (no intermediate sections)
 ```
+
+## Architecture Notes
+
+This project uses precomputed clusters (from database) AND runtime/dynamic clusters. They have different ID systems. Always verify which cluster ID system is in use before implementing cluster-related features. Check the dynamic clustering checkbox state and existing documentation.
 
 ## Styling
 

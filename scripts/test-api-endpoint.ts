@@ -1,11 +1,11 @@
 /**
- * Test the actual /api/topics/chunks endpoint
+ * Test the actual /api/topics/content endpoint
  *
  * Run with: npm run script scripts/test-api-endpoint.ts
  */
 
 async function main() {
-  console.log('=== Testing /api/topics/chunks endpoint ===\n');
+  console.log('=== Testing /api/topics/content endpoint ===\n');
 
   // Test with some keyword IDs that we know link to chunks
   const testKeywordIds = [
@@ -16,7 +16,7 @@ async function main() {
 
   console.log('Sending request with keyword IDs:', testKeywordIds);
 
-  const response = await fetch('http://localhost:3000/api/topics/chunks', {
+  const response = await fetch('http://localhost:3000/api/topics/content', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ keywordIds: testKeywordIds }),

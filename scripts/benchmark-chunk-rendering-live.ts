@@ -7,7 +7,7 @@
  */
 
 import { createServerClient } from '@/lib/supabase';
-import { calculateScales } from '@/lib/chunk-scale';
+import { calculateScales } from '@/lib/content-scale';
 
 interface ChunkData {
   id: string;

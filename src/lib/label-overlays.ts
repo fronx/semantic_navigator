@@ -120,7 +120,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
   container.appendChild(chunkOverlay);
 
   const chunkPreview = document.createElement("div");
-  chunkPreview.className = "chunk-preview";
+  chunkPreview.className = "content-preview";
   chunkPreview.style.zIndex = "3";
   chunkPreview.style.display = "none";
   container.appendChild(chunkPreview);
@@ -418,7 +418,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
       let labelEl = chunkLabelCache.get(chunkKey);
       if (!labelEl) {
         labelEl = document.createElement("div");
-        labelEl.className = "chunk-content-label";
+        labelEl.className = "content-preview-label";
         labelEl.dataset.chunkId = node.id;
         if (parentId) labelEl.dataset.parentKeywordId = parentId;
         // Static styles (set once when created)
@@ -438,7 +438,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
       const fontSize = (screenRect.width / baseChunkSize) * baseFontSize;
 
       // Position text box to fit exactly inside square bounds
-      const paddingHorizontal = 12; // 6px left + 6px right from .chunk-content-label
+      const paddingHorizontal = 12; // 6px left + 6px right from .content-preview-label
       const paddingVertical = 8;    // 4px top + 4px bottom
 
       // Calculate square edges

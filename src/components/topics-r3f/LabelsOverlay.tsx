@@ -232,7 +232,7 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
       <>
         {Array.from(chunkPortals.entries()).map(([portalKey, { container, content }]) =>
           createPortal(
-            <div className="chunk-markdown">
+            <div className="content-markdown">
               <ReactMarkdown>{content}</ReactMarkdown>
             </div>,
             container,

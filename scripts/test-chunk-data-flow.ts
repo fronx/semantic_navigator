@@ -4,8 +4,8 @@
  */
 
 import { createServerClient } from '../src/lib/supabase';
-import { createChunkNodes } from '../src/lib/chunk-layout';
-import type { ChunkNode } from '../src/lib/chunk-loader';
+import { createChunkNodes } from '../src/lib/content-layout';
+import type { ChunkNode } from '../src/lib/content-loader';
 import type { SimNode } from '../src/lib/map-renderer';
 import * as d3 from 'd3-force';
 

@@ -9,8 +9,8 @@
  * Run with: npm run script scripts/benchmark-chunk-rendering.ts
  */
 
-import { calculateScales } from '@/lib/chunk-scale';
-import { CHUNK_Z_TRANSITION_MIN, CHUNK_Z_TRANSITION_MAX } from '@/lib/chunk-zoom-config';
+import { calculateScales } from '@/lib/content-scale';
+import { CONTENT_Z_TRANSITION_MIN, CONTENT_Z_TRANSITION_MAX } from '@/lib/content-zoom-config';
 
 // ============================================================================
 // Synthetic Data Generators
@@ -56,7 +56,7 @@ function benchmarkScaleCalculation(iterations: number): { avgTime: number; opsPe
   const start = performance.now();
 
   for (let i = 0; i < iterations; i++) {
-    const z = CHUNK_Z_TRANSITION_MIN + Math.random() * (CHUNK_Z_TRANSITION_MAX - CHUNK_Z_TRANSITION_MIN);
+    const z = CONTENT_Z_TRANSITION_MIN + Math.random() * (CONTENT_Z_TRANSITION_MAX - CONTENT_Z_TRANSITION_MIN);
     calculateScales(z);
   }
 

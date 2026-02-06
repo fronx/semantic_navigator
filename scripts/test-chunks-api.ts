@@ -1,5 +1,5 @@
 /**
- * Test script for debugging the /api/topics/chunks endpoint
+ * Test script for debugging the /api/topics/content endpoint
  *
  * Run with: npm run script scripts/test-chunks-api.ts
  */

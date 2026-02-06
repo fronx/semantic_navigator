@@ -1,7 +1,14 @@
-# ADR 014: Chunk-Based Level of Detail (LOD)
+# ADR 014: Content-Based Level of Detail (LOD)
 
 ## Status
 Implemented
+
+## Terminology Note
+> **Visual Layer vs Database Layer**
+> - **Content nodes** (visual): The graph nodes you see in TopicsView that display paragraph text
+> - **Chunks** (database): The underlying paragraph segments stored in the `nodes` table with `node_type = 'chunk'`
+>
+> This ADR uses both terms: "chunks" for database/ingestion concepts, "content nodes" for the graph visualization layer.
 
 ## Context
 
@@ -231,8 +238,8 @@ WHERE keywords.keyword IN (...)
 
 ### Files Modified
 1. **`src/lib/three/renderer.ts`** - Integrate chunk loading and rendering
-2. **`src/lib/three/node-renderer.ts`** - Add chunk node type handling
-3. **`src/lib/three/edge-renderer.ts`** - Render containment edges (keyword → chunk)
+2. **`src/lib/three/node-renderer.ts`** - Add content node type handling
+3. **`src/lib/three/edge-renderer.ts`** - Render containment edges (keyword → content)
 4. **`src/lib/three/camera-controller.ts`** - Expose cameraZ for scale calculations
 5. **`src/hooks/useThreeTopicsRenderer.ts`** - Wire up chunk loading hook
 6. **`src/components/TopicsView.tsx`** - Pass enableChunks flag to renderer
@@ -302,7 +309,7 @@ Automatically adjust chunk density based on viewport size and zoom level:
 ### 4. Section Layer
 Add intermediate hierarchy level between keywords and chunks:
 - Keywords → Sections → Paragraphs
-- Section nodes at z=-50, chunk nodes at z=-150
+- Section nodes at z=-50, content nodes at z=-150
 - Requires database query optimization (join through containment_edges)
 
 ## Verification

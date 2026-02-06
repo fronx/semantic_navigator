@@ -4,10 +4,10 @@
  */
 
 import { createServerClient } from '../src/lib/supabase';
-import { createChunkNodes } from '../src/lib/chunk-layout';
-import type { ChunkNode } from '../src/lib/chunk-loader';
+import { createChunkNodes } from '../src/lib/content-layout';
+import type { ChunkNode } from '../src/lib/content-loader';
 import type { SimNode } from '../src/lib/map-renderer';
-import type { ChunkSimNode } from '../src/lib/chunk-layout';
+import type { ChunkSimNode } from '../src/lib/content-layout';
 
 const CHUNK_IDS = [
   '036b0d16-0937-43cd-b656-8b54a7a0ab89', // Should be empty in UI

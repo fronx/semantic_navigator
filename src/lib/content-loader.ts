@@ -27,7 +27,7 @@ export async function fetchChunksForKeywords(
   const nodeTypeLabel = nodeType === 'article' ? 'articles' : 'chunks';
   console.log(`[Content Loader] Fetching ${nodeTypeLabel} for ${keywordIds.length} keywords`);
 
-  const response = await fetch('/api/topics/chunks', {
+  const response = await fetch('/api/topics/content', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ keywordIds, nodeType }),
