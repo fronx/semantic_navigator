@@ -83,7 +83,7 @@ CREATE TABLE keyword_communities (
 );
 ```
 
-**Populated by**: `scripts/compute-keyword-communities.ts`
+**Populated by**: `scripts/maintenance/compute-keyword-communities.ts`
 
 **Used by**:
 - `/api/map/route.ts` - Functions `addCommunityColors()` and `collapseCommunitiesToHubs()`
@@ -104,7 +104,7 @@ CREATE TABLE precomputed_topic_clusters (
 );
 ```
 
-**Populated by**: `scripts/precompute-topic-clusters.ts`
+**Populated by**: `scripts/maintenance/precompute-topic-clusters.ts`
 
 **Used by**:
 - `/api/precomputed-clusters/route.ts` - Calls `get_precomputed_clusters` RPC function
@@ -115,7 +115,7 @@ CREATE TABLE precomputed_topic_clusters (
 ### Inspecting Current State
 
 ```bash
-npm run script scripts/inspect-keyword-communities.ts
+npm run script scripts/maintenance/inspect-keyword-communities.ts
 ```
 
 Shows statistics for **both** tables:
@@ -151,7 +151,7 @@ Node Type | Resolution | Clusters | Nodes | Avg Size | Example Labels
 
 **For MapView** (keyword_communities):
 ```bash
-npm run script scripts/compute-keyword-communities.ts
+npm run script scripts/maintenance/compute-keyword-communities.ts
 ```
 
 Requirements:
@@ -161,7 +161,7 @@ Requirements:
 
 **For TopicsView** (precomputed_topic_clusters):
 ```bash
-npm run script scripts/precompute-topic-clusters.ts
+npm run script scripts/maintenance/precompute-topic-clusters.ts
 ```
 
 Requirements:
@@ -215,7 +215,7 @@ See [Cluster Labels](../cluster-labels.md) for detailed TopicsView clustering do
 
 **Fix**:
 ```bash
-npm run script scripts/compute-keyword-communities.ts
+npm run script scripts/maintenance/compute-keyword-communities.ts
 ```
 
 ### "Using client-side clustering" in TopicsView
@@ -224,7 +224,7 @@ npm run script scripts/compute-keyword-communities.ts
 
 **Fix**:
 ```bash
-npm run script scripts/precompute-topic-clusters.ts
+npm run script scripts/maintenance/precompute-topic-clusters.ts
 ```
 
 **Note**: Client-side fallback is working as intended - you'll just pay for more Haiku API calls for labels.
@@ -235,8 +235,8 @@ npm run script scripts/precompute-topic-clusters.ts
 
 **Fix**: Regenerate clusters:
 ```bash
-npm run script scripts/precompute-topic-clusters.ts  # For TopicsView
-npm run script scripts/compute-keyword-communities.ts  # For MapView
+npm run script scripts/maintenance/precompute-topic-clusters.ts  # For TopicsView
+npm run script scripts/maintenance/compute-keyword-communities.ts  # For MapView
 ```
 
 ### MapView shows all nodes in one community

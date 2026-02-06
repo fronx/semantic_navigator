@@ -27,7 +27,7 @@ article keywords (5-10, core themes)
 Then compute semantic similarity only on article-level keywords.
 
 ### Reduction Logic
-Tested in `scripts/test-keyword-reduction.ts`:
+Tested in `scripts/investigations/test-keyword-reduction.ts`:
 
 **Paragraph → Section reduction prompt:**
 ```
@@ -133,9 +133,9 @@ With fewer article-level keywords, the cross-join becomes feasible, or we can us
 - `src/app/api/map/route.ts` - Filter to article-level keywords
 
 ## Test Scripts Created
-- `scripts/test-keyword-reduction.ts` - Tests the reduction prompts
-- `scripts/test-keyword-similarity-perf.ts` - Performance benchmarks
-- `scripts/test-crossjoin-perf.ts` - Cross-join performance test
+- `scripts/investigations/test-keyword-reduction.ts` - Tests the reduction prompts
+- `scripts/investigations/test-keyword-similarity-perf.ts` - Performance benchmarks
+- `scripts/investigations/test-crossjoin-perf.ts` - Cross-join performance test
 
 ## Migration for Existing Data
 Re-importing existing files will detect missing section/article keywords and add them (idempotent).

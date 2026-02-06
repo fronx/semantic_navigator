@@ -51,7 +51,7 @@ Default is 30% mix, balancing cluster identity with individual variation.
 
 | File | Purpose |
 |------|---------|
-| `scripts/compute-embedding-pca.ts` | One-time PCA computation script |
+| `scripts/maintenance/compute-embedding-pca.ts` | One-time PCA computation script |
 | `public/data/embedding-pca-transform.json` | 2×256 transformation matrix |
 | `src/lib/semantic-colors.ts` | Color mapping functions |
 

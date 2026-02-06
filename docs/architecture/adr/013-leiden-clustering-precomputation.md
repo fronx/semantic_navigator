@@ -144,7 +144,7 @@ CREATE TABLE precomputed_topic_clusters (
 ```
 
 **Precomputation process:**
-1. Run `scripts/precompute-topic-clusters.ts` (one-time or when data changes)
+1. Run `scripts/maintenance/precompute-topic-clusters.ts` (one-time or when data changes)
 2. Fetch full graph via `get_article_keyword_graph` RPC
 3. For each resolution:
    - Run Leiden clustering
@@ -202,7 +202,7 @@ While Google's TeraHAC achieves nearly-linear time, it:
 ### Files to Create
 1. **`src/lib/leiden-clustering.ts`** - Leiden algorithm with periphery detection
 2. **`supabase/migrations/XXX_precomputed_topic_clusters.sql`** - Database schema
-3. **`scripts/precompute-topic-clusters.ts`** - Precomputation script
+3. **`scripts/maintenance/precompute-topic-clusters.ts`** - Precomputation script
 4. **`src/app/api/precomputed-clusters/route.ts`** - Query API for precomputed data
 
 ### Files to Modify

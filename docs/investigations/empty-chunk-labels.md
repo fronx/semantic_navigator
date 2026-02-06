@@ -25,10 +25,10 @@ The bug only manifested with real data (chunks shared across keywords), couldn't
 
 The symptom looked like content was being lost somewhere in the pipeline: DB -> API -> ChunkNode -> ChunkSimNode -> D3 simulation -> array spread. We wrote multiple test scripts to check each step:
 
-- `scripts/test-chunk-data-flow.ts` — traced content through every transformation
+- `scripts/investigations/test-chunk-data-flow.ts` — traced content through every transformation
 - `scripts/test-d3-object-identity.ts` — confirmed D3 preserves object identity and custom properties
-- `scripts/test-sim-node-content-access.ts` — confirmed content accessible via type casting
-- `scripts/test-api-query.ts` — confirmed API returns complete content
+- `scripts/investigations/test-sim-node-content-access.ts` — confirmed content accessible via type casting
+- `scripts/investigations/test-api-query.ts` — confirmed API returns complete content
 
 **Result**: Content was preserved at every step. D3 does not replace node objects or strip custom properties. The data pipeline was innocent.
 
@@ -48,8 +48,8 @@ The portal callback had `if (visible && content)` which would skip portal creati
 
 The user hypothesized that chunks shared across multiple keywords might be competing for the same portal. We confirmed this with test scripts:
 
-- `scripts/test-duplicate-chunks.ts` — confirmed problematic chunks were associated with 3-4 keywords each
-- `scripts/test-keyword-processing-order.ts` — confirmed "last keyword to process wins" pattern
+- `scripts/investigations/test-duplicate-chunks.ts` — confirmed problematic chunks were associated with 3-4 keywords each
+- `scripts/investigations/test-keyword-processing-order.ts` — confirmed "last keyword to process wins" pattern
 
 We changed React portal keys from `chunkId` to `${parentKeywordId}-${chunkId}`.
 

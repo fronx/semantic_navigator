@@ -11,7 +11,7 @@ Addresses ADR-010 optimizations #5 (caching) and #6 (parallelization investigati
 
 ## Phase 1: Benchmark Script
 
-**New file:** `scripts/benchmark-cluster-labels.ts`
+**New file:** `scripts/investigations/benchmark-cluster-labels.ts`
 
 Measurements:
 - Fetch sample clusters from `/api/topics` (same data as UI)
@@ -122,7 +122,7 @@ create index idx_cluster_label_cache_centroid
 
 | File | Action |
 |------|--------|
-| `scripts/benchmark-cluster-labels.ts` | Create |
+| `scripts/investigations/benchmark-cluster-labels.ts` | Create |
 | `src/lib/cluster-label-cache.ts` | Create |
 | `src/hooks/useClusterLabels.ts` | Modify |
 | `src/lib/llm.ts` | Modify (add `refineClusterLabels`) |

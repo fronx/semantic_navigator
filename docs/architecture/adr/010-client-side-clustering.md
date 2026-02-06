@@ -151,7 +151,7 @@ With client-side clustering established:
 
 5. **Client-side label caching**: Implemented in `src/lib/cluster-label-cache.ts`. Uses localStorage with semantic similarity matching via cluster centroid embeddings (256-dim). Cache hits at 0.85+ similarity reuse labels immediately. Near-matches (0.85-0.95) show cached label then request refinement in background via `/api/cluster-labels/refine`.
 
-6. **Latency investigation**: Added benchmark script `scripts/benchmark-cluster-labels.ts` to measure endpoint vs direct API latency. Run with `npm run script scripts/benchmark-cluster-labels.ts`.
+6. **Latency investigation**: Added benchmark script `scripts/investigations/benchmark-cluster-labels.ts` to measure endpoint vs direct API latency. Run with `npm run script scripts/investigations/benchmark-cluster-labels.ts`.
 
 7. **Full re-render on label arrival**: Fixed by separating `baseClusters` (stable) from `labels` (volatile) in `useClusterLabels`. TopicsView now depends only on `baseClusters` for simulation setup, and updates hull labels via a ref when semantic labels arrive.
 

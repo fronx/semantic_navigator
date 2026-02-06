@@ -122,7 +122,7 @@ This is a small change with immediate value - it makes the existing import idemp
 
 **Current state**: Need to verify if `keyword_similarities` has proper foreign key cascades.
 
-**Solution**: Ensure `keyword_similarities` has `ON DELETE CASCADE` for both keyword references. The similarities will need to be recomputed after significant reimports anyway (via `scripts/compute-keyword-communities.ts`).
+**Solution**: Ensure `keyword_similarities` has `ON DELETE CASCADE` for both keyword references. The similarities will need to be recomputed after significant reimports anyway (via `scripts/maintenance/compute-keyword-communities.ts`).
 
 #### 3. Project associations point to article UUIDs
 
