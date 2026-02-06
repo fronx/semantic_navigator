@@ -7,9 +7,9 @@ import { useEffect, useRef } from "react";
 import { createThreeRenderer, type ThreeRenderer } from "@/lib/three";
 import { convertToThreeNodes } from "@/lib/topics-graph-nodes";
 import { createHoverController } from "@/lib/topics-hover-controller";
-import { createChunkNodes, applyConstrainedForces } from "@/lib/chunk-layout";
+import { createContentNodes, applyConstrainedForces } from "@/lib/content-layout";
 import type { BaseRendererOptions } from "@/lib/renderer-types";
-import type { ChunkNode } from "@/lib/chunk-loader";
+import type { ContentNode } from "@/lib/content-loader";
 import type { SimNode } from "@/lib/map-renderer";
 import type { ZoomPhaseConfig } from "@/lib/zoom-phase-config";
 
@@ -19,7 +19,7 @@ import type { ZoomPhaseConfig } from "@/lib/zoom-phase-config";
 
 export interface UseThreeTopicsRendererOptions extends BaseRendererOptions {
   containerRef: React.RefObject<HTMLDivElement | null>;
-  chunksByKeyword?: Map<string, ChunkNode[]>;
+  chunksByKeyword?: Map<string, ContentNode[]>;
   cameraZ?: number;
   zoomPhaseConfig?: ZoomPhaseConfig;
 }
@@ -103,18 +103,18 @@ export function useThreeTopicsRenderer(
     let allLinks = mapLinks;
     if (chunksByKeyword && chunksByKeyword.size > 0) {
       const keywordSimNodes = mapNodes.filter(n => n.type === "keyword");
-      const { chunkNodes, containmentEdges } = createChunkNodes(keywordSimNodes, chunksByKeyword);
+      const { contentNodes, containmentEdges } = createContentNodes(keywordSimNodes, chunksByKeyword);
 
       // Debug logging
-      console.log('[Chunk Zoom] Created', chunkNodes.length, 'chunk nodes from', chunksByKeyword.size, 'keywords');
+      console.log('[Chunk Zoom] Created', contentNodes.length, 'chunk nodes from', chunksByKeyword.size, 'keywords');
 
       // Apply constrained forces to position chunks around keywords
       const keywordMap = new Map<string, SimNode>(keywordSimNodes.map(n => [n.id, n]));
       const keywordRadius = 5; // Base keyword radius for constraint calculation
-      applyConstrainedForces(chunkNodes, keywordMap, keywordRadius);
+      applyConstrainedForces(contentNodes, keywordMap, keywordRadius);
 
       // Combine keyword/project nodes with chunk nodes
-      allNodes = [...mapNodes, ...chunkNodes];
+      allNodes = [...mapNodes, ...contentNodes];
       allLinks = [...mapLinks, ...containmentEdges];
     } else {
       console.log('[Chunk Zoom] No chunks to create. chunksByKeyword size:', chunksByKeyword?.size ?? 0);

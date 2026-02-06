@@ -9,11 +9,11 @@ import { useProjectCreation } from "@/hooks/useProjectCreation";
 import { useD3TopicsRenderer } from "@/hooks/useD3TopicsRenderer";
 import { useThreeTopicsRenderer } from "@/hooks/useThreeTopicsRenderer";
 import { useR3FTopicsRenderer } from "@/hooks/useR3FTopicsRenderer";
-import { useChunkLoading } from "@/hooks/useChunkLoading";
+import { useContentLoading } from "@/hooks/useContentLoading";
 import { useTopicsSearch } from "@/hooks/useTopicsSearch";
 import { useTopicsSearchOpacity } from "@/hooks/useTopicsSearchOpacity";
 import { R3FTopicsCanvas } from "@/components/topics-r3f/R3FTopicsCanvas";
-import { createChunkNodes, applyConstrainedForces } from "@/lib/chunk-layout";
+import { createContentNodes, applyConstrainedForces } from "@/lib/content-layout";
 import { convertToThreeNodes } from "@/lib/topics-graph-nodes";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 import { loadPCATransform, type PCATransform } from "@/lib/semantic-colors";
@@ -76,11 +76,11 @@ export interface TopicsViewProps {
   /** Whether to show k-NN edges (usually hidden, only affect force simulation) */
   showKNNEdges?: boolean;
   /** Z-depth offset for chunk nodes (negative = behind keywords) */
-  chunkZDepth?: number;
+  contentZDepth?: number;
   /** Scale factor for converting panel thickness to chunk text depth offset */
-  chunkTextDepthScale?: number;
+  contentTextDepthScale?: number;
   /** Size multiplier for chunk/article nodes (default 1.5) */
-  chunkSizeMultiplier?: number;
+  contentSizeMultiplier?: number;
   /** Callback when cluster count changes */
   onClusterCountChange?: (count: number) => void;
   /** Callback when semantic filter state changes (for breadcrumb UI) */
@@ -127,9 +127,9 @@ export function TopicsView({
   zoomPhaseConfig,
   blurEnabled = true,
   showKNNEdges = false,
-  chunkZDepth = -150,
-  chunkTextDepthScale = -15.0,
-  chunkSizeMultiplier = 1.5,
+  contentZDepth = -150,
+  contentTextDepthScale = -15.0,
+  contentSizeMultiplier = 1.5,
   onClusterCountChange,
   onSemanticFilterChange,
   onChunkHover,
@@ -219,7 +219,7 @@ export function TopicsView({
     return new Set(activeNodes.map(n => n.id));
   }, [activeNodes, chunkKeywordIds]);
 
-  const { chunksByKeyword, isLoading } = useChunkLoading({
+  const { contentsByKeyword, isLoading } = useContentLoading({
     visibleKeywordIds,
     enabled: true,
     nodeType, // Load articles in article mode, chunks in chunk mode
@@ -328,7 +328,7 @@ export function TopicsView({
     hoverConfig,
     pcaTransform,
     getSavedPosition,
-    chunkZDepth,
+    contentZDepth,
     searchOpacities: nodeOpacities,
     onKeywordClick: handleKeywordClickInternal,
     onProjectClick: handleProjectClick,
@@ -356,7 +356,7 @@ export function TopicsView({
     ...baseRendererOptions,
     enabled: rendererType === "three",
     containerRef,
-    chunksByKeyword,
+    contentsByKeyword,
     cameraZ,
     zoomPhaseConfig,
   });
@@ -483,7 +483,7 @@ export function TopicsView({
           nodes={activeNodes}
           edges={activeEdges}
           projectNodes={projectNodes}
-          chunksByKeyword={chunksByKeyword}
+          contentsByKeyword={contentsByKeyword}
           colorMixRatio={colorMixRatio}
           colorDesaturation={colorDesaturation}
           pcaTransform={pcaTransform}
@@ -492,9 +492,9 @@ export function TopicsView({
           panelDistanceRatio={panelDistanceRatio}
           panelThickness={panelThickness}
           zoomPhaseConfig={zoomPhaseConfig ?? DEFAULT_ZOOM_PHASE_CONFIG}
-          chunkZDepth={chunkZDepth}
-          chunkTextDepthScale={chunkTextDepthScale}
-          chunkSizeMultiplier={chunkSizeMultiplier}
+          contentZDepth={contentZDepth}
+          contentTextDepthScale={contentTextDepthScale}
+          contentSizeMultiplier={contentSizeMultiplier}
           keywordTiers={keywordTiers}
           nodeToCluster={nodeToCluster}
           searchOpacities={nodeOpacities}

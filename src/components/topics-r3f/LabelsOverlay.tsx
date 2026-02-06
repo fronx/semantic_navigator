@@ -14,7 +14,7 @@ import { CAMERA_FOV_DEGREES } from "@/lib/three/zoom-to-cursor";
 import { getNodeRadius, DOT_SCALE_FACTOR } from "@/lib/three/node-renderer";
 import type { LabelRefs, LabelsOverlayHandle } from "./R3FLabelContext";
 import type { SimNode } from "@/lib/map-renderer";
-import type { ChunkNode } from "@/lib/chunk-loader";
+import type { ContentNode } from "@/lib/content-loader";
 
 const CAMERA_FOV_RADIANS = CAMERA_FOV_DEGREES * Math.PI / 180;
 
@@ -24,7 +24,7 @@ export interface LabelsOverlayProps {
   /** Keyword label zoom range thresholds */
   keywordLabelRange: { start: number; full: number };
   /** Source data for chunk content (bypasses SimNode transformation) */
-  chunksByKeyword?: Map<string, ChunkNode[]>;
+  chunksByKeyword?: Map<string, ContentNode[]>;
   /** Search opacity map (node id -> opacity) for semantic search highlighting */
   searchOpacities?: Map<string, number>;
   /** Handler for keyword label click */
@@ -182,7 +182,7 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
         getNodeRadius: (node: SimNode) => getNodeRadius(node, 1) * DOT_SCALE_FACTOR,
         getClusterColors: () => clusterColorsRef.current,
         getKeywordLabelRange: () => keywordLabelRange,
-        getChunkScreenRects: () => labelRefs.chunkScreenRectsRef.current,
+        getChunkScreenRects: () => labelRefs.contentScreenRectsRef.current,
         getNodeToCluster: () => nodeToClusterRef.current,
         getCursorWorldPos: () => cursorWorldPosRef.current,
         onKeywordLabelClick,
@@ -217,11 +217,11 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
           manager.updateKeywordLabels(nodes, degrees);
         }
       },
-      updateChunkLabels: (parentColors: Map<string, string>) => {
+      updateContentLabels: (parentColors: Map<string, string>) => {
         const manager = labelManagerRef.current;
         const nodes = simNodesRef.current;
         if (manager && nodes.length > 0) {
-          manager.updateChunkLabels(nodes, parentColors);
+          manager.updateContentLabels(nodes, parentColors);
         }
       },
       getNodes: () => simNodesRef.current,

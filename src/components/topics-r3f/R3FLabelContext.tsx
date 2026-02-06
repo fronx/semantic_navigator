@@ -24,10 +24,10 @@ export interface CameraState {
 }
 
 /**
- * Screen-space bounding rectangle for a chunk node.
- * Calculated by ChunkNodes during rendering, shared with label system.
+ * Screen-space bounding rectangle for a content node.
+ * Calculated by ContentNodes during rendering, shared with label system.
  */
-export interface ChunkScreenRect {
+export interface ContentScreenRect {
   /** Screen X position (center, pixels) */
   x: number;
   /** Screen Y position (center, pixels) */
@@ -59,8 +59,8 @@ export interface LabelRefs {
   nodeToClusterRef: React.MutableRefObject<Map<string, number>>;
   /** Label manager (created by LabelsOverlay) */
   labelManagerRef: React.MutableRefObject<LabelOverlayManager | null>;
-  /** Chunk screen rects (updated by ChunkNodes every frame, read by label system) */
-  chunkScreenRectsRef: React.MutableRefObject<Map<string, ChunkScreenRect>>;
+  /** Content screen rects (updated by ContentNodes every frame, read by label system) */
+  contentScreenRectsRef: React.MutableRefObject<Map<string, ContentScreenRect>>;
   /** Cursor position in world coordinates (from hover controller) */
   cursorWorldPosRef: React.MutableRefObject<{ x: number; y: number } | null>;
 }
@@ -72,7 +72,7 @@ export interface LabelRefs {
 export interface LabelsOverlayHandle {
   updateClusterLabels: () => void;
   updateKeywordLabels: () => void;
-  updateChunkLabels: (parentColors: Map<string, string>) => void;
+  updateContentLabels: (parentColors: Map<string, string>) => void;
   /** Get current simulation nodes (for cluster label updates) */
   getNodes: () => SimNode[];
 }

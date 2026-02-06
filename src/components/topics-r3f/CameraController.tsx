@@ -11,7 +11,7 @@ import { useThree } from "@react-three/fiber";
 import type { OrbitControls as OrbitControlsType } from "three-stdlib";
 import type { Camera, WebGLRenderer } from "three";
 import { CAMERA_Z_SCALE_BASE } from "@/lib/three/camera-controller";
-import { CAMERA_Z_MIN, CAMERA_Z_MAX } from "@/lib/chunk-zoom-config";
+import { CAMERA_Z_MIN, CAMERA_Z_MAX } from "@/lib/content-zoom-config";
 import { calculateZoomToCursor, calculateZoomFactor } from "@/lib/three/zoom-to-cursor";
 import { createPanHandler } from "@/lib/three/pan-handler";
 import { classifyWheelGesture } from "@/lib/three/gesture-classifier";

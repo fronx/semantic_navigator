@@ -9,7 +9,7 @@ import { computeHoverHighlight } from "@/lib/hover-highlight";
 import { DEFAULT_HOVER_CONFIG, type HoverHighlightConfig } from "@/hooks/useGraphHoverHighlight";
 import type { KeywordNode, SimilarityEdge } from "@/lib/graph-queries";
 import type { SimNode } from "@/lib/map-renderer";
-import { calculateScales } from "@/lib/chunk-scale";
+import { calculateScales } from "@/lib/content-scale";
 
 // ============================================================================
 // Types
@@ -106,10 +106,10 @@ export function createHoverController(options: HoverControllerOptions): HoverCon
 
     // Check if chunks are visible - if so, skip radius highlighting and dim everything equally
     const cameraZ = renderer.getCameraZ();
-    const { chunkScale } = calculateScales(cameraZ);
+    const { contentScale } = calculateScales(cameraZ);
     const CHUNK_VISIBILITY_THRESHOLD = 0.01;
 
-    if (chunkScale > CHUNK_VISIBILITY_THRESHOLD) {
+    if (contentScale > CHUNK_VISIBILITY_THRESHOLD) {
       const chunkId = findChunkUnderCursor(screenX, screenY);
       highlightedIdsRef.current = chunkId ? new Set([chunkId]) : new Set();
       return;

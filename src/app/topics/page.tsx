@@ -7,7 +7,7 @@ import { SearchBar } from "@/components/SearchBar";
 import type { SearchResult } from "@/components/SearchBar";
 import { useErrorNotification } from "@/hooks/useErrorNotification";
 import { useTopicsSettings } from "@/hooks/useTopicsSettings";
-import { useChunkLoading } from "@/hooks/useChunkLoading";
+import { useContentLoading } from "@/hooks/useContentLoading";
 import { ProjectSelector, type Project } from "@/components/ProjectSelector";
 import { ProjectSidebar, type Project as SidebarProject } from "@/components/ProjectSidebar";
 import { InlineTitleInput } from "@/components/InlineTitleInput";
@@ -16,7 +16,7 @@ import { GranularityToggle } from "@/components/GranularityToggle";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 import type { SemanticFilter } from "@/lib/topics-filter";
 import { CAMERA_Z_SCALE_BASE } from "@/lib/three/camera-controller";
-import { BASE_CAMERA_Z } from "@/lib/chunk-zoom-config";
+import { BASE_CAMERA_Z } from "@/lib/content-zoom-config";
 import { searchResultsToKeywordIds, extractMatchedKeywords } from "@/lib/search-filter";
 
 /** Debounce a value - returns the value after it stops changing for `delay` ms */
@@ -111,16 +111,16 @@ export default function TopicsPage() {
   const [currentCameraZ, setCurrentCameraZ] = useState<number | undefined>(undefined);
 
   // Hovered chunk debug info
-  const [hoveredChunkId, setHoveredChunkId] = useState<string | null>(null);
-  const [hoveredChunkContent, setHoveredChunkContent] = useState<string | null>(null);
+  const [hoveredContentId, setHoveredContentId] = useState<string | null>(null);
+  const [hoveredContentContent, setHoveredContentContent] = useState<string | null>(null);
 
   // Hovered keyword debug info
   const [hoveredKeywordId, setHoveredKeywordId] = useState<string | null>(null);
   const [keywordChunksDebug, setKeywordChunksDebug] = useState<string>("");
 
   useEffect(() => {
-    console.log("hoveredChunkId changed:", hoveredChunkId);
-  }, [hoveredChunkId]);
+    console.log("hoveredContentId changed:", hoveredContentId);
+  }, [hoveredContentId]);
 
   // Semantic filter state (for breadcrumb navigation UI in ControlSidebar)
   const [semanticFilterData, setSemanticFilterData] = useState<{
@@ -134,7 +134,7 @@ export default function TopicsPage() {
 
   // Calculate chunk Z depth from offset multiplier
   // BASE_CAMERA_Z is 1000, so default offset of 0.5 gives depth of 500
-  const chunkZDepth = BASE_CAMERA_Z * settings.chunkZOffset;
+  const contentZDepth = BASE_CAMERA_Z * settings.chunkZOffset;
 
   // Fetch project neighborhood when project selected
   useEffect(() => {
@@ -221,7 +221,7 @@ export default function TopicsPage() {
   }, []);
 
   // Fetch chunks for visible keywords (needed for keyword hover debug)
-  const { chunksByKeyword } = useChunkLoading({
+  const { contentsByKeyword } = useContentLoading({
     visibleKeywordIds: useMemo(() => {
       if (!data) return new Set();
       return new Set(data.nodes.map(n => n.id));
@@ -231,9 +231,9 @@ export default function TopicsPage() {
   });
 
   // Handle chunk hover (for debug info)
-  const handleChunkHover = useCallback((chunkId: string | null, content: string | null) => {
-    setHoveredChunkId(chunkId);
-    setHoveredChunkContent(content);
+  const handleContentHover = useCallback((chunkId: string | null, content: string | null) => {
+    setHoveredContentId(chunkId);
+    setHoveredContentContent(content);
   }, []);
 
   // Handle keyword hover (for debug info) - build debug string showing chunks
@@ -243,7 +243,7 @@ export default function TopicsPage() {
       return;
     }
 
-    const chunks = chunksByKeyword.get(hoveredKeywordId) || [];
+    const chunks = contentsByKeyword.get(hoveredKeywordId) || [];
     const keywordNode = data?.nodes.find(n => n.id === hoveredKeywordId);
     const keywordLabel = keywordNode?.label || hoveredKeywordId;
 
@@ -261,18 +261,18 @@ export default function TopicsPage() {
     }
 
     setKeywordChunksDebug(debugLines.join('\n'));
-  }, [hoveredKeywordId, chunksByKeyword, data?.nodes]);
+  }, [hoveredKeywordId, contentsByKeyword, data?.nodes]);
 
   // Handle keyword hover callback
   const handleKeywordHover = useCallback((keywordId: string | null) => {
     console.log('[page] handleKeywordHover called with:', keywordId);
-    console.log('[page] chunksByKeyword has', chunksByKeyword.size, 'keywords');
+    console.log('[page] contentsByKeyword has', contentsByKeyword.size, 'keywords');
     if (keywordId) {
-      const chunks = chunksByKeyword.get(keywordId);
+      const chunks = contentsByKeyword.get(keywordId);
       console.log('[page] Chunks for', keywordId, ':', chunks?.length ?? 0, chunks);
     }
     setHoveredKeywordId(keywordId);
-  }, [chunksByKeyword]);
+  }, [contentsByKeyword]);
 
   // Update project via API
   const handleUpdateProject = useCallback(async (id: string, updates: { title?: string; content?: string }) => {
@@ -509,8 +509,8 @@ export default function TopicsPage() {
             nodeCount,
             clusterCount,
           }}
-          hoveredChunkId={hoveredChunkId}
-          hoveredChunkContent={hoveredChunkContent}
+          hoveredContentId={hoveredContentId}
+          hoveredContentContent={hoveredContentContent}
           keywordChunksDebug={keywordChunksDebug}
           searchFilterKeywords={searchFilterKeywords}
           onClearSearchFilter={handleClearSearchFilter}
@@ -556,11 +556,11 @@ export default function TopicsPage() {
             zoomPhaseConfig={settings.zoomPhaseConfig}
             blurEnabled={settings.blurEnabled}
             showKNNEdges={settings.showKNNEdges}
-            chunkZDepth={chunkZDepth}
-            chunkTextDepthScale={settings.chunkTextDepthScale}
-            chunkSizeMultiplier={settings.chunkSizeMultiplier}
+            contentZDepth={contentZDepth}
+            contentTextDepthScale={settings.contentTextDepthScale}
+            contentSizeMultiplier={settings.contentSizeMultiplier}
             onSemanticFilterChange={setSemanticFilterData}
-            onChunkHover={handleChunkHover}
+            onChunkHover={handleContentHover}
             onKeywordHover={handleKeywordHover}
             searchQuery={searchQuery}
           />

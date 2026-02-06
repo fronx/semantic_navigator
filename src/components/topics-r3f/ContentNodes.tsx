@@ -1,6 +1,6 @@
 /**
- * Chunk node rendering using instancedMesh.
- * Renders chunks on a separate Z plane behind keywords.
+ * Content node rendering using instancedMesh.
+ * Renders content nodes on a separate Z plane behind keywords.
  * Scales up as camera zooms in (inverse of keyword scaling).
  */
 
@@ -8,58 +8,58 @@ import { useRef, useMemo } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import type { SimNode } from "@/lib/map-renderer";
-import type { ChunkSimNode } from "@/lib/chunk-layout";
+import type { ContentSimNode } from "@/lib/content-layout";
 import type { PCATransform } from "@/lib/semantic-colors";
 import type { ZoomRange } from "@/lib/zoom-phase-config";
-import type { ChunkScreenRect } from "./R3FLabelContext";
-import { CHUNK_Z_DEPTH } from "@/lib/chunk-zoom-config";
-import { calculateScales } from "@/lib/chunk-scale";
+import type { ContentScreenRect } from "./R3FLabelContext";
+import { CONTENT_Z_DEPTH } from "@/lib/content-zoom-config";
+import { calculateScales } from "@/lib/content-scale";
 import { getNodeColor, BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/three/node-renderer";
 import { useInstancedMeshMaterial } from "@/hooks/useInstancedMeshMaterial";
 
 const VISIBILITY_THRESHOLD = 0.01;
 
-export interface ChunkNodesProps {
-  chunkNodes: SimNode[];
+export interface ContentNodesProps {
+  contentNodes: SimNode[];
   simNodes: SimNode[];
   colorMixRatio: number;
   colorDesaturation: number;
   pcaTransform: PCATransform | null;
   zoomRange: ZoomRange;
-  /** Z-depth offset for chunks (negative = behind keywords) */
-  chunkZDepth?: number;
+  /** Z-depth offset for content nodes (negative = behind keywords) */
+  contentZDepth?: number;
   /** Panel material thickness (shader parameter, 0-20) */
   panelThickness?: number;
   /**
-   * Scale factor for converting panel thickness to chunk text depth offset.
+   * Scale factor for converting panel thickness to content text depth offset.
    * Positive values move text toward keywords (away from camera).
    * Negative values move text toward camera (away from keywords).
    */
-  chunkTextDepthScale?: number;
-  /** Size multiplier for chunk nodes (default 1.5) */
-  chunkSizeMultiplier?: number;
-  /** Ref to share chunk screen rects with label system (data sharing, not duplication) */
-  chunkScreenRectsRef?: React.MutableRefObject<Map<string, ChunkScreenRect>>;
+  contentTextDepthScale?: number;
+  /** Size multiplier for content nodes (default 1.5) */
+  contentSizeMultiplier?: number;
+  /** Ref to share content screen rects with label system (data sharing, not duplication) */
+  contentScreenRectsRef?: React.MutableRefObject<Map<string, ContentScreenRect>>;
   /** Search opacity map (node id -> opacity) for semantic search highlighting */
   searchOpacities?: Map<string, number>;
 }
 
-export function ChunkNodes({
-  chunkNodes,
+export function ContentNodes({
+  contentNodes,
   simNodes,
   colorMixRatio,
   colorDesaturation,
   pcaTransform,
   zoomRange,
-  chunkZDepth = CHUNK_Z_DEPTH,
+  contentZDepth = CONTENT_Z_DEPTH,
   panelThickness = 0,
-  chunkTextDepthScale = -15.0,
-  chunkSizeMultiplier = 1.5,
-  chunkScreenRectsRef,
+  contentTextDepthScale = -15.0,
+  contentSizeMultiplier = 1.5,
+  contentScreenRectsRef,
   searchOpacities,
-}: ChunkNodesProps) {
+}: ContentNodesProps) {
   const { camera, size, viewport } = useThree();
-  const { meshRef, handleMeshRef } = useInstancedMeshMaterial(chunkNodes.length);
+  const { meshRef, handleMeshRef } = useInstancedMeshMaterial(contentNodes.length);
   const matrixRef = useRef(new THREE.Matrix4());
   const positionRef = useRef(new THREE.Vector3());
   const quaternionRef = useRef(new THREE.Quaternion());
@@ -72,13 +72,13 @@ export function ChunkNodes({
     [simNodes]
   );
 
-  // Chunks are larger than keywords
-  const chunkRadius = BASE_DOT_RADIUS * DOT_SCALE_FACTOR * chunkSizeMultiplier;
+  // Content nodes are larger than keywords
+  const contentRadius = BASE_DOT_RADIUS * DOT_SCALE_FACTOR * contentSizeMultiplier;
 
   // Create rounded square geometry
   const geometry = useMemo(() => {
-    const size = chunkRadius * 2; // Square size (side length)
-    const radius = chunkRadius * 0.2; // Corner radius (20% of chunk radius)
+    const size = contentRadius * 2; // Square size (side length)
+    const radius = contentRadius * 0.2; // Corner radius (20% of content radius)
 
     // Create rounded rectangle shape
     const shape = new THREE.Shape();
@@ -96,7 +96,7 @@ export function ChunkNodes({
     shape.quadraticCurveTo(x, y, x + radius, y);
 
     return new THREE.ShapeGeometry(shape);
-  }, [chunkRadius]);
+  }, [contentRadius]);
 
   // Update positions, scales, and colors every frame
   useFrame(() => {
@@ -105,15 +105,15 @@ export function ChunkNodes({
     // Calculate scale based on camera Z position
     const cameraZ = camera.position.z;
     const scales = calculateScales(cameraZ, zoomRange);
-    const chunkScale = scales.chunkScale;
+    const contentScale = scales.contentScale;
 
     // Hide mesh entirely if below visibility threshold
     const wasVisible = meshRef.current.visible;
-    meshRef.current.visible = chunkScale >= VISIBILITY_THRESHOLD;
+    meshRef.current.visible = contentScale >= VISIBILITY_THRESHOLD;
 
     // Log visibility changes
     if (wasVisible !== meshRef.current.visible) {
-      console.log('[ChunkNodes] Visibility changed:', meshRef.current.visible, 'chunkScale:', chunkScale.toFixed(4), 'cameraZ:', cameraZ.toFixed(1));
+      console.log('[ContentNodes] Visibility changed:', meshRef.current.visible, 'contentScale:', contentScale.toFixed(4), 'cameraZ:', cameraZ.toFixed(1));
     }
 
     if (!meshRef.current.visible) return;
@@ -121,30 +121,30 @@ export function ChunkNodes({
     // Calculate Z position for text labels based on transmission panel blur
     // Converts panel thickness (shader units 0-20) to world-space offset
     //
-    // Direction (scene: camera at z=1000, chunks at z=500, keywords at z=0):
-    // - Positive chunkTextDepthScale: textFrontZ decreases (500 → 400)
+    // Direction (scene: camera at z=1000, content nodes at z=500, keywords at z=0):
+    // - Positive contentTextDepthScale: textFrontZ decreases (500 → 400)
     //   Moves text AWAY from camera, TOWARD keywords (visual "front face")
-    // - Negative chunkTextDepthScale: textFrontZ increases (500 → 600)
+    // - Negative contentTextDepthScale: textFrontZ increases (500 → 600)
     //   Moves text TOWARD camera, AWAY from keywords
-    // - Zero: textFrontZ = chunkZDepth (text at chunk center plane)
-    const physicalThickness = panelThickness * chunkTextDepthScale;
-    const textFrontZ = chunkZDepth - physicalThickness;
+    // - Zero: textFrontZ = contentZDepth (text at content center plane)
+    const physicalThickness = panelThickness * contentTextDepthScale;
+    const textFrontZ = contentZDepth - physicalThickness;
 
     // Clear screen rects map before populating with current frame data
-    if (chunkScreenRectsRef) {
-      chunkScreenRectsRef.current.clear();
+    if (contentScreenRectsRef) {
+      contentScreenRectsRef.current.clear();
     }
 
-    for (let i = 0; i < chunkNodes.length; i++) {
-      const node = chunkNodes[i] as ChunkSimNode;
+    for (let i = 0; i < contentNodes.length; i++) {
+      const node = contentNodes[i] as ContentSimNode;
 
       // Position at parent keyword's location but on a different Z plane
       const x = node.x ?? 0;
       const y = node.y ?? 0;
-      const z = chunkZDepth;
+      const z = contentZDepth;
 
-      // Calculate scale - incorporate search opacity so non-matching chunks stay small
-      let nodeScale = chunkScale;
+      // Calculate scale - incorporate search opacity so non-matching content nodes stay small
+      let nodeScale = contentScale;
       if (searchOpacities && searchOpacities.size > 0) {
         const searchOpacity = searchOpacities.get(node.parentId) ?? 1.0;
         nodeScale *= searchOpacity;
@@ -183,7 +183,7 @@ export function ChunkNodes({
       meshRef.current.setColorAt(i, colorRef.current);
 
       // Calculate screen rect for label positioning (data sharing with label system)
-      if (chunkScreenRectsRef) {
+      if (contentScreenRectsRef) {
         // Project center to screen space using front Z (where text labels should appear)
         // This aligns text with the visual "front face" of the cube-like appearance
         const centerWorld = new THREE.Vector3(x, y, textFrontZ);
@@ -191,8 +191,8 @@ export function ChunkNodes({
 
         // Project edge point to get accurate screen size (accounts for perspective)
         // Use same Z as center for consistent text positioning
-        // Note: use nodeScale (includes search opacity) not chunkScale
-        const edgeWorld = new THREE.Vector3(x + chunkRadius * nodeScale, y, textFrontZ);
+        // Note: use nodeScale (includes search opacity) not contentScale
+        const edgeWorld = new THREE.Vector3(x + contentRadius * nodeScale, y, textFrontZ);
         edgeWorld.project(camera);
 
         // Convert NDC to CSS pixels (not drawing buffer pixels)
@@ -207,10 +207,10 @@ export function ChunkNodes({
         const screenHalfWidth = Math.abs(screenEdgeX - screenCenterX);
         const screenWidth = screenHalfWidth * 2;
 
-        // Composite key: parentId:chunkId — needed because chunks shared across
+        // Composite key: parentId:contentId — needed because content nodes shared across
         // keywords create duplicate nodes with the same id but different parents
-        const chunkKey = `${node.parentId}:${node.id}`;
-        chunkScreenRectsRef.current.set(chunkKey, {
+        const contentKey = `${node.parentId}:${node.id}`;
+        contentScreenRectsRef.current.set(contentKey, {
           x: screenCenterX,
           y: screenCenterY,
           width: screenWidth,
@@ -226,12 +226,12 @@ export function ChunkNodes({
     }
   });
 
-  if (chunkNodes.length === 0) return null;
+  if (contentNodes.length === 0) return null;
 
   return (
     <instancedMesh
       ref={handleMeshRef}
-      args={[geometry, undefined, chunkNodes.length]}
+      args={[geometry, undefined, contentNodes.length]}
       frustumCulled={false}
     >
       {/* Important: do not reactivate the following line that is commented out. Doing so causes the dots to be black. */}

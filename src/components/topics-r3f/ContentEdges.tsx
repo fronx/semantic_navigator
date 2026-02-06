@@ -1,19 +1,19 @@
 /**
- * Chunk containment edge rendering (keyword -> chunk connections).
- * Wraps EdgeRenderer with chunk-specific configuration.
- * Visibility synced with ChunkNodes via calculateScales.
+ * Content containment edge rendering (keyword -> content node connections).
+ * Wraps EdgeRenderer with content-specific configuration.
+ * Visibility synced with ContentNodes via calculateScales.
  */
 
 import { useMemo } from "react";
 
 import type { SimNode, SimLink } from "@/lib/map-renderer";
 import type { PCATransform } from "@/lib/semantic-colors";
-import { CHUNK_Z_DEPTH } from "@/lib/chunk-zoom-config";
+import { CONTENT_Z_DEPTH } from "@/lib/content-zoom-config";
 import { EdgeRenderer } from "./EdgeRenderer";
 
-export interface ChunkEdgesProps {
+export interface ContentEdgesProps {
   simNodes: SimNode[];
-  chunkNodes: SimNode[];
+  contentNodes: SimNode[];
   curveIntensity: number;
   curveDirections: Map<string, number>;
   colorMixRatio: number;
@@ -23,36 +23,36 @@ export interface ChunkEdgesProps {
   searchOpacities?: Map<string, number>;
 }
 
-export function ChunkEdges({
+export function ContentEdges({
   simNodes,
-  chunkNodes,
+  contentNodes,
   curveIntensity,
   curveDirections,
   colorMixRatio,
   colorDesaturation,
   pcaTransform,
   searchOpacities,
-}: ChunkEdgesProps): React.JSX.Element | null {
-  // Create containment edges (keyword -> chunk) from chunk parentId
+}: ContentEdgesProps): React.JSX.Element | null {
+  // Create containment edges (keyword -> content node) from ContentSimNode parentId
   const containmentEdges = useMemo(() => {
     const edges: SimLink[] = [];
-    for (const chunk of chunkNodes) {
-      // ChunkSimNode has parentId field
-      const parentId = (chunk as { parentId?: string }).parentId;
+    for (const node of contentNodes) {
+      // ContentSimNode has parentId field
+      const parentId = (node as { parentId?: string }).parentId;
       if (parentId) {
         edges.push({
           source: parentId,
-          target: chunk.id,
+          target: node.id,
         });
       }
     }
     return edges;
-  }, [chunkNodes]);
+  }, [contentNodes]);
 
-  // Combined node map (keywords + chunks)
+  // Combined node map (keywords + content nodes)
   const nodeMap = useMemo(
-    () => new Map([...simNodes, ...chunkNodes].map((n) => [n.id, n])),
-    [simNodes, chunkNodes]
+    () => new Map([...simNodes, ...contentNodes].map((n) => [n.id, n])),
+    [simNodes, contentNodes]
   );
 
   if (containmentEdges.length === 0) {
@@ -63,7 +63,7 @@ export function ChunkEdges({
     <EdgeRenderer
       edges={containmentEdges}
       nodeMap={nodeMap}
-      zDepth={CHUNK_Z_DEPTH}
+      zDepth={CONTENT_Z_DEPTH}
       opacity="chunk"
       renderOrder={-2}
       curveIntensity={curveIntensity}

@@ -139,7 +139,7 @@ export function createCameraController(options: CameraControllerOptions): Camera
     const zoomFactor = calculateZoomFactor(deltaY, isPinch);
 
     // Use centralized camera range from chunk-zoom-config
-    const { CAMERA_Z_MIN, CAMERA_Z_MAX } = require('@/lib/chunk-zoom-config');
+    const { CAMERA_Z_MIN, CAMERA_Z_MAX } = require('@/lib/content-zoom-config');
     const newZ = Math.max(CAMERA_Z_MIN, Math.min(CAMERA_Z_MAX, oldZ * zoomFactor));
 
     if (Math.abs(newZ - oldZ) < 0.01) return;
@@ -190,7 +190,7 @@ export function createCameraController(options: CameraControllerOptions): Camera
     const zForWidth = paddedWidth / (2 * Math.tan(CAMERA_FOV_RADIANS / 2) * aspect);
 
     // Use the larger Z (more zoomed out) to fit both dimensions
-    const { CAMERA_Z_MIN } = require('@/lib/chunk-zoom-config');
+    const { CAMERA_Z_MIN } = require('@/lib/content-zoom-config');
     const newZ = Math.max(zForHeight, zForWidth, CAMERA_Z_MIN);
 
     // Smoothly animate camera to new position

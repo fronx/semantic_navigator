@@ -8,26 +8,26 @@ import { useThree, useFrame } from "@react-three/fiber";
 import { CameraController } from "./CameraController";
 import { ForceSimulation } from "./ForceSimulation";
 import { KeywordNodes } from "./KeywordNodes";
-import { ChunkNodes } from "./ChunkNodes";
+import { ContentNodes } from "./ContentNodes";
 import { TransmissionPanel } from "./TransmissionPanel";
 import { KeywordEdges } from "./KeywordEdges";
-import { ChunkEdges } from "./ChunkEdges";
+import { ContentEdges } from "./ContentEdges";
 import { LabelsUpdater } from "./LabelsUpdater";
 import { useEdgeCurveDirections } from "@/hooks/useEdgeCurveDirections";
-import { useChunkSimulation } from "@/hooks/useChunkSimulation";
-import { createChunkNodes } from "@/lib/chunk-layout";
+import { useContentSimulation } from "@/hooks/useContentSimulation";
+import { createContentNodes } from "@/lib/content-layout";
 import { computeNodeDegrees } from "@/lib/label-overlays";
 import { groupNodesByCommunity } from "@/lib/hull-renderer";
 import { computeClusterColors } from "@/lib/semantic-colors";
 import { calculateBoundingBox, calculateCameraZForBounds } from "@/lib/dynamic-zoom-bounds";
-import { CAMERA_Z_MAX } from "@/lib/chunk-zoom-config";
+import { CAMERA_Z_MAX } from "@/lib/content-zoom-config";
 import { BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/three/node-renderer";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 import type { PCATransform } from "@/lib/semantic-colors";
 import type { SimNode, SimLink } from "@/lib/map-renderer";
 import type { ZoomPhaseConfig } from "@/lib/zoom-phase-config";
 import type { LabelRefs } from "./R3FLabelContext";
-import type { ChunkNode } from "@/lib/chunk-loader";
+import type { ContentNode } from "@/lib/content-loader";
 import type { KeywordTierMap } from "@/lib/topics-filter";
 
 /**
@@ -52,7 +52,7 @@ export interface R3FTopicsSceneProps {
   nodes: KeywordNode[];
   edges: SimilarityEdge[];
   projectNodes: ProjectNode[];
-  chunksByKeyword?: Map<string, ChunkNode[]>;
+  contentsByKeyword?: Map<string, ContentNode[]>;
   colorMixRatio: number;
   colorDesaturation: number;
   pcaTransform: PCATransform | null;
@@ -62,12 +62,12 @@ export interface R3FTopicsSceneProps {
   panelDistanceRatio: number;
   panelThickness: number;
   zoomPhaseConfig: ZoomPhaseConfig;
-  /** Z-depth offset for chunk nodes (negative = behind keywords) */
-  chunkZDepth?: number;
-  /** Scale factor for converting panel thickness to chunk text depth offset */
-  chunkTextDepthScale?: number;
-  /** Size multiplier for chunk/article nodes (default 1.5) */
-  chunkSizeMultiplier?: number;
+  /** Z-depth offset for content nodes (negative = behind keywords) */
+  contentZDepth?: number;
+  /** Scale factor for converting panel thickness to content text depth offset */
+  contentTextDepthScale?: number;
+  /** Size multiplier for content nodes (default 1.5) */
+  contentSizeMultiplier?: number;
   keywordTiers?: KeywordTierMap | null;
   /** Search opacity map (node id -> opacity) for semantic search highlighting */
   searchOpacities?: Map<string, number>;
@@ -84,7 +84,7 @@ export function R3FTopicsScene({
   nodes,
   edges,
   projectNodes,
-  chunksByKeyword,
+  contentsByKeyword,
   colorMixRatio,
   colorDesaturation,
   pcaTransform,
@@ -93,9 +93,9 @@ export function R3FTopicsScene({
   panelDistanceRatio,
   panelThickness,
   zoomPhaseConfig,
-  chunkZDepth = -150,
-  chunkTextDepthScale = -15.0,
-  chunkSizeMultiplier = 1.5,
+  contentZDepth = -150,
+  contentTextDepthScale = -15.0,
+  contentSizeMultiplier = 1.5,
   keywordTiers,
   searchOpacities,
   onProjectClick,
@@ -107,42 +107,42 @@ export function R3FTopicsScene({
   // Level 1: Keyword simulation nodes (from ForceSimulation)
   const [keywordNodes, setKeywordNodes] = useState<SimNode[]>([]);
 
-  // Level 2: Create chunk nodes from chunks data
-  const chunkNodes = useMemo(() => {
-    if (!chunksByKeyword || chunksByKeyword.size === 0 || keywordNodes.length === 0) {
-      console.log('[R3FTopicsScene] No chunks - chunksByKeyword size:', chunksByKeyword?.size, 'keywordNodes:', keywordNodes.length);
+  // Level 2: Create content nodes from content data
+  const contentNodes = useMemo(() => {
+    if (!contentsByKeyword || contentsByKeyword.size === 0 || keywordNodes.length === 0) {
+      console.log('[R3FTopicsScene] No content nodes - contentsByKeyword size:', contentsByKeyword?.size, 'keywordNodes:', keywordNodes.length);
       return [];
     }
 
-    const { chunkNodes: chunks } = createChunkNodes(keywordNodes, chunksByKeyword);
-    console.log('[R3FTopicsScene] Created', chunks.length, 'chunk nodes');
+    const { contentNodes: nodes } = createContentNodes(keywordNodes, contentsByKeyword);
+    console.log('[R3FTopicsScene] Created', nodes.length, 'content nodes');
 
-    return chunks;
-  }, [keywordNodes, chunksByKeyword]);
+    return nodes;
+  }, [keywordNodes, contentsByKeyword]);
 
-  // Build keyword map for chunk simulation
+  // Build keyword map for content simulation
   const keywordMap = useMemo(() => {
     return new Map<string, SimNode>(keywordNodes.map(n => [n.id, n]));
   }, [keywordNodes]);
 
-  // Level 2: Chunk simulation (separate from keyword simulation)
+  // Level 2: Content simulation (separate from keyword simulation)
   const keywordRadius = BASE_DOT_RADIUS * DOT_SCALE_FACTOR;
-  const chunkSimulation = useChunkSimulation({
-    chunks: chunkNodes,
+  const contentSimulation = useContentSimulation({
+    contentNodes: contentNodes,
     keywords: keywordMap,
     keywordRadius,
-    chunkSizeMultiplier,
+    contentSizeMultiplier,
   });
 
-  // Tick chunk simulation every frame
+  // Tick content simulation every frame
   useFrame(() => {
-    chunkSimulation.tick();
+    contentSimulation.tick();
   });
 
-  // Combine keyword and chunk nodes for rendering
+  // Combine keyword and content nodes for rendering
   const simNodes = useMemo(() => {
-    return [...keywordNodes, ...chunkNodes];
-  }, [keywordNodes, chunkNodes]);
+    return [...keywordNodes, ...contentNodes];
+  }, [keywordNodes, contentNodes]);
 
   // Update labelRefs when simNodes change (for label rendering)
   useEffect(() => {
@@ -199,42 +199,42 @@ export function R3FTopicsScene({
         onSimulationReady={setKeywordNodes}
       />
 
-      {/* Chunk layer (furthest back, z < 0) */}
-      {chunkNodes.length > 0 && (
-        <ChunkNodes
-          chunkNodes={chunkNodes}
+      {/* Content layer (furthest back, z < 0) */}
+      {contentNodes.length > 0 && (
+        <ContentNodes
+          contentNodes={contentNodes}
           simNodes={simNodes}
           colorMixRatio={colorMixRatio}
           colorDesaturation={colorDesaturation}
           pcaTransform={pcaTransform}
           zoomRange={zoomPhaseConfig.chunkCrossfade}
-          chunkZDepth={chunkZDepth}
+          contentZDepth={contentZDepth}
           panelThickness={panelThickness}
-          chunkTextDepthScale={chunkTextDepthScale}
-          chunkSizeMultiplier={chunkSizeMultiplier}
-          chunkScreenRectsRef={labelRefs.chunkScreenRectsRef}
+          contentTextDepthScale={contentTextDepthScale}
+          contentSizeMultiplier={contentSizeMultiplier}
+          contentScreenRectsRef={labelRefs.contentScreenRectsRef}
           searchOpacities={searchOpacities}
         />
       )}
 
-      {/* Frosted glass panel (between chunks and keywords) */}
+      {/* Frosted glass panel (between content nodes and keywords) */}
       <TransmissionPanel
-        enabled={blurEnabled && chunkNodes.length > 0}
+        enabled={blurEnabled && contentNodes.length > 0}
         distanceRatio={panelDistanceRatio}
         thickness={panelThickness}
       />
 
-      {/* Chunk containment edges (keyword → chunk) */}
-      {keywordNodes.length > 0 && chunkNodes.length > 0 && (
+      {/* Content containment edges (keyword → content node) */}
+      {keywordNodes.length > 0 && contentNodes.length > 0 && (
         // These edges go all over the place.
         // We might bring them back at some point,
         // but for now they add visual clutter and hurt performance.
         <>
         </>
         //
-        // <ChunkEdges
+        // <ContentEdges
         //   simNodes={keywordNodes}
-        //   chunkNodes={chunkNodes}
+        //   contentNodes={contentNodes}
         //   curveIntensity={0.25}
         //   curveDirections={curveDirections}
         //   colorMixRatio={colorMixRatio}

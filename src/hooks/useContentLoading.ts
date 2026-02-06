@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { fetchChunksForKeywords, ChunkNode } from '@/lib/chunk-loader';
+import { fetchChunksForKeywords, ContentNode } from '@/lib/content-loader';
 
 /**
  * Compare two Maps for equality (same keys and values)
@@ -14,47 +14,47 @@ function mapsEqual<K, V>(map1: Map<K, V>, map2: Map<K, V>): boolean {
   return true;
 }
 
-export interface UseChunkLoadingOptions {
+export interface UseContentLoadingOptions {
   visibleKeywordIds: Set<string>;
   enabled: boolean;
   nodeType: 'article' | 'chunk';
 }
 
-export interface UseChunkLoadingResult {
-  chunksByKeyword: Map<string, ChunkNode[]>;
+export interface UseContentLoadingResult {
+  contentsByKeyword: Map<string, ContentNode[]>;
   isLoading: boolean;
 }
 
 /**
- * Lazily load chunks for visible keywords with caching and batching.
+ * Lazily load content nodes for visible keywords with caching and batching.
  *
  * Features:
  * - Debounced fetching (200ms) to batch rapid visibility changes
  * - Persistent cache across renders to avoid refetching
  * - Single batched request for all uncached keywords
- * - Groups chunks by keywordId for easy consumption
+ * - Groups content nodes by keywordId for easy consumption
  */
-export function useChunkLoading({
+export function useContentLoading({
   visibleKeywordIds,
   enabled,
   nodeType,
-}: UseChunkLoadingOptions): UseChunkLoadingResult {
-  const [chunksByKeyword, setChunksByKeyword] = useState(
-    () => new Map<string, ChunkNode[]>()
+}: UseContentLoadingOptions): UseContentLoadingResult {
+  const [contentsByKeyword, setContentsByKeyword] = useState(
+    () => new Map<string, ContentNode[]>()
   );
   const [isLoading, setIsLoading] = useState(false);
 
   // Persistent cache across renders
-  const chunkCacheRef = useRef<Map<string, ChunkNode[]>>(new Map());
+  const contentCacheRef = useRef<Map<string, ContentNode[]>>(new Map());
   const debounceTimerRef = useRef<NodeJS.Timeout | undefined>(undefined);
   // Track the previous result to avoid unnecessary updates
-  const previousResultRef = useRef<Map<string, ChunkNode[]>>(new Map());
+  const previousResultRef = useRef<Map<string, ContentNode[]>>(new Map());
 
   useEffect(() => {
-    console.log('[Chunk Loading] Effect triggered. Enabled:', enabled, 'Keywords:', visibleKeywordIds.size);
+    console.log('[Content Loading] Effect triggered. Enabled:', enabled, 'Keywords:', visibleKeywordIds.size);
 
     if (!enabled) {
-      console.log('[Chunk Loading] Disabled, returning early');
+      console.log('[Content Loading] Disabled, returning early');
       return;
     }
 
@@ -65,22 +65,22 @@ export function useChunkLoading({
 
     // Debounce the fetch by 200ms
     debounceTimerRef.current = setTimeout(async () => {
-      console.log('[Chunk Loading] Checking', visibleKeywordIds.size, 'visible keywords');
-      console.log('[Chunk Loading] Cache size:', chunkCacheRef.current.size);
+      console.log('[Content Loading] Checking', visibleKeywordIds.size, 'visible keywords');
+      console.log('[Content Loading] Cache size:', contentCacheRef.current.size);
 
       // Identify uncached keywords
       const uncachedKeywordIds = Array.from(visibleKeywordIds).filter(
-        (id) => !chunkCacheRef.current.has(id)
+        (id) => !contentCacheRef.current.has(id)
       );
 
-      console.log('[Chunk Loading] Uncached keywords:', uncachedKeywordIds.length);
+      console.log('[Content Loading] Uncached keywords:', uncachedKeywordIds.length);
 
       if (uncachedKeywordIds.length === 0) {
-        console.log('[Chunk Loading] All keywords cached, skipping fetch');
+        console.log('[Content Loading] All keywords cached, skipping fetch');
         // All visible keywords are cached, check if result changed
-        const resultMap = new Map<string, ChunkNode[]>();
+        const resultMap = new Map<string, ContentNode[]>();
         visibleKeywordIds.forEach((id) => {
-          const cached = chunkCacheRef.current.get(id);
+          const cached = contentCacheRef.current.get(id);
           if (cached) {
             resultMap.set(id, cached);
           }
@@ -89,32 +89,32 @@ export function useChunkLoading({
         // Only update if the map content actually changed
         if (!mapsEqual(resultMap, previousResultRef.current)) {
           previousResultRef.current = resultMap;
-          setChunksByKeyword(resultMap);
+          setContentsByKeyword(resultMap);
         }
         return;
       }
 
-      // Fetch uncached chunks in single batched request
+      // Fetch uncached content nodes in single batched request
       setIsLoading(true);
       try {
-        const chunks = await fetchChunksForKeywords(uncachedKeywordIds, nodeType);
+        const contentNodes = await fetchChunksForKeywords(uncachedKeywordIds, nodeType);
 
-        // Group chunks by keywordId
-        const chunksByKeywordId = new Map<string, ChunkNode[]>();
-        chunks.forEach((chunk) => {
-          const existing = chunksByKeywordId.get(chunk.keywordId) || [];
-          chunksByKeywordId.set(chunk.keywordId, [...existing, chunk]);
+        // Group content nodes by keywordId
+        const contentsByKeywordId = new Map<string, ContentNode[]>();
+        contentNodes.forEach((node) => {
+          const existing = contentsByKeywordId.get(node.keywordId) || [];
+          contentsByKeywordId.set(node.keywordId, [...existing, node]);
         });
 
         // Update cache for newly fetched keywords
-        chunksByKeywordId.forEach((chunks, keywordId) => {
-          chunkCacheRef.current.set(keywordId, chunks);
+        contentsByKeywordId.forEach((nodes, keywordId) => {
+          contentCacheRef.current.set(keywordId, nodes);
         });
 
         // Build result map from all visible keywords (cached + newly fetched)
-        const resultMap = new Map<string, ChunkNode[]>();
+        const resultMap = new Map<string, ContentNode[]>();
         visibleKeywordIds.forEach((id) => {
-          const cached = chunkCacheRef.current.get(id);
+          const cached = contentCacheRef.current.get(id);
           if (cached) {
             resultMap.set(id, cached);
           }
@@ -123,10 +123,10 @@ export function useChunkLoading({
         // Only update if the map content actually changed
         if (!mapsEqual(resultMap, previousResultRef.current)) {
           previousResultRef.current = resultMap;
-          setChunksByKeyword(resultMap);
+          setContentsByKeyword(resultMap);
         }
       } catch (error) {
-        console.error('Failed to fetch chunks:', error);
+        console.error('Failed to fetch content nodes:', error);
       } finally {
         setIsLoading(false);
       }
@@ -142,13 +142,13 @@ export function useChunkLoading({
 
   // Clear cache when nodeType changes
   useEffect(() => {
-    chunkCacheRef.current.clear();
+    contentCacheRef.current.clear();
     previousResultRef.current.clear();
-    setChunksByKeyword(new Map());
+    setContentsByKeyword(new Map());
   }, [nodeType]);
 
   return {
-    chunksByKeyword,
+    contentsByKeyword,
     isLoading,
   };
 }

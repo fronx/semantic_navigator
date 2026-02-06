@@ -1,18 +1,18 @@
 /**
- * Constrained force simulation for chunk node layout.
- * Spreads chunks organically around their parent keywords while avoiding overlap.
+ * Constrained force simulation for content node layout.
+ * Spreads content nodes organically around their parent keywords while avoiding overlap.
  */
 
 import type { SimNode, SimLink } from "@/lib/map-renderer";
-import type { ChunkNode } from "@/lib/chunk-loader";
-import { CHUNK_Z_DEPTH } from "@/lib/chunk-zoom-config";
+import type { ContentNode } from "@/lib/content-loader";
+import { CONTENT_Z_DEPTH } from "@/lib/content-zoom-config";
 
 /**
- * Chunk simulation node with 3D position behind keyword layer.
- * Z depth controlled by CHUNK_Z_DEPTH in chunk-zoom-config.
+ * Content simulation node with 3D position behind keyword layer.
+ * Z depth controlled by CONTENT_Z_DEPTH in content-zoom-config.
  */
-export interface ChunkSimNode extends SimNode {
-  type: "chunk";
+export interface ContentSimNode extends SimNode {
+  type: "chunk"; // DB node type, not visual layer name
   z: number;
   parentId: string; // Keyword ID
   content: string;
@@ -22,14 +22,14 @@ export interface ChunkSimNode extends SimNode {
  * Convert chunk data to simulation nodes positioned at parent keyword coordinates.
  *
  * @param keywords - Map of keyword ID to keyword SimNode
- * @param chunksByKeyword - Map of keyword ID to chunks
- * @returns Chunk nodes and containment edges (keyword → chunk)
+ * @param contentsByKeyword - Map of keyword ID to content nodes
+ * @returns Content nodes and containment edges (keyword → content node)
  */
-export function createChunkNodes(
+export function createContentNodes(
   keywords: SimNode[],
-  chunksByKeyword: Map<string, ChunkNode[]>
-): { chunkNodes: ChunkSimNode[]; containmentEdges: SimLink[] } {
-  const chunkNodes: ChunkSimNode[] = [];
+  contentsByKeyword: Map<string, ContentNode[]>
+): { contentNodes: ContentSimNode[]; containmentEdges: SimLink[] } {
+  const contentNodes: ContentSimNode[] = [];
   const containmentEdges: SimLink[] = [];
 
   // Build keyword ID → node lookup
@@ -38,18 +38,18 @@ export function createChunkNodes(
     keywordMap.set(kw.id, kw);
   }
 
-  for (const [keywordId, chunks] of chunksByKeyword) {
+  for (const [keywordId, chunks] of contentsByKeyword) {
     const parent = keywordMap.get(keywordId);
     if (!parent) continue;
 
     for (const chunk of chunks) {
-      const chunkNode: ChunkSimNode = {
+      const contentNode: ContentSimNode = {
         id: chunk.id,
-        type: "chunk",
+        type: "chunk", // DB node type, not visual layer name
         label: chunk.summary || chunk.content.slice(0, 50) + "...",
         size: chunk.content.length,
         embedding: chunk.embedding,
-        z: CHUNK_Z_DEPTH, // Behind keyword layer (from config)
+        z: CONTENT_Z_DEPTH, // Behind keyword layer (from config)
         parentId: keywordId,
         content: chunk.content,
         // Initial position: parent keyword X-Y coordinates
@@ -61,9 +61,9 @@ export function createChunkNodes(
         hullLabel: undefined,
       };
 
-      chunkNodes.push(chunkNode);
+      contentNodes.push(contentNode);
 
-      // Create containment edge (keyword → chunk)
+      // Create containment edge (keyword → content node)
       containmentEdges.push({
         source: keywordId,
         target: chunk.id,
@@ -71,25 +71,25 @@ export function createChunkNodes(
     }
   }
 
-  return { chunkNodes, containmentEdges };
+  return { contentNodes, containmentEdges };
 }
 
 /**
- * Apply constrained forces to chunk nodes to spread them around parent keywords.
- * This runs after the main keyword force simulation to organically arrange chunks
+ * Apply constrained forces to content nodes to spread them around parent keywords.
+ * This runs after the main keyword force simulation to organically arrange content nodes
  * while avoiding overlaps.
  *
  * Forces applied:
- * - Spring force toward parent keyword (keeps chunks nearby)
- * - Repulsion between sibling chunks (avoids overlap)
+ * - Spring force toward parent keyword (keeps content nodes nearby)
+ * - Repulsion between sibling content nodes (avoids overlap)
  * - Distance constraint (max distance from parent)
  *
- * @param chunks - Chunk nodes to update (mutates x, y in place)
+ * @param contentNodes - Content nodes to update (mutates x, y in place)
  * @param keywords - Map of keyword ID to keyword SimNode
  * @param keywordRadius - Radius of keyword nodes (for distance constraint)
  */
 export function applyConstrainedForces(
-  chunks: ChunkSimNode[],
+  contentNodes: ContentSimNode[],
   keywords: Map<string, SimNode>,
   keywordRadius: number
 ): void {
@@ -99,22 +99,22 @@ export function applyConstrainedForces(
 
   const maxDistance = keywordRadius * MAX_DISTANCE_MULTIPLIER;
 
-  // Group chunks by parent for sibling repulsion
-  const chunksByParent = new Map<string, ChunkSimNode[]>();
-  for (const chunk of chunks) {
-    if (!chunksByParent.has(chunk.parentId)) {
-      chunksByParent.set(chunk.parentId, []);
+  // Group content nodes by parent for sibling repulsion
+  const contentsByParent = new Map<string, ContentSimNode[]>();
+  for (const node of contentNodes) {
+    if (!contentsByParent.has(node.parentId)) {
+      contentsByParent.set(node.parentId, []);
     }
-    chunksByParent.get(chunk.parentId)!.push(chunk);
+    contentsByParent.get(node.parentId)!.push(node);
   }
 
-  // Apply forces to each chunk
-  for (const chunk of chunks) {
-    const parent = keywords.get(chunk.parentId);
+  // Apply forces to each content node
+  for (const node of contentNodes) {
+    const parent = keywords.get(node.parentId);
     if (!parent || parent.x === undefined || parent.y === undefined) continue;
-    if (chunk.x === undefined || chunk.y === undefined) {
-      chunk.x = parent.x;
-      chunk.y = parent.y;
+    if (node.x === undefined || node.y === undefined) {
+      node.x = parent.x;
+      node.y = parent.y;
       continue;
     }
 
@@ -122,19 +122,19 @@ export function applyConstrainedForces(
     let fy = 0;
 
     // 1. Spring force toward parent keyword
-    const dx = parent.x - chunk.x;
-    const dy = parent.y - chunk.y;
+    const dx = parent.x - node.x;
+    const dy = parent.y - node.y;
     fx += dx * SPRING_STRENGTH;
     fy += dy * SPRING_STRENGTH;
 
-    // 2. Repulsion from sibling chunks (same parent)
-    const siblings = chunksByParent.get(chunk.parentId) || [];
+    // 2. Repulsion from sibling content nodes (same parent)
+    const siblings = contentsByParent.get(node.parentId) || [];
     for (const sibling of siblings) {
-      if (sibling === chunk) continue;
+      if (sibling === node) continue;
       if (sibling.x === undefined || sibling.y === undefined) continue;
 
-      const sdx = chunk.x - sibling.x;
-      const sdy = chunk.y - sibling.y;
+      const sdx = node.x - sibling.x;
+      const sdy = node.y - sibling.y;
       const dist = Math.sqrt(sdx * sdx + sdy * sdy);
       if (dist === 0 || dist > maxDistance) continue;
 
@@ -146,19 +146,19 @@ export function applyConstrainedForces(
 
     // Apply forces with damping
     const damping = 0.5;
-    chunk.x += fx * damping;
-    chunk.y += fy * damping;
+    node.x += fx * damping;
+    node.y += fy * damping;
 
     // 3. Constrain max distance from parent
-    const finalDx = chunk.x - parent.x;
-    const finalDy = chunk.y - parent.y;
+    const finalDx = node.x - parent.x;
+    const finalDy = node.y - parent.y;
     const finalDist = Math.sqrt(finalDx * finalDx + finalDy * finalDy);
 
     if (finalDist > maxDistance) {
       // Pull back to max distance
       const scale = maxDistance / finalDist;
-      chunk.x = parent.x + finalDx * scale;
-      chunk.y = parent.y + finalDy * scale;
+      node.x = parent.x + finalDx * scale;
+      node.y = parent.y + finalDy * scale;
     }
   }
 }

@@ -6,7 +6,7 @@
  */
 
 import { useFrame, useThree } from "@react-three/fiber";
-import { calculateScales } from "@/lib/chunk-scale";
+import { calculateScales } from "@/lib/content-scale";
 import { DEFAULT_ZOOM_PHASE_CONFIG } from "@/lib/zoom-phase-config";
 import type { LabelRefs } from "./R3FLabelContext";
 
@@ -44,13 +44,13 @@ export function LabelsUpdater({ labelRefs }: LabelsUpdaterProps) {
     // Build parent color map for chunk labels
     // Note: Chunk nodes will receive color from their parent keywords via label manager
     const parentColors = new Map<string, string>();
-    manager.updateChunkLabels(nodes, parentColors);
+    manager.updateContentLabels(nodes, parentColors);
 
     // Update label opacity based on zoom level (fades chunk labels in/out)
     const scales = calculateScales(cameraZ, DEFAULT_ZOOM_PHASE_CONFIG.chunkCrossfade);
     manager.updateLabelOpacity(scales);
 
-    manager.syncChunkPreview();
+    manager.syncContentPreview();
 
     // Update hover label based on cursor position
     manager.updateHoverLabel(nodes);

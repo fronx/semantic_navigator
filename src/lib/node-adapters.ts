@@ -1,9 +1,9 @@
 /**
- * Adapters for mapping database node rows to ChunkNode interface.
+ * Adapters for mapping database node rows to ContentNode interface.
  * Configuration-based approach for easy extension with new node types or display modes.
  */
 
-import type { ChunkNode } from '@/lib/chunk-loader';
+import type { ContentNode } from '@/lib/content-loader';
 
 /**
  * Database row structure from Supabase query
@@ -42,14 +42,14 @@ const CONTENT_EXTRACTORS: Record<NodeType, Record<ContentMode, (nodes: NodeRow) 
 };
 
 /**
- * Adapt a database row to ChunkNode format.
+ * Adapt a database row to ContentNode format.
  * Uses configuration to determine which field provides content for each node type.
  */
-export function adaptToChunkNode(
+export function adaptToContentNode(
   row: KeywordWithNode,
   nodeType: NodeType,
   mode: ContentMode = 'full'
-): ChunkNode {
+): ContentNode {
   const getContent = CONTENT_EXTRACTORS[nodeType][mode];
 
   return {

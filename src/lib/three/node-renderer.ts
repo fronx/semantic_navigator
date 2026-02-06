@@ -127,7 +127,7 @@ export interface NodeRendererOptions {
 
 export interface ScaleValues {
   keywordScale: number;
-  chunkScale: number;
+  contentScale: number;
 }
 
 export interface NodeRenderer {
@@ -311,9 +311,9 @@ export function createNodeRenderer(options: NodeRendererOptions): NodeRenderer {
         if (group.visible) keywordVisible++;
       } else if (node.type === "chunk") {
         chunkCount++;
-        group.scale.setScalar(scales.chunkScale);
+        group.scale.setScalar(scales.contentScale);
         // Cull chunks when too small (saves ~0.5-1ms per frame when zoomed out)
-        group.visible = scales.chunkScale >= VISIBILITY_THRESHOLD;
+        group.visible = scales.contentScale >= VISIBILITY_THRESHOLD;
         if (group.visible) chunkVisible++;
       }
       // Projects and articles don't scale (they're always visible)
@@ -324,7 +324,7 @@ export function createNodeRenderer(options: NodeRendererOptions): NodeRenderer {
       console.log('[Node Visibility]',
         'Keywords:', keywordVisible, '/', keywordCount,
         'Chunks:', chunkVisible, '/', chunkCount,
-        'Scales:', 'kw=' + scales.keywordScale.toFixed(3), 'ch=' + scales.chunkScale.toFixed(3));
+        'Scales:', 'kw=' + scales.keywordScale.toFixed(3), 'ch=' + scales.contentScale.toFixed(3));
     }
   }
 

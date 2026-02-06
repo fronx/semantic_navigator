@@ -8,7 +8,7 @@ import type { RendererType } from "@/components/TopicsView";
 import type { TopicsSettings } from "@/hooks/useTopicsSettings";
 import type { SemanticFilter } from "@/lib/topics-filter";
 import type { KeywordNode } from "@/lib/graph-queries";
-import { CAMERA_Z_MIN, CAMERA_Z_MAX } from "@/lib/chunk-zoom-config";
+import { CAMERA_Z_MIN, CAMERA_Z_MAX } from "@/lib/content-zoom-config";
 import { CAMERA_Z_SCALE_BASE } from "@/lib/three/camera-controller";
 
 const LOG_Z_MIN = Math.log10(CAMERA_Z_MIN);
@@ -452,8 +452,8 @@ export function ControlSidebar({
                 />
                 <Slider
                   label="Text depth"
-                  value={settings.chunkTextDepthScale}
-                  onChange={(value) => update("chunkTextDepthScale", value)}
+                  value={settings.contentTextDepthScale}
+                  onChange={(value) => update("contentTextDepthScale", value)}
                   min={-20}
                   max={20}
                   step={0.5}
@@ -461,8 +461,8 @@ export function ControlSidebar({
                 />
                 <Slider
                   label="Max size"
-                  value={settings.chunkSizeMultiplier}
-                  onChange={(value) => update("chunkSizeMultiplier", value)}
+                  value={settings.contentSizeMultiplier}
+                  onChange={(value) => update("contentSizeMultiplier", value)}
                   min={1.0}
                   max={3.0}
                   step={0.1}

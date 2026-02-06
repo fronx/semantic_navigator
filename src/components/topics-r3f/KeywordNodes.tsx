@@ -10,7 +10,7 @@ import type { SimNode } from "@/lib/map-renderer";
 import type { PCATransform } from "@/lib/semantic-colors";
 import type { ZoomRange } from "@/lib/zoom-phase-config";
 import type { KeywordTierMap } from "@/lib/topics-filter";
-import { calculateScales } from "@/lib/chunk-scale";
+import { calculateScales } from "@/lib/content-scale";
 import { getNodeColor, BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/three/node-renderer";
 import { KEYWORD_TIER_SCALES } from "@/lib/semantic-filter-config";
 import { useInstancedMeshMaterial } from "@/hooks/useInstancedMeshMaterial";

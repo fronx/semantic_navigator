@@ -22,7 +22,7 @@ export interface BaseRendererOptions {
   pcaTransform: PCATransform | null;
   getSavedPosition: (id: string) => { x: number; y: number } | undefined;
   /** Z-depth offset for chunk nodes (negative = behind keywords) */
-  chunkZDepth?: number;
+  contentZDepth?: number;
   /** Search opacity map (node id -> opacity) for semantic search highlighting */
   searchOpacities?: Map<string, number>;
   // Stable callbacks

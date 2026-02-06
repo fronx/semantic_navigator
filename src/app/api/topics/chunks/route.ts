@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase";
-import { adaptToChunkNode } from "@/lib/node-adapters";
+import { adaptToContentNode } from "@/lib/node-adapters";
 
 export async function POST(request: Request) {
   try {
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
     }
 
     // Transform to ChunkNode format using adapter
-    const chunks = (data || []).map(row => adaptToChunkNode(row, nodeType));
+    const chunks = (data || []).map(row => adaptToContentNode(row, nodeType));
 
     return NextResponse.json({ chunks });
   } catch (error) {

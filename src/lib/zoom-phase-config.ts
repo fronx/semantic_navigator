@@ -1,9 +1,9 @@
 import {
   CAMERA_Z_MIN,
   CAMERA_Z_MAX,
-  CHUNK_Z_TRANSITION_MIN,
-  CHUNK_Z_TRANSITION_MAX,
-} from "./chunk-zoom-config";
+  CONTENT_Z_TRANSITION_MIN,
+  CONTENT_Z_TRANSITION_MAX,
+} from "./content-zoom-config";
 
 export interface ZoomRange {
   /** Near plane (smaller Z, closer to camera) where the effect reaches full strength */

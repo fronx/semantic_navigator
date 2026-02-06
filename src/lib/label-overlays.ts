@@ -5,7 +5,7 @@
  */
 
 import type { SimNode } from "@/lib/map-renderer";
-import type { ChunkSimNode } from "@/lib/chunk-layout";
+import type { ContentSimNode } from "@/lib/content-layout";
 import { computeClusterLabels } from "@/lib/cluster-labels";
 import { communityColorScale } from "@/lib/hull-renderer";
 import { clusterColorToCSS, type ClusterColorInfo } from "@/lib/semantic-colors";
@@ -22,11 +22,11 @@ export interface LabelOverlayManager {
   /** Update keyword labels based on zoom and node degree */
   updateKeywordLabels: (nodes: SimNode[], nodeDegrees: Map<string, number>) => void;
   /** Update chunk text labels based on current node positions */
-  updateChunkLabels: (nodes: SimNode[], parentColors: Map<string, string>) => void;
+  updateContentLabels: (nodes: SimNode[], parentColors: Map<string, string>) => void;
   /** Update label opacity for cross-fading between keyword and chunk labels */
-  updateLabelOpacity: (scales: { keywordLabelOpacity: number; chunkLabelOpacity: number }) => void;
+  updateLabelOpacity: (scales: { keywordLabelOpacity: number; contentLabelOpacity: number }) => void;
   /** Sync the chunk preview overlay with current camera transform */
-  syncChunkPreview: () => void;
+  syncContentPreview: () => void;
   /** Track hovered chunk nodes for preview display */
   setHoveredChunk: (node: SimNode | null) => void;
   /** Toggle pinned (expanded) chunk preview */
@@ -366,7 +366,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     }
   }
 
-  function updateChunkLabels(nodes: SimNode[], parentColors: Map<string, string>) {
+  function updateContentLabels(nodes: SimNode[], parentColors: Map<string, string>) {
     const rect = container.getBoundingClientRect();
 
     // Get screen rects calculated by ChunkNodes (data sharing, not duplication)
@@ -386,7 +386,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
 
       // Composite key: parentId:chunkId — chunks shared across keywords create
       // duplicate nodes with the same id. Without this, they collide in all Maps.
-      const parentId = (node as ChunkSimNode).parentId;
+      const parentId = (node as ContentSimNode).parentId;
       const chunkKey = parentId ? `${parentId}:${node.id}` : node.id;
 
       // Get screen rect from ChunkNodes (single source of truth)
@@ -464,8 +464,8 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
       ]);
 
       // Display full content
-      const targetContent = (node as ChunkSimNode).content || node.label;
-      const parentKeywordId = (node as ChunkSimNode).parentId;
+      const targetContent = (node as ContentSimNode).content || node.label;
+      const parentKeywordId = (node as ContentSimNode).parentId;
 
       // Only notify React when chunk becomes newly visible (not every frame)
       if (!reportedVisibleChunks.has(chunkKey)) {
@@ -488,7 +488,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     }
   }
 
-  function updateLabelOpacity(scales: { keywordLabelOpacity: number; chunkLabelOpacity: number }) {
+  function updateLabelOpacity(scales: { keywordLabelOpacity: number; contentLabelOpacity: number }) {
     // Optimization: Only update if opacity changed significantly (CSS transition handles smoothing)
     // This reduces layout thrashing from 5-20ms to <2ms per frame
     const searchOpacities = getSearchOpacities?.();
@@ -514,7 +514,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     // Same optimization for chunk labels
     for (const labelEl of chunkLabelCache.values()) {
       if (labelEl.style.display !== "none") {
-        let newOpacity = scales.chunkLabelOpacity;
+        let newOpacity = scales.contentLabelOpacity;
 
         // Apply search opacity from parent keyword
         if (searchOpacities && searchOpacities.size > 0) {
@@ -608,7 +608,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     updateChunkPreview();
   }
 
-  function syncChunkPreview(): void {
+  function syncContentPreview(): void {
     if (chunkPreview.style.display !== "none") {
       updateChunkPreview();
     }
@@ -720,9 +720,9 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
   return {
     updateClusterLabels,
     updateKeywordLabels,
-    updateChunkLabels,
+    updateContentLabels,
     updateLabelOpacity,
-    syncChunkPreview,
+    syncContentPreview,
     setHoveredChunk,
     togglePinnedChunk,
     setHoveredKeyword,

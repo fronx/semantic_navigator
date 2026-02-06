@@ -30,7 +30,7 @@ import {
   shouldFitAfterCooling,
   markInitialFitDone,
 } from "@/lib/auto-fit";
-import { calculateScales, type ScaleValues } from "@/lib/chunk-scale";
+import { calculateScales, type ScaleValues } from "@/lib/content-scale";
 import {
   DEFAULT_ZOOM_PHASE_CONFIG,
   cloneZoomPhaseConfig,
@@ -221,7 +221,7 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
     const graphNodes = graphData.nodes as SimNode[];
     labelManager.updateClusterLabels(graphNodes);
     labelManager.updateKeywordLabels(graphNodes, nodeDegrees);
-    labelManager.syncChunkPreview();
+    labelManager.syncContentPreview();
   }
 
   // ---------------------------------------------------------------------------
@@ -286,18 +286,18 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
 
   function applyScaleValues(scales: ScaleValues): void {
     if (hasChunks) {
-      nodeRenderer.updateNodeScales({ keywordScale: scales.keywordScale, chunkScale: scales.chunkScale });
-      edgeRenderer.updateEdgeOpacity(scales.chunkEdgeOpacity);
+      nodeRenderer.updateNodeScales({ keywordScale: scales.keywordScale, contentScale: scales.contentScale });
+      edgeRenderer.updateEdgeOpacity(scales.contentEdgeOpacity);
       labelManager.updateLabelOpacity({
         keywordLabelOpacity: scales.keywordLabelOpacity,
-        chunkLabelOpacity: scales.chunkLabelOpacity,
+        contentLabelOpacity: scales.contentLabelOpacity,
       });
     } else {
-      nodeRenderer.updateNodeScales({ keywordScale: 1.0, chunkScale: 0.0 });
+      nodeRenderer.updateNodeScales({ keywordScale: 1.0, contentScale: 0.0 });
       edgeRenderer.updateEdgeOpacity(0);
       labelManager.updateLabelOpacity({
         keywordLabelOpacity: 1.0,
-        chunkLabelOpacity: 0.0,
+        contentLabelOpacity: 0.0,
       });
     }
   }
@@ -357,19 +357,19 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
         if (convergenceState.tickCount < 5 || isFirstTick) {
           console.log('[Scale Init]', 'tick:', convergenceState.tickCount, 'cameraZ:', cameraZ.toFixed(0),
             'hasChunks:', hasChunks, 'keywordScale:', scales.keywordScale.toFixed(3),
-            'chunkScale:', scales.chunkScale.toFixed(3));
+            'contentScale:', scales.contentScale.toFixed(3));
         }
 
         // Only apply scaling if we have chunk nodes in the scene (cached)
         if (hasChunks) {
           const t1 = performance.now();
-          nodeRenderer.updateNodeScales({ keywordScale: scales.keywordScale, chunkScale: scales.chunkScale });
+          nodeRenderer.updateNodeScales({ keywordScale: scales.keywordScale, contentScale: scales.contentScale });
           const t2 = performance.now();
-          edgeRenderer.updateEdgeOpacity(scales.chunkEdgeOpacity);
+          edgeRenderer.updateEdgeOpacity(scales.contentEdgeOpacity);
           const t3 = performance.now();
           labelManager.updateLabelOpacity({
             keywordLabelOpacity: scales.keywordLabelOpacity,
-            chunkLabelOpacity: scales.chunkLabelOpacity,
+            contentLabelOpacity: scales.contentLabelOpacity,
           });
           const t4 = performance.now();
 
@@ -384,10 +384,10 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
           }
         } else {
           // No chunks - keep keywords at full scale
-          nodeRenderer.updateNodeScales({ keywordScale: 1.0, chunkScale: 0.0 });
+          nodeRenderer.updateNodeScales({ keywordScale: 1.0, contentScale: 0.0 });
           labelManager.updateLabelOpacity({
             keywordLabelOpacity: 1.0,
-            chunkLabelOpacity: 0.0,
+            contentLabelOpacity: 0.0,
           });
         }
       }

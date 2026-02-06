@@ -13,7 +13,7 @@ import { computeArcPoints } from "@/lib/edge-curves";
 import { getEdgeColor } from "@/lib/edge-colors";
 import { groupNodesByCommunity } from "@/lib/hull-renderer";
 import { computeClusterColors } from "@/lib/semantic-colors";
-import { calculateScales } from "@/lib/chunk-scale";
+import { calculateScales } from "@/lib/content-scale";
 
 const EDGE_SEGMENTS = 16;
 const ARC_VERTEX_COUNT = EDGE_SEGMENTS + 1;
@@ -96,7 +96,7 @@ export function EdgeRenderer({
     let actualOpacity: number;
     if (opacity === "chunk") {
       const scales = calculateScales(camera.position.z);
-      actualOpacity = scales.chunkEdgeOpacity;
+      actualOpacity = scales.contentEdgeOpacity;
     } else {
       actualOpacity = opacity;
     }

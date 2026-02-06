@@ -15,15 +15,15 @@ import type { PCATransform, ClusterColorInfo } from "@/lib/semantic-colors";
 import type { SimNode } from "@/lib/map-renderer";
 import type { ZoomPhaseConfig } from "@/lib/zoom-phase-config";
 import type { LabelOverlayManager } from "@/lib/label-overlays";
-import type { CameraState, ChunkScreenRect, LabelRefs, LabelsOverlayHandle } from "./R3FLabelContext";
-import type { ChunkNode } from "@/lib/chunk-loader";
+import type { CameraState, ContentScreenRect, LabelRefs, LabelsOverlayHandle } from "./R3FLabelContext";
+import type { ContentNode } from "@/lib/content-loader";
 import type { KeywordTierMap } from "@/lib/topics-filter";
 
 export interface R3FTopicsCanvasProps {
   nodes: KeywordNode[];
   edges: SimilarityEdge[];
   projectNodes?: ProjectNode[];
-  chunksByKeyword?: Map<string, ChunkNode[]>;
+  contentsByKeyword?: Map<string, ContentNode[]>;
   colorMixRatio: number;
   colorDesaturation: number;
   pcaTransform: PCATransform | null;
@@ -33,9 +33,9 @@ export interface R3FTopicsCanvasProps {
   panelDistanceRatio: number;
   panelThickness: number;
   zoomPhaseConfig: ZoomPhaseConfig;
-  chunkZDepth?: number;
-  chunkTextDepthScale?: number;
-  chunkSizeMultiplier?: number;
+  contentZDepth?: number;
+  contentTextDepthScale?: number;
+  contentSizeMultiplier?: number;
   keywordTiers?: KeywordTierMap | null;
   /** Runtime cluster IDs from useClusterLabels (for label rendering) */
   nodeToCluster?: Map<string, number>;
@@ -60,7 +60,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     nodes,
     edges,
     projectNodes = [],
-    chunksByKeyword,
+    contentsByKeyword,
     colorMixRatio,
     colorDesaturation,
     pcaTransform,
@@ -69,9 +69,9 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     panelDistanceRatio,
     panelThickness,
     zoomPhaseConfig,
-    chunkZDepth,
-    chunkTextDepthScale,
-    chunkSizeMultiplier,
+    contentZDepth,
+    contentTextDepthScale,
+    contentSizeMultiplier,
     keywordTiers,
     nodeToCluster,
     searchOpacities,
@@ -139,7 +139,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     const clusterColorsRef = useRef<Map<number, ClusterColorInfo>>(new Map());
     const nodeToClusterRef = useRef<Map<string, number>>(nodeToCluster ?? new Map());
     const labelManagerRef = useRef<LabelOverlayManager | null>(null);
-    const chunkScreenRectsRef = useRef<Map<string, ChunkScreenRect>>(new Map());
+    const contentScreenRectsRef = useRef<Map<string, ContentScreenRect>>(new Map());
     const cursorWorldPosRef = useRef<{ x: number; y: number } | null>(null);
 
     // Keep nodeToCluster ref updated
@@ -153,7 +153,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
       clusterColorsRef,
       nodeToClusterRef,
       labelManagerRef,
-      chunkScreenRectsRef,
+      contentScreenRectsRef,
       cursorWorldPosRef,
     };
 
@@ -197,7 +197,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
             nodes={nodes}
             edges={edges}
             projectNodes={projectNodes}
-            chunksByKeyword={chunksByKeyword}
+            contentsByKeyword={contentsByKeyword}
             colorMixRatio={colorMixRatio}
             colorDesaturation={colorDesaturation}
             pcaTransform={pcaTransform}
@@ -206,9 +206,9 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
             panelDistanceRatio={panelDistanceRatio}
             panelThickness={panelThickness}
             zoomPhaseConfig={zoomPhaseConfig}
-            chunkZDepth={chunkZDepth}
-            chunkTextDepthScale={chunkTextDepthScale}
-            chunkSizeMultiplier={chunkSizeMultiplier}
+            contentZDepth={contentZDepth}
+            contentTextDepthScale={contentTextDepthScale}
+            contentSizeMultiplier={contentSizeMultiplier}
             keywordTiers={keywordTiers}
             searchOpacities={searchOpacities}
             onProjectClick={onProjectClick}
@@ -224,7 +224,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
           ref={ref}
           labelRefs={labelRefs}
           keywordLabelRange={zoomPhaseConfig.keywordLabels}
-          chunksByKeyword={chunksByKeyword}
+          contentsByKeyword={contentsByKeyword}
           searchOpacities={searchOpacities}
           onKeywordLabelClick={onKeywordLabelClick}
           onClusterLabelClick={onClusterLabelClick}
