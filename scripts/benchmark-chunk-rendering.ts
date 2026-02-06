@@ -80,7 +80,7 @@ function benchmarkNodeScaleUpdate(nodes: SyntheticNode[], iterations: number): {
       if (node.type === 'keyword') {
         node.scale = scales.keywordScale;
       } else if (node.type === 'chunk') {
-        node.scale = scales.chunkScale;
+        node.scale = scales.contentScale;
       }
     }
   }
@@ -93,7 +93,7 @@ function benchmarkNodeScaleUpdate(nodes: SyntheticNode[], iterations: number): {
   return { avgTime, opsPerSec };
 }
 
-function benchmarkFullUpdateCycle(nodes: SyntheticNode[], iterations: number): { avgTime: number; opsPerSec: number } {
+function benchmarkFullUpdateCycle(nodes: SyntheticNode[], iterations: number): { avgTime: number; opsPerSec: number; updateCount: number } {
   // Simulate a full update cycle with camera movement detection
   let lastCameraZ = -1;
   const CAMERA_Z_THRESHOLD = 1;
@@ -114,7 +114,7 @@ function benchmarkFullUpdateCycle(nodes: SyntheticNode[], iterations: number): {
         if (node.type === 'keyword') {
           node.scale = scales.keywordScale;
         } else if (node.type === 'chunk') {
-          node.scale = scales.chunkScale;
+          node.scale = scales.contentScale;
         }
       }
 

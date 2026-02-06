@@ -24,7 +24,7 @@ export interface LabelsOverlayProps {
   /** Keyword label zoom range thresholds */
   keywordLabelRange: { start: number; full: number };
   /** Source data for chunk content (bypasses SimNode transformation) */
-  chunksByKeyword?: Map<string, ContentNode[]>;
+  contentsByKeyword?: Map<string, ContentNode[]>;
   /** Search opacity map (node id -> opacity) for semantic search highlighting */
   searchOpacities?: Map<string, number>;
   /** Handler for keyword label click */
@@ -36,7 +36,7 @@ export interface LabelsOverlayProps {
 }
 
 export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>(
-  function LabelsOverlay({ labelRefs, keywordLabelRange, chunksByKeyword, searchOpacities, onKeywordLabelClick, onClusterLabelClick, onKeywordHover }, ref) {
+  function LabelsOverlay({ labelRefs, keywordLabelRange, contentsByKeyword, searchOpacities, onKeywordLabelClick, onClusterLabelClick, onKeywordHover }, ref) {
     const {
       cameraStateRef,
       containerRef,
@@ -73,12 +73,12 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
         const portalKey = parentKeywordId ? `${parentKeywordId}-${chunkId}` : chunkId;
 
         if (visible) {
-          // Look up content directly from source data (chunksByKeyword)
+          // Look up content directly from source data (contentsByKeyword)
           // instead of using transformed content from SimNode
           let actualContent = content;
 
-          if (chunksByKeyword && parentKeywordId) {
-            const chunks = chunksByKeyword.get(parentKeywordId);
+          if (contentsByKeyword && parentKeywordId) {
+            const chunks = contentsByKeyword.get(parentKeywordId);
             const chunk = chunks?.find(c => c.id === chunkId);
             if (chunk) {
               actualContent = chunk.content;
@@ -95,7 +95,7 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
         }
         return next;
       });
-    }, [chunksByKeyword]);
+    }, [contentsByKeyword]);
 
     // Create label manager on mount
     useEffect(() => {

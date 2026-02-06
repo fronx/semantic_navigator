@@ -4,8 +4,8 @@
  */
 
 import { createServerClient } from '../src/lib/supabase';
-import { createChunkNodes } from '../src/lib/content-layout';
-import type { ChunkNode } from '../src/lib/content-loader';
+import { createContentNodes } from '../src/lib/content-layout';
+import type { ContentNode } from '../src/lib/content-loader';
 import type { SimNode } from '../src/lib/map-renderer';
 import * as d3 from 'd3-force';
 
@@ -33,9 +33,9 @@ async function testDataFlow() {
   const supabase = createServerClient();
 
   // ============================================================================
-  // PHASE 1: Database → ChunkNode
+  // PHASE 1: Database → ContentNode
   // ============================================================================
-  console.log('PHASE 1: Database → ChunkNode');
+  console.log('PHASE 1: Database → ContentNode');
   console.log('─'.repeat(80));
 
   const { data: dbChunks, error } = await supabase
@@ -51,24 +51,24 @@ async function testDataFlow() {
   console.log(`Fetched ${dbChunks.length} chunks from database`);
   logChunkStatus('DB chunks', dbChunks);
 
-  // Create ChunkNode objects (as API does)
-  const chunkNodes: ChunkNode[] = dbChunks.map(c => ({
+  // Create ContentNode objects (as API does)
+  const chunkNodes: ContentNode[] = dbChunks.map(c => ({
     id: c.id,
     keywordId: 'kw:movement',
     content: c.content || '',
     summary: c.summary,
   }));
 
-  logChunkStatus('ChunkNode objects', chunkNodes);
+  logChunkStatus('ContentNode objects', chunkNodes);
 
   // Assert all have content
   const allHaveContent = chunkNodes.every(c => c.content && c.content.length > 0);
-  console.log(`\n✓ All ChunkNodes have content: ${allHaveContent}`);
+  console.log(`\n✓ All ContentNodes have content: ${allHaveContent}`);
 
   // ============================================================================
-  // PHASE 2: ChunkNode → ChunkSimNode
+  // PHASE 2: ContentNode → ChunkSimNode
   // ============================================================================
-  console.log('\n\nPHASE 2: ChunkNode → ChunkSimNode');
+  console.log('\n\nPHASE 2: ContentNode → ChunkSimNode');
   console.log('─'.repeat(80));
 
   // Create mock keyword SimNode
@@ -85,7 +85,7 @@ async function testDataFlow() {
   }];
 
   const chunksByKeyword = new Map([['kw:movement', chunkNodes]]);
-  const { chunkNodes: simChunks } = createChunkNodes(keywords, chunksByKeyword);
+  const { chunkNodes: simChunks } = createContentNodes(keywords, chunksByKeyword);
 
   console.log(`Created ${simChunks.length} ChunkSimNode objects`);
   logChunkStatus('ChunkSimNode objects', simChunks);
@@ -166,7 +166,7 @@ async function testDataFlow() {
     console.log('   Check: React portal rendering, React key collisions, or timing issues.');
   } else {
     console.log('❌ Content lost at some transformation step!');
-    if (!simAllHaveContent) console.log('   ⚠️  Lost in: ChunkNode → ChunkSimNode');
+    if (!simAllHaveContent) console.log('   ⚠️  Lost in: ContentNode → ChunkSimNode');
     if (!simStillHaveContent) console.log('   ⚠️  Lost in: D3 Simulation');
     if (!combinedStillHaveContent) console.log('   ⚠️  Lost in: Array Combination');
   }

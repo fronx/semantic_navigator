@@ -4,8 +4,8 @@
  */
 
 import { createServerClient } from '../src/lib/supabase';
-import { createChunkNodes } from '../src/lib/content-layout';
-import type { ChunkNode } from '../src/lib/content-loader';
+import { createContentNodes } from '../src/lib/content-layout';
+import type { ContentNode } from '../src/lib/content-loader';
 import type { SimNode } from '../src/lib/map-renderer';
 import type { ChunkSimNode } from '../src/lib/content-layout';
 
@@ -31,8 +31,8 @@ async function testNodeContentAccess() {
     return;
   }
 
-  // Create ChunkNode objects
-  const chunkNodes: ChunkNode[] = dbChunks.map(c => ({
+  // Create ContentNode objects
+  const chunkNodes: ContentNode[] = dbChunks.map(c => ({
     id: c.id,
     keywordId: 'kw:movement',
     content: c.content || '',
@@ -53,7 +53,7 @@ async function testNodeContentAccess() {
   }];
 
   // Create ChunkSimNodes
-  const { chunkNodes: simChunks } = createChunkNodes(keywords, new Map([['kw:movement', chunkNodes]]));
+  const { chunkNodes: simChunks } = createContentNodes(keywords, new Map([['kw:movement', chunkNodes]]));
 
   // Combine with keywords (as R3FTopicsScene does)
   const combined: SimNode[] = [...keywords, ...simChunks];

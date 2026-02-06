@@ -85,7 +85,7 @@ function benchmarkChunkDataProcessing(chunks: ChunkData[], iterations: number) {
     // Simulate scale updates
     const scales = calculateScales(5000);
     for (const node of chunkNodes) {
-      node.scale = scales.chunkScale;
+      node.scale = scales.contentScale;
     }
   }
 

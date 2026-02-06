@@ -4,7 +4,7 @@
  */
 
 import { createServerClient } from '../src/lib/supabase';
-import type { ChunkNode } from '../src/lib/content-loader';
+import type { ContentNode } from '../src/lib/content-loader';
 
 async function testMapIterationOrder() {
   console.log('=== Testing Map Iteration Order ===\n');
@@ -34,8 +34,8 @@ async function testMapIterationOrder() {
 
   console.log(`Query returned ${data.length} keyword-chunk associations\n`);
 
-  // Transform to ChunkNode objects (as API does)
-  const chunks: ChunkNode[] = data.map((kw: any) => ({
+  // Transform to ContentNode objects (as API does)
+  const chunks: ContentNode[] = data.map((kw: any) => ({
     id: kw.nodes.id,
     keywordId: `kw:${kw.keyword}`,
     content: kw.nodes.content || '',
@@ -50,7 +50,7 @@ async function testMapIterationOrder() {
   });
 
   // Create Map (as useChunkLoading does)
-  const chunksByKeyword = new Map<string, ChunkNode[]>();
+  const chunksByKeyword = new Map<string, ContentNode[]>();
   chunksByKeyword.set('kw:movement', chunks);
 
   console.log('\n\nIterating over Map:');
@@ -82,13 +82,13 @@ async function testMapIterationOrder() {
   console.log('Testing Map creation stability:');
   console.log('='.repeat(80));
 
-  const map1 = new Map<string, ChunkNode[]>();
+  const map1 = new Map<string, ContentNode[]>();
   map1.set('kw:movement', chunks);
 
-  const map2 = new Map<string, ChunkNode[]>();
+  const map2 = new Map<string, ContentNode[]>();
   map2.set('kw:movement', chunks);
 
-  const map3 = new Map<string, ChunkNode[]>();
+  const map3 = new Map<string, ContentNode[]>();
   map3.set('kw:movement', [...chunks]); // spread array
 
   console.log('\nMap 1 first chunk:', map1.get('kw:movement')?.[0]?.id.substring(0, 8));
@@ -108,7 +108,7 @@ async function testMapIterationOrder() {
   console.log('='.repeat(80));
 
   // Initial state (empty)
-  let stateMap = new Map<string, ChunkNode[]>();
+  let stateMap = new Map<string, ContentNode[]>();
   console.log('\n1. Initial state: empty Map');
   console.log(`   Size: ${stateMap.size}`);
 
