@@ -8,6 +8,11 @@ Prefer producing working code changes over extended investigation. If exploring 
 
 ## Development Principles
 
+**Before implementing TopicsView features**, read the [Architecture Onboarding Guide](docs/guides/architecture-onboarding.md) to understand existing patterns. The three essential files are:
+1. `src/lib/topics-hover-controller.ts` - Interaction patterns
+2. `src/components/topics-r3f/R3FTopicsScene.tsx` - Rendering architecture
+3. `src/lib/topics-graph-nodes.ts` - Data transformation
+
 When fixing bugs or implementing features, always check for existing patterns/systems before building new ones. Search for existing hover handlers, event systems, shared components, etc. before creating parallel implementations.
 
 ## Project Tools
@@ -265,6 +270,7 @@ Requires `.env.local` with:
 ## Documentation
 
 - `docs/README.md` - Architecture documentation index and ADRs
+- `docs/guides/architecture-onboarding.md` - **Essential reading before implementing TopicsView features**
 - `docs/patterns/` - Reusable code patterns (stable refs, etc.)
 
 **When creating new documentation files**, always add a link to `docs/README.md` so they're discoverable. This includes ADRs, guides, patterns, and investigation reports.

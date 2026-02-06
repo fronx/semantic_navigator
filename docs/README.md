@@ -2,6 +2,7 @@
 
 ## Guides
 
+- [Architecture Onboarding](guides/architecture-onboarding.md) - **Essential reading before implementing TopicsView features** - The three key files to understand existing patterns and avoid building parallel implementations
 - [Clustering Systems](guides/clustering-systems.md) - Understanding the two clustering systems (MapView vs TopicsView), inspection tools, and maintenance
 - [Local NPM Packages](guides/local-npm-packages.md) - Developing with locally checked-out packages (umapper)
 
