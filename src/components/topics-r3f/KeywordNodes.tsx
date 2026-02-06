@@ -14,6 +14,7 @@ import { calculateScales } from "@/lib/content-scale";
 import { getNodeColor, BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/three/node-renderer";
 import { KEYWORD_TIER_SCALES } from "@/lib/semantic-filter-config";
 import { useInstancedMeshMaterial } from "@/hooks/useInstancedMeshMaterial";
+import { useStableInstanceCount } from "@/hooks/useStableInstanceCount";
 
 const VISIBILITY_THRESHOLD = 0.01;
 
@@ -45,14 +46,7 @@ export function KeywordNodes({
 }: KeywordNodesProps) {
   const { camera } = useThree();
 
-  // Stable instance count: over-allocate with 50% buffer so small count changes
-  // (e.g., 489→521 during data loading) don't change args and recreate the mesh.
-  // React Strict Mode remounts reset useRef, so the buffer absorbs growth.
-  const stableCountRef = useRef(Math.ceil(nodeCount * 1.5));
-  if (nodeCount > stableCountRef.current) {
-    stableCountRef.current = Math.ceil(nodeCount * 1.5);
-  }
-  const stableCount = stableCountRef.current;
+  const { stableCount, meshKey } = useStableInstanceCount(nodeCount);
 
   // Track mount/unmount for debugging click issues
   useEffect(() => {
@@ -177,6 +171,7 @@ export function KeywordNodes({
 
   return (
     <instancedMesh
+      key={meshKey}
       ref={handleMeshRef}
       args={[geometry, undefined, stableCount]}
       frustumCulled={false}

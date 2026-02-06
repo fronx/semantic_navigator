@@ -24,6 +24,11 @@ Hard-won insights and best practices for working with Three.js and R3F in this c
 
 **Quick fix**: After updating instances, set `mesh.instanceMatrix.needsUpdate = true` and `mesh.instanceColor.needsUpdate = true`.
 
+### [Stable InstancedMesh](stable-instanced-mesh.md)
+**Never let `args` change on `<instancedMesh>` without a React `key`.** R3F silently drops event handlers when it recreates the mesh. Use `useStableInstanceCount` hook for buffered allocation + `key={meshKey}` as safety net.
+
+**Quick fix**: `const { stableCount, meshKey } = useStableInstanceCount(nodeCount)` + `<instancedMesh key={meshKey} args={[geo, undefined, stableCount]} />`
+
 ### [Event System](event-system.md)
 **Custom DOM handlers can coexist with R3F events.** When using custom `addEventListener` on canvas (for pan/zoom), R3F's onClick/onPointerOver still work if meshes have materials.
 

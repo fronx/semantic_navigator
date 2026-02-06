@@ -16,6 +16,7 @@ import { CONTENT_Z_DEPTH } from "@/lib/content-zoom-config";
 import { calculateScales } from "@/lib/content-scale";
 import { getNodeColor, BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/three/node-renderer";
 import { useInstancedMeshMaterial } from "@/hooks/useInstancedMeshMaterial";
+import { useStableInstanceCount } from "@/hooks/useStableInstanceCount";
 
 const VISIBILITY_THRESHOLD = 0.01;
 
@@ -63,13 +64,7 @@ export function ContentNodes({
 }: ContentNodesProps) {
   const { camera, size, viewport } = useThree();
 
-  // Stable instance count: over-allocate with 50% buffer so small count changes
-  // don't change args and recreate the mesh (which drops event handlers).
-  const stableCountRef = useRef(Math.ceil(nodeCount * 1.5));
-  if (nodeCount > stableCountRef.current) {
-    stableCountRef.current = Math.ceil(nodeCount * 1.5);
-  }
-  const stableCount = stableCountRef.current;
+  const { stableCount, meshKey } = useStableInstanceCount(nodeCount);
 
   const { meshRef, handleMeshRef } = useInstancedMeshMaterial(stableCount);
   const matrixRef = useRef(new THREE.Matrix4());
@@ -243,6 +238,7 @@ export function ContentNodes({
 
   return (
     <instancedMesh
+      key={meshKey}
       ref={handleMeshRef}
       args={[geometry, undefined, stableCount]}
       frustumCulled={false}

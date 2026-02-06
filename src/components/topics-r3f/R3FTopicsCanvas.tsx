@@ -220,7 +220,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
         </Canvas>
 
         {/* DOM-based label overlay (sibling to Canvas) */}
-        {/* <LabelsOverlay
+        <LabelsOverlay
           ref={ref}
           labelRefs={labelRefs}
           keywordLabelRange={zoomPhaseConfig.keywordLabels}
@@ -229,7 +229,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
           onKeywordLabelClick={onKeywordLabelClick}
           onClusterLabelClick={onClusterLabelClick}
           onKeywordHover={onKeywordHover}
-        /> */}
+        />
       </div>
     );
   }
