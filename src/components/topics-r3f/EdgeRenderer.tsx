@@ -51,6 +51,8 @@ export interface EdgeRendererProps {
   searchOpacities?: Map<string, number>;
   /** Hovered keyword ID ref — reaching edges only show for hovered node */
   hoveredKeywordIdRef?: React.RefObject<string | null>;
+  /** Pulled node positions (for position overrides when rendering edges to off-screen nodes) */
+  pulledPositionsRef?: React.RefObject<Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>>;
 }
 
 export function EdgeRenderer({
@@ -68,6 +70,7 @@ export function EdgeRenderer({
   simNodes,
   searchOpacities,
   hoveredKeywordIdRef,
+  pulledPositionsRef,
 }: EdgeRendererProps): React.JSX.Element | null {
   const lineRef = useRef<THREE.Line>(null);
   const tempColor = useRef(new THREE.Color());
@@ -132,6 +135,9 @@ export function EdgeRenderer({
     // Hovered node ID for revealing reaching edges on hover
     const hoveredId = hoveredKeywordIdRef?.current ?? null;
 
+    // Pulled node positions for position overrides
+    const pulledPositions = pulledPositionsRef?.current ?? new Map();
+
     for (let edgeIndex = 0; edgeIndex < edges.length; edgeIndex++) {
       const edge = edges[edgeIndex];
       const sourceId = getLinkNodeId(edge.source);
@@ -144,9 +150,15 @@ export function EdgeRenderer({
         continue;
       }
 
+      // Position override for pulled nodes: use clamped position if node is pulled
+      const sourcePulled = pulledPositions.get(sourceId);
+      const targetPulled = pulledPositions.get(targetId);
+
       // Viewport culling: hide if neither node visible, dim if only one visible
-      const sx = sourceNode.x ?? 0, sy = sourceNode.y ?? 0;
-      const tx = targetNode.x ?? 0, ty = targetNode.y ?? 0;
+      const sx = sourcePulled ? sourcePulled.x : (sourceNode.x ?? 0);
+      const sy = sourcePulled ? sourcePulled.y : (sourceNode.y ?? 0);
+      const tx = targetPulled ? targetPulled.x : (targetNode.x ?? 0);
+      const ty = targetPulled ? targetPulled.y : (targetNode.y ?? 0);
       const sourceInView = sx >= minX && sx <= maxX && sy >= minY && sy <= maxY;
       const targetInView = tx >= minX && tx <= maxX && ty >= minY && ty <= maxY;
       if (!sourceInView && !targetInView) {

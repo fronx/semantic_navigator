@@ -67,6 +67,8 @@ export interface LabelOverlayOptions {
   getNodeToCluster?: () => Map<string, number> | null;
   /** Function to get cursor position in world coordinates (for hover labels) */
   getCursorWorldPos?: () => { x: number; y: number } | null;
+  /** Function to get pulled node positions (clamped to viewport edge) */
+  getPulledPositions?: () => Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>;
   /** Handler for keyword label click */
   onKeywordLabelClick?: (keywordId: string) => void;
   /** Handler for cluster label click */
@@ -95,6 +97,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     getChunkScreenRects,
     getNodeToCluster,
     getCursorWorldPos,
+    getPulledPositions,
     onKeywordLabelClick,
     onClusterLabelClick,
     onChunkLabelContainer,
@@ -261,6 +264,9 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     const keywordStart = Math.max(keywordRange.start, keywordRange.full);
     const keywordFull = Math.min(keywordRange.start, keywordRange.full);
 
+    // Get pulled positions for position overrides
+    const pulledPositions = getPulledPositions?.() ?? new Map();
+
     // Calculate the maximum degree for normalization
     let maxDegree = 1;
     for (const degree of nodeDegrees.values()) {
@@ -305,9 +311,10 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
 
       seenNodes.add(node.id);
 
-      // Convert node position to screen coordinates
-      const worldX = node.x ?? 0;
-      const worldY = node.y ?? 0;
+      // Position override for pulled nodes: use clamped position if node is pulled
+      const pulledData = pulledPositions.get(node.id);
+      const worldX = pulledData ? pulledData.x : (node.x ?? 0);
+      const worldY = pulledData ? pulledData.y : (node.y ?? 0);
       const screenPos = worldToScreen({ x: worldX, y: worldY });
       if (!screenPos) continue;
 
@@ -351,6 +358,12 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
       const newTop = screenPos.y;
       let newFontSize = baseFontSize * zoomScale;
 
+      // Reduce scale for off-screen pulled nodes (not cliff/margin nodes)
+      // Cliff nodes have empty connectedPrimaryIds — they're primary nodes repositioned to the edge
+      if (pulledData && pulledData.connectedPrimaryIds.length > 0) {
+        newFontSize *= 0.6;
+      }
+
       // Scale up if this keyword is hovered
       if (hoveredKeyword && node.id === hoveredKeyword.id) {
         newFontSize *= 1.5; // Scale multiplier for readable hover size
@@ -363,6 +376,14 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
         { prop: "top", key: "lastTop", value: newTop, threshold: 1 },
         { prop: "fontSize", key: "lastFontSize", value: newFontSize, threshold: 0.5 },
       ]);
+
+      // Apply reduced opacity for off-screen pulled nodes (not cliff/margin nodes)
+      if (pulledData && pulledData.connectedPrimaryIds.length > 0) {
+        labelEl.style.opacity = "0.4";
+      } else {
+        // Reset opacity for normal and cliff nodes (will be overridden by updateLabelOpacity if needed)
+        labelEl.style.opacity = "1";
+      }
 
       // Update text content in the clickable span
       const textSpan = labelEl.querySelector("span");

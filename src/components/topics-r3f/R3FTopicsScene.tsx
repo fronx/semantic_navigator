@@ -103,6 +103,8 @@ export interface R3FTopicsSceneProps {
   labelRefs: LabelRefs;
   /** Cursor position for 3D text proximity filtering */
   cursorPosition: { x: number; y: number } | null;
+  /** Ref for flyTo animation (populated by CameraController) */
+  flyToRef?: React.MutableRefObject<((x: number, y: number) => void) | null>;
 }
 
 export function R3FTopicsScene({
@@ -140,6 +142,7 @@ export function R3FTopicsScene({
   onKeywordClick,
   labelRefs,
   cursorPosition,
+  flyToRef,
 }: R3FTopicsSceneProps) {
   // Level 1: Simulation nodes
   // - Unified mode: all nodes (keywords + content) from UnifiedSimulation
@@ -252,6 +255,23 @@ export function R3FTopicsScene({
     }
   }, [simNodes, edges, pcaTransform, labelRefs]);
 
+  // Build adjacency map for viewport edge magnets (node ID -> neighbors)
+  const adjacencyMap = useMemo(() => {
+    const map = new Map<string, Array<{ id: string; similarity: number }>>();
+    for (const edge of edges) {
+      const sourceId = typeof edge.source === 'string' ? edge.source : edge.source;
+      const targetId = typeof edge.target === 'string' ? edge.target : edge.target;
+      const similarity = (edge as any).similarity ?? 1.0;
+
+      if (!map.has(sourceId)) map.set(sourceId, []);
+      if (!map.has(targetId)) map.set(targetId, []);
+
+      map.get(sourceId)!.push({ id: targetId, similarity });
+      map.get(targetId)!.push({ id: sourceId, similarity });
+    }
+    return map;
+  }, [edges]);
+
   // Compute curve directions ONLY for similarity edges
   const curveDirections = useEdgeCurveDirections(simNodes, edges as SimLink[]);
 
@@ -273,7 +293,7 @@ export function R3FTopicsScene({
 
   return (
     <>
-      <CameraController onZoomChange={onZoomChange} maxDistance={maxDistance} />
+      <CameraController onZoomChange={onZoomChange} maxDistance={maxDistance} flyToRef={flyToRef} />
 
       {/* Labels updater - updates camera state and triggers label renders */}
       <LabelsUpdater labelRefs={labelRefs} />
@@ -363,6 +383,7 @@ export function R3FTopicsScene({
           showKNNEdges={showKNNEdges}
           searchOpacities={searchOpacities}
           hoveredKeywordIdRef={labelRefs.hoveredKeywordIdRef}
+          pulledPositionsRef={labelRefs.pulledPositionsRef}
         />
       )}
 
@@ -379,6 +400,9 @@ export function R3FTopicsScene({
           keywordTiers={keywordTiers}
           searchOpacities={searchOpacities}
           onKeywordClick={onKeywordClick}
+          adjacencyMap={adjacencyMap}
+          pulledPositionsRef={labelRefs.pulledPositionsRef}
+          flyToRef={flyToRef}
         />
       )}
     </>

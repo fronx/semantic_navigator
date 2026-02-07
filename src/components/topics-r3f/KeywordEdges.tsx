@@ -23,6 +23,8 @@ export interface KeywordEdgesProps {
   searchOpacities?: Map<string, number>;
   /** Hovered keyword ID ref — reaching edges only show for hovered node */
   hoveredKeywordIdRef?: React.RefObject<string | null>;
+  /** Pulled node positions (for position overrides when rendering edges to off-screen nodes) */
+  pulledPositionsRef?: React.RefObject<Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>>;
 }
 
 export function KeywordEdges({
@@ -36,6 +38,7 @@ export function KeywordEdges({
   showKNNEdges = false,
   searchOpacities,
   hoveredKeywordIdRef,
+  pulledPositionsRef,
 }: KeywordEdgesProps): React.JSX.Element | null {
   const nodeMap = useMemo(
     () => new Map(simNodes.map((n) => [n.id, n])),
@@ -67,6 +70,7 @@ export function KeywordEdges({
       simNodes={simNodes}
       searchOpacities={searchOpacities}
       hoveredKeywordIdRef={hoveredKeywordIdRef}
+      pulledPositionsRef={pulledPositionsRef}
     />
   );
 }

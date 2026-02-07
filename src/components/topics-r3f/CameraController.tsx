@@ -5,9 +5,9 @@
  * Implements manual pan for maximum code sharing with Three.js renderer.
  */
 
-import { useRef, useEffect, type RefObject } from "react";
+import { useRef, useEffect, useCallback, type RefObject } from "react";
 import { OrbitControls } from "@react-three/drei";
-import { useThree } from "@react-three/fiber";
+import { useThree, useFrame } from "@react-three/fiber";
 import type { OrbitControls as OrbitControlsType } from "three-stdlib";
 import type { Camera, WebGLRenderer } from "three";
 import { CAMERA_Z_SCALE_BASE } from "@/lib/three/camera-controller";
@@ -20,6 +20,8 @@ import { calculatePan } from "@/lib/three/pan-camera";
 export interface CameraControllerProps {
   onZoomChange?: (zoomScale: number) => void;
   maxDistance?: number;
+  /** Ref that will be populated with a flyTo(x, y) function for animated camera pan */
+  flyToRef?: React.MutableRefObject<((x: number, y: number) => void) | null>;
 }
 
 /**
@@ -61,9 +63,66 @@ function usePanHandler(
   }, [camera, gl, controlsRef, onZoomChange]);
 }
 
-export function CameraController({ onZoomChange, maxDistance = CAMERA_Z_MAX }: CameraControllerProps) {
+export function CameraController({ onZoomChange, maxDistance = CAMERA_Z_MAX, flyToRef }: CameraControllerProps) {
   const controlsRef = useRef<OrbitControlsType>(null);
   const { camera, gl, size } = useThree();
+
+  // Animated flyTo state (ref-driven, no React re-renders)
+  const flyToAnimRef = useRef<{
+    startX: number; startY: number;
+    targetX: number; targetY: number;
+    startTime: number; duration: number;
+  } | null>(null);
+
+  // Ease-out cubic: decelerates smoothly
+  const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+
+  // Animate flyTo per frame
+  useFrame(() => {
+    const anim = flyToAnimRef.current;
+    if (!anim) return;
+
+    const elapsed = performance.now() - anim.startTime;
+    const t = Math.min(1, elapsed / anim.duration);
+    const eased = easeOutCubic(t);
+
+    const x = anim.startX + (anim.targetX - anim.startX) * eased;
+    const y = anim.startY + (anim.targetY - anim.startY) * eased;
+
+    camera.position.x = x;
+    camera.position.y = y;
+
+    if (controlsRef.current) {
+      controlsRef.current.target.set(x, y, 0);
+      controlsRef.current.update();
+    }
+
+    if (onZoomChange) {
+      const zoomScale = CAMERA_Z_SCALE_BASE / camera.position.z;
+      onZoomChange(zoomScale);
+    }
+
+    if (t >= 1) {
+      flyToAnimRef.current = null;
+    }
+  });
+
+  // Expose flyTo function via ref
+  const flyTo = useCallback((targetX: number, targetY: number) => {
+    flyToAnimRef.current = {
+      startX: camera.position.x,
+      startY: camera.position.y,
+      targetX,
+      targetY,
+      startTime: performance.now(),
+      duration: 400,
+    };
+  }, [camera]);
+
+  useEffect(() => {
+    if (flyToRef) flyToRef.current = flyTo;
+    return () => { if (flyToRef) flyToRef.current = null; };
+  }, [flyToRef, flyTo]);
 
   // Report zoom changes when camera moves
   const handleChange = () => {
