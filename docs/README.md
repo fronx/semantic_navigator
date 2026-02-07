@@ -9,11 +9,17 @@
 ## Patterns
 
 - [Stable Refs](patterns/stable-refs.md) - Prevent React effect re-runs for callbacks and config (`useLatest`, `useStableCallback`)
+- [Label Manager Stability](patterns/label-manager-stability.md) - Prevent label flicker by stabilizing useEffect dependencies (refs for volatile data, useStableCallback for handlers)
+- [Enforcing Stability](patterns/enforcing-stability.md) - ESLint rules, TypeScript types, and runtime detection to prevent unstable callback bugs
 - [Three.js & R3F Patterns](patterns/threejs-r3f/index.md) - Best practices for Three.js and React Three Fiber (instanceColor, materials, depth testing, event handling)
 
 ## Lab Experiments
 
 - [Graph Layout Lab](../lab/graph-layout/README.md) - UMAP layout investigations: centrality balance, repulsion tuning, bipartite community detection
+
+## Designs
+
+- [Viewport Edge Magnets](designs/viewport-edge-magnets.md) - Pull off-screen keyword neighbors to viewport edges as navigational ghosts with visible connections
 
 ## Architecture
 

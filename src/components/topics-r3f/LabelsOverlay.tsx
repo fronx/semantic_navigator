@@ -13,6 +13,7 @@ import { createLabelOverlayManager } from "@/lib/label-overlays";
 import { CAMERA_FOV_DEGREES } from "@/lib/three/zoom-to-cursor";
 import { getNodeRadius, DOT_SCALE_FACTOR } from "@/lib/three/node-renderer";
 import { useStableCallback } from "@/hooks/useStableRef";
+import { useStableEffect } from "@/hooks/useStableEffect";
 import type { LabelRefs, LabelsOverlayHandle } from "./R3FLabelContext";
 import type { SimNode } from "@/lib/map-renderer";
 import type { ContentNode } from "@/lib/content-loader";
@@ -56,6 +57,10 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
     const searchOpacitiesRef = useRef(searchOpacities);
     searchOpacitiesRef.current = searchOpacities;
 
+    // Ref for contentsByKeyword to prevent handleChunkLabelContainer from recreating on every content update
+    const contentsByKeywordRef = useRef(contentsByKeyword);
+    contentsByKeywordRef.current = contentsByKeyword;
+
     // Track visible chunk labels for portal rendering
     const [chunkPortals, setChunkPortals] = useState<Map<string, {
       container: HTMLElement;
@@ -81,6 +86,7 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
           // instead of using transformed content from SimNode
           let actualContent = content;
 
+          const contentsByKeyword = contentsByKeywordRef.current;
           if (contentsByKeyword && parentKeywordId) {
             const chunks = contentsByKeyword.get(parentKeywordId);
             const chunk = chunks?.find(c => c.id === chunkId);
@@ -99,10 +105,11 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
         }
         return next;
       });
-    }, [contentsByKeyword]);
+    }, []); // No dependencies - uses refs for latest values
 
     // Create label manager on mount
-    useEffect(() => {
+    // Use useStableEffect to detect if dependencies become unstable (causing flicker)
+    useStableEffect(() => {
       const container = containerRef.current;
       if (!container) return;
 
@@ -189,6 +196,7 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
         getChunkScreenRects: () => labelRefs.contentScreenRectsRef.current,
         getNodeToCluster: () => nodeToClusterRef.current,
         getCursorWorldPos: () => cursorWorldPosRef.current,
+        getPulledPositions: () => labelRefs.pulledPositionsRef.current,
         onKeywordLabelClick,
         onClusterLabelClick,
         onChunkLabelContainer: handleChunkLabelContainer,
@@ -202,7 +210,10 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
         labelManager.destroy();
         labelManagerRef.current = null;
       };
-    }, [containerRef, cameraStateRef, clusterColorsRef, labelManagerRef, keywordLabelRange, cursorWorldPosRef, handleChunkLabelContainer, stableOnKeywordHover]);
+    }, [containerRef, cameraStateRef, clusterColorsRef, labelManagerRef, keywordLabelRange, cursorWorldPosRef, handleChunkLabelContainer, stableOnKeywordHover], {
+      name: 'label-manager',
+      maxRunsBeforeWarn: 3, // Warn if recreates >3 times in 1 second (indicates unstable deps)
+    });
 
     // Expose imperative handle for TopicsView to call
     useImperativeHandle(ref, () => ({

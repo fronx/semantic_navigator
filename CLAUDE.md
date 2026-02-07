@@ -21,6 +21,12 @@ This project has a code-simplifier agent. After implementing features or fixes, 
 
 ## Common Pitfalls
 
+**Label Flicker Bug (occurred 2x: 2026-02-06, 2026-02-07)**: When labels flicker on mouse movement or content updates, the cause is unstable dependencies in the label manager's `useEffect`. This destroys and recreates the manager on every render. **Pattern to follow:**
+- Use `useStableCallback` for all callbacks passed to `LabelsOverlay`
+- Use refs (not direct closure) for frequently-changing data like Maps
+- Wrap expensive effects with `useStableEffect` to detect instability
+- See [`docs/patterns/label-manager-stability.md`](docs/patterns/label-manager-stability.md) for full pattern and [`docs/patterns/enforcing-stability.md`](docs/patterns/enforcing-stability.md) for prevention tools
+
 When implementing opacity/visibility features, check ALL code paths that set opacity on the same element. Multiple systems (base opacity, keyword label opacity, zoom-based fading) can conflict. Trace every opacity setter before proposing a fix.
 
 ## Commands

@@ -10,6 +10,7 @@ import { Environment } from "@react-three/drei";
 import { R3FTopicsScene } from "./R3FTopicsScene";
 import { LabelsOverlay } from "./LabelsOverlay";
 import { getBackgroundColor, watchThemeChanges } from "@/lib/theme";
+import { useStableCallback } from "@/hooks/useStableRef";
 import { CAMERA_FOV_DEGREES } from "@/lib/three/zoom-to-cursor";
 import { useWheelEventForwarding } from "@/hooks/useWheelEventForwarding";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
@@ -175,6 +176,8 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     const contentScreenRectsRef = useRef<Map<string, ContentScreenRect>>(new Map());
     const cursorWorldPosRef = useRef<{ x: number; y: number } | null>(null);
     const hoveredKeywordIdRef = useRef<string | null>(null);
+    const pulledPositionsRef = useRef<Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>>(new Map());
+    const flyToRef = useRef<((x: number, y: number) => void) | null>(null);
 
     // Keep nodeToCluster ref updated
     nodeToClusterRef.current = nodeToCluster ?? new Map();
@@ -190,10 +193,17 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
       contentScreenRectsRef,
       cursorWorldPosRef,
       hoveredKeywordIdRef,
+      pulledPositionsRef,
     };
 
     // Forward wheel events from DOM overlays to canvas
     useWheelEventForwarding(containerRef);
+
+    // Stabilize the keyword hover callback to prevent label manager recreation on every mouse move
+    const stableOnKeywordHover = useStableCallback((id: string | null) => {
+      hoveredKeywordIdRef.current = id;
+      onKeywordHover(id);
+    });
 
     return (
       <div
@@ -250,6 +260,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
             onProjectDrag={onProjectDrag}
             onZoomChange={onZoomChange}
             onKeywordClick={onKeywordLabelClick}
+            flyToRef={flyToRef}
             labelRefs={labelRefs}
             cursorPosition={cursorPosition}
           />
@@ -264,10 +275,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
           searchOpacities={searchOpacities}
           onKeywordLabelClick={onKeywordLabelClick}
           onClusterLabelClick={onClusterLabelClick}
-          onKeywordHover={(id) => {
-            hoveredKeywordIdRef.current = id;
-            onKeywordHover(id);
-          }}
+          onKeywordHover={stableOnKeywordHover}
         />
       </div>
     );
