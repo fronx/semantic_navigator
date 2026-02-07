@@ -25,6 +25,10 @@
 - [Cluster Labels](cluster-labels.md) - Semantic labels for keyword clusters via Leiden algorithm and LLM generation
 - [Viewport Edge Magnets](architecture/viewport-edge-magnets.md) - Pull off-screen keyword neighbors to viewport edges as navigational ghosts with visible connections
 
+### Plans
+
+- [Click-to-Focus with Margin Push](plans/click-to-focus-margin-push.md) - Replace click-to-filter with animated focus mode that pushes non-neighbors to viewport margins
+
 ### Investigations
 
 - [Search Performance Investigation](architecture/search-performance-investigation.md) - Root cause analysis of search timeouts (resolved: PostgreSQL query planner behavior with explicit null parameters)
