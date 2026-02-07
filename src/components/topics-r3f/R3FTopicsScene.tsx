@@ -51,7 +51,8 @@ function groupNodesByMap(nodes: SimNode[], nodeToCluster: Map<string, number>): 
   return map;
 }
 
-const ENABLE_MARKDOWN_TEST = false;
+const ENABLE_MARKDOWN_TEST = true;
+const FORCE_SAMPLE_MARKDOWN = true;
 
 export interface R3FTopicsSceneProps {
   nodes: KeywordNode[];
@@ -186,6 +187,9 @@ export function R3FTopicsScene({
   }, [keywordNodes, contentsByKeyword]);
 
   const prototypeMarkdown = useMemo(() => {
+    if (FORCE_SAMPLE_MARKDOWN) {
+      return null;
+    }
     if (!contentsByKeyword || contentsByKeyword.size === 0) {
       return null;
     }

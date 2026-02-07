@@ -11,13 +11,15 @@ import type { Text as TroikaText } from "troika-three-text";
 type DreiTextProps = ComponentProps<typeof Text>;
 
 export interface GraphTextLabelProps extends Omit<DreiTextProps, "children"> {
-  text: string;
+  text?: string;
+  textSegments?: DreiTextProps["textSegments"];
   color?: string;
   opacity?: number;
 }
 
 export const GraphTextLabel = forwardRef<TroikaText, GraphTextLabelProps>(function GraphTextLabel({
   text,
+  textSegments,
   color = "#fefce8",
   maxWidth = 400,
   fontSize = 42,
@@ -28,6 +30,10 @@ export const GraphTextLabel = forwardRef<TroikaText, GraphTextLabelProps>(functi
   opacity = 1,
   ...rest
 }: GraphTextLabelProps, ref) {
+  const resolvedText =
+    text ??
+    (textSegments ? textSegments.map((segment) => segment?.text ?? "").join("") : undefined);
+
   return (
     <Text
       ref={ref}
@@ -48,9 +54,9 @@ export const GraphTextLabel = forwardRef<TroikaText, GraphTextLabelProps>(functi
       material-transparent
       material-depthTest={false}
       material-depthWrite={false}
+      text={resolvedText}
+      textSegments={textSegments}
       {...rest}
-    >
-      {text}
-    </Text>
+    />
   );
 });
