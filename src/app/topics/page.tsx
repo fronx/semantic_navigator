@@ -18,6 +18,7 @@ import type { SemanticFilter } from "@/lib/topics-filter";
 import { CAMERA_Z_SCALE_BASE } from "@/lib/three/camera-controller";
 import { BASE_CAMERA_Z } from "@/lib/content-zoom-config";
 import { searchResultsToKeywordIds, extractMatchedKeywords } from "@/lib/search-filter";
+import { StartOverlay } from "@/components/StartOverlay";
 
 /** Debounce a value - returns the value after it stops changing for `delay` ms */
 function useDebouncedValue<T>(value: T, delay: number): T {
@@ -41,6 +42,7 @@ export default function TopicsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isStale, setIsStale] = useState(false);
+  const [started, setStarted] = useState(false);
 
   // Consolidated settings
   const { settings, isReady: settingsReady, update, updateZoomPhaseConfig, toggleSection } = useTopicsSettings();
@@ -433,6 +435,21 @@ export default function TopicsPage() {
       <div className="h-screen flex items-center justify-center bg-white dark:bg-zinc-900">
         <span className="text-zinc-500">No topics found. Import some articles first.</span>
       </div>
+    );
+  }
+
+  if (!started) {
+    return (
+      <StartOverlay onStart={() => {
+        // Restore saved playing state if it was true
+        try {
+          const saved = JSON.parse(localStorage.getItem("music-player") || "{}");
+          if (saved.playing) {
+            document.dispatchEvent(new CustomEvent("music:start"));
+          }
+        } catch {}
+        setStarted(true);
+      }} />
     );
   }
 
