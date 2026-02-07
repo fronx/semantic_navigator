@@ -33,6 +33,7 @@ import type { ContentNode } from "@/lib/content-loader";
 import type { KeywordTierMap } from "@/lib/topics-filter";
 import { ClusterLabels3D } from "./ClusterLabels3D";
 import { KeywordLabels3D } from "./KeywordLabels3D";
+import { computeLabelFade } from "@/lib/label-fade-coordinator";
 
 /**
  * Group nodes by cluster ID from nodeToCluster map.
@@ -165,10 +166,10 @@ export function R3FTopicsScene({
   const [keywordNodes, setKeywordNodes] = useState<SimNode[]>([]);
   const [unifiedNodes, setUnifiedNodes] = useState<(SimNode | ContentSimNode)[]>([]);
   const [clusterColors, setClusterColors] = useState<Map<number, ClusterColorInfo>>(new Map());
-  const [nodeDegrees, setNodeDegrees] = useState<Map<string, number>>(new Map());
 
   // Unified simulation tick method (manual frame-sync to prevent jitter)
   const unifiedSimTickRef = useRef<(() => void) | null>(null);
+
 
   // Calculate stable max content node count (available immediately from contentsByKeyword)
   const contentNodeCount = useMemo(() => {
@@ -276,7 +277,6 @@ export function R3FTopicsScene({
       const empty = new Map<number, ClusterColorInfo>();
       labelRefs.clusterColorsRef.current = empty;
       setClusterColors(empty);
-      setNodeDegrees(new Map());
       return;
     }
 
@@ -285,7 +285,6 @@ export function R3FTopicsScene({
       edges as SimLink[]
     );
     labelRefs.nodeDegreesRef.current = degrees;
-    setNodeDegrees(new Map(degrees));
 
     const runtimeClusterMap = nodeToCluster ?? labelRefs.nodeToClusterRef.current;
     const grouped = runtimeClusterMap && runtimeClusterMap.size > 0
@@ -317,8 +316,12 @@ export function R3FTopicsScene({
   // Compute curve directions ONLY for similarity edges
   const curveDirections = useEdgeCurveDirections(simNodes, edges as SimLink[]);
 
-  // Calculate dynamic max zoom distance based on visible node positions
   const { size, camera } = useThree();
+
+  // Cross-fade between cluster labels and keyword labels based on zoom
+  const labelFadeT = computeLabelFade(cameraZ ?? camera.position.z, zoomPhaseConfig.keywordLabels);
+
+  // Calculate dynamic max zoom distance based on visible node positions
   const maxDistance = useMemo(() => {
     if (simNodes.length === 0) {
       return CAMERA_Z_MAX; // Fallback to default
@@ -448,6 +451,7 @@ export function R3FTopicsScene({
           adjacencyMap={adjacencyMap}
           pulledPositionsRef={labelRefs.pulledPositionsRef}
           flyToRef={flyToRef}
+          labelFadeT={labelFadeT}
         />
       )}
 
@@ -460,14 +464,13 @@ export function R3FTopicsScene({
           onClusterLabelClick={onClusterLabelClick}
           labelZ={0}
           colorDesaturation={colorDesaturation}
+          labelFadeT={labelFadeT}
         />
       )}
 
       {renderKeywordNodes.length > 0 && (
         <KeywordLabels3D
           nodes={renderKeywordNodes}
-          nodeDegrees={nodeDegrees}
-          keywordLabelRange={zoomPhaseConfig.keywordLabels}
           clusterColors={clusterColors}
           pcaTransform={pcaTransform}
           colorMixRatio={colorMixRatio}
@@ -476,6 +479,8 @@ export function R3FTopicsScene({
           keywordTiers={keywordTiers}
           pulledPositionsRef={labelRefs.pulledPositionsRef}
           hoveredKeywordIdRef={labelRefs.hoveredKeywordIdRef}
+          cursorWorldPosRef={labelRefs.cursorWorldPosRef}
+          labelFadeT={labelFadeT}
           onKeywordHover={onKeywordHover}
           onKeywordClick={onKeywordClick}
         />

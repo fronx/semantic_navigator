@@ -3,7 +3,7 @@
  * Uses React Three Fiber's declarative component model.
  */
 
-import { useState, useEffect, useRef, forwardRef } from "react";
+import { useState, useEffect, useRef, useMemo, forwardRef } from "react";
 import { Canvas } from "@react-three/fiber";
 import { Environment } from "@react-three/drei";
 

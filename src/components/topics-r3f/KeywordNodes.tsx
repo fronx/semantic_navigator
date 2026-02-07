@@ -45,6 +45,8 @@ export interface KeywordNodesProps {
   pulledPositionsRef?: React.MutableRefObject<Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>>;
   /** Ref for flyTo animation (clicking pulled node navigates to real position) */
   flyToRef?: React.MutableRefObject<((x: number, y: number) => void) | null>;
+  /** Cross-fade value from label fade coordinator (0 = nodes full size, 1 = nodes shrunk) */
+  labelFadeT?: number;
 }
 
 export function KeywordNodes({
@@ -61,6 +63,7 @@ export function KeywordNodes({
   adjacencyMap,
   pulledPositionsRef,
   flyToRef,
+  labelFadeT = 0,
 }: KeywordNodesProps) {
   const { camera, size } = useThree();
 
@@ -159,7 +162,7 @@ export function KeywordNodes({
         scaleMultiplier *= 0.6;
       }
 
-      const finalScale = keywordScale * scaleMultiplier * keywordSizeMultiplier;
+      const finalScale = keywordScale * scaleMultiplier * keywordSizeMultiplier * (1 - labelFadeT);
 
       // Compose matrix with position and scale
       positionRef.current.set(x, y, z);

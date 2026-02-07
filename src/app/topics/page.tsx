@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { TopicsView } from "@/components/TopicsView";
 import { ErrorBanner } from "@/components/ErrorBanner";
 import { SearchBar } from "@/components/SearchBar";

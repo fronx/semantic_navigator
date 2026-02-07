@@ -1,7 +1,7 @@
 # Keyword Label UX Improvements
 
 **Date**: 2026-02-07
-**Status**: Planning
+**Status**: Implemented (initial pass)
 
 ## Goals
 
@@ -11,145 +11,60 @@ Improve the usability of 3D keyword labels with three key enhancements:
 2. **Cursor-proximity filtering** (max 12 labels around mouse)
 3. **Keyword node fade-out** when labels are visible
 
-## Requirements
+## Implementation Summary
 
-### 1. Cross-fading Between Cluster and Keyword Labels
+### Fade Coordinator (`src/lib/label-fade-coordinator.ts`)
 
-**Behavior**: Inverse relationship between cluster and keyword label opacity
-- As zoom increases (closer): cluster labels fade out, keyword labels fade in
-- Formula: `clusterOpacity = 1 - keywordOpacity`
+`computeLabelFade(cameraZ, range)` returns 0-1:
+- 0 = far away (cluster labels visible, keyword labels hidden)
+- 1 = zoomed in (keyword labels visible, cluster labels hidden)
 
-**Challenge**: Labels have different sizes (cluster labels ~52px, keyword labels ~16px)
-- Pixel-size-based fade won't work directly (same camera position = different pixel sizes)
-- Need zoom-based fade coordinator that works independent of label size
+Reuses existing `zoomPhaseConfig.keywordLabels` range (start=13961 far, full=1200 close) with smoothstep interpolation.
 
-**Solution**: Extract a fade coordinator that:
-- Takes camera Z position as input
-- Returns normalized fade value (0-1)
-- Works across the existing cluster fade range (60-100px equivalent zoom)
-- Cluster labels use `fadeT` directly
-- Keyword labels use `1 - fadeT`
+### Cross-fading (ClusterLabels3D + KeywordLabels3D)
 
-### 2. Cursor-Proximity Filtering
+- `ClusterLabels3D`: opacity multiplied by `(1 - labelFadeT)` — fades out as you zoom in
+- `KeywordLabels3D`: opacity multiplied by `labelFadeT` — fades in as you zoom in
+- Both retain existing pixel-size-based fade for when labels get too large
 
-**Behavior**: Show maximum 12 keyword labels, prioritized by distance to cursor
+### Cursor-Proximity Filtering (KeywordLabels3D)
 
-**Filtering strategy**: Remove degree threshold filtering entirely (Option A)
-- Old: Filter by node degree (connections), then show eligible labels
-- New: Always show the 12 closest labels to cursor, regardless of connections
+Replaced degree-threshold filtering with proximity-based:
+- Removed `computeDegreeThreshold`, `nodeDegrees` prop, `keywordLabelRange` prop
+- Each frame: compute squared distance from cursor to each keyword, sort, take top 12
+- Rank-based tail fade: labels 10-12 fade from 1.0 to 0.3 (prevents hard cutoff)
+- Uses `cursorWorldPosRef` (already computed in R3FTopicsScene's useFrame)
+- Reusable sort buffer avoids per-frame allocation
 
-**Implementation**:
-- Track cursor position in 3D world space
-- Each frame, compute distance from cursor to each keyword node
-- Sort by distance ascending
-- Take top 12
-- Apply smooth opacity fade based on rank/distance to prevent pop-in
+### Keyword Node Fade-Out (KeywordNodes)
 
-**Transition**: Smooth fade-in/fade-out as cursor moves
-- Labels smoothly fade when entering/leaving top 12
-- Consider hysteresis or distance-based fade curve to prevent flickering
+- Scale multiplied by `(1 - labelFadeT)` — nodes shrink to 0 as labels become fully visible
+- Applies to ALL keyword nodes uniformly (not just the 12 with visible labels)
 
-### 3. Keyword Node Fade-Out
+### Wiring (R3FTopicsScene)
 
-**Behavior**: Keyword nodes shrink as labels become visible (inverse relationship)
+- Computes `labelFadeT` from `cameraZ ?? camera.position.z` using `computeLabelFade`
+- Passes `labelFadeT` to ClusterLabels3D, KeywordLabels3D, KeywordNodes
+- Passes `cursorWorldPosRef` to KeywordLabels3D
+- Removed unused `nodeDegrees` React state (labelRefs.nodeDegreesRef still computed for other systems)
 
-**Fade property**: Size (not opacity)
-- When `keywordLabelOpacity = 1.0` → `keywordNodeScale = 0` (or very small)
-- When `keywordLabelOpacity = 0.0` → `keywordNodeScale = 1.0` (normal size)
+## Open Questions (resolved)
 
-**Implementation**: In `KeywordNodes.tsx`:
-- Import/use the same fade coordinator as labels
-- Apply inverse fade to scale multiplier: `scale *= (1 - keywordLabelFadeT)`
+1. **Fade range**: Reuses existing `zoomPhaseConfig.keywordLabels` Z thresholds
+2. **Cursor position source**: `labelRefs.cursorWorldPosRef` (already computed in R3FTopicsScene useFrame)
+3. **Proximity fade curve**: Rank-based tail fade on labels 10-12
+4. **Node size minimum**: Nodes go to scale=0 when `labelFadeT=1`
 
-## Implementation Steps
+## Tuning Notes
 
-### Step 1: Create Fade Coordinator
+- `labelFadeT` is computed at React render time (not per-frame). Smooth enough since `cameraZ` prop updates on zoom changes. If lag is visible, could move to per-frame ref.
+- `MAX_VISIBLE_LABELS = 12` is a constant in KeywordLabels3D
+- Tail fade covers last 3 labels (indices 9-11), fading from 1.0 to 0.3
 
-**File**: `src/lib/label-fade-coordinator.ts`
+## Files Changed
 
-```typescript
-export interface LabelFadeConfig {
-  /** Camera Z distance where keyword labels start appearing */
-  fadeStartZ: number;
-  /** Camera Z distance where keyword labels are fully visible */
-  fadeEndZ: number;
-}
-
-export function computeLabelFade(cameraZ: number, config: LabelFadeConfig): number {
-  // Returns 0-1 where:
-  // - 0 = cluster labels fully visible, keyword labels hidden
-  // - 1 = keyword labels fully visible, cluster labels hidden
-  const { fadeStartZ, fadeEndZ } = config;
-  const t = (cameraZ - fadeStartZ) / (fadeEndZ - fadeStartZ);
-  return smoothstep(clamp(t, 0, 1));
-}
-```
-
-**Configuration**: Map from existing cluster label pixel thresholds (60-100px) to camera Z distances
-
-### Step 2: Update ClusterLabels3D
-
-- Import fade coordinator
-- Replace pixel-based fade with zoom-based fade: `opacity *= (1 - fadeT)`
-- Keep pixel-based size fade for consistency (labels should still fade when too small)
-
-### Step 3: Update KeywordLabels3D
-
-**Remove degree filtering**:
-- Delete `computeDegreeThreshold` function
-- Remove degree threshold logic from `useFrame`
-
-**Add cursor-proximity filtering**:
-- Track cursor position (from props or context)
-- Compute world-space cursor position from screen coords
-- Each frame:
-  1. Compute distance from cursor to each keyword node
-  2. Sort by distance
-  3. Assign rank (0-11 for top 12, Infinity for rest)
-  4. Apply rank-based opacity fade
-- Base opacity formula: `opacity = keywordLabelFadeT * rankFadeT`
-
-**Add smooth transitions**:
-- Use distance-based fade curve (e.g., fade over last 20% of distance to 13th label)
-- Or use rank-based fade (labels 10-12 fade to prevent hard cutoff)
-
-### Step 4: Update KeywordNodes.tsx
-
-- Import fade coordinator
-- Apply inverse fade to scale: `scaleMultiplier *= (1 - keywordLabelFadeT)`
-- Ensure this applies to all keyword nodes, not just the 12 with labels
-
-### Step 5: Wire Through Props
-
-- `R3FTopicsScene` computes `labelFadeT` using fade coordinator
-- Pass to `ClusterLabels3D`, `KeywordLabels3D`, `KeywordNodes`
-- May need to add `cursorPosition` to `KeywordLabels3D` props
-
-## Open Questions
-
-1. **Fade range**: What camera Z distances should map to the fade transition?
-   - Need to calibrate based on existing cluster label behavior
-   - Cluster labels currently fade based on 60-100px pixel size
-   - Convert to equivalent camera Z range
-
-2. **Cursor position source**: Where do we get cursor position?
-   - Already tracked somewhere in hover controller?
-   - Or need to add new tracking in canvas?
-
-3. **Proximity fade curve**: How should the 12th → 13th label transition?
-   - Hard cutoff (12 visible, rest hidden)?
-   - Soft fade (labels 10-12 fade gradually)?
-   - Distance-based fade (fade over distance threshold)?
-
-4. **Node size minimum**: When labels are fully visible, should nodes be:
-   - Completely invisible (scale = 0)?
-   - Very small but still visible (scale = 0.1)?
-
-## Success Criteria
-
-- [ ] Cluster labels and keyword labels cross-fade smoothly (inverse relationship)
-- [ ] Only 12 keyword labels visible at any time, closest to cursor
-- [ ] Labels smoothly fade in/out as cursor moves (no popping)
-- [ ] Keyword nodes shrink as labels appear (inverse relationship)
-- [ ] No flicker or performance issues with cursor tracking
-- [ ] Text remains readable (nodes don't overlap labels)
+- **New**: `src/lib/label-fade-coordinator.ts`
+- **Modified**: `src/components/topics-r3f/ClusterLabels3D.tsx`
+- **Modified**: `src/components/topics-r3f/KeywordLabels3D.tsx`
+- **Modified**: `src/components/topics-r3f/KeywordNodes.tsx`
+- **Modified**: `src/components/topics-r3f/R3FTopicsScene.tsx`

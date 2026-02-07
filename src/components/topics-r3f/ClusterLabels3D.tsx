@@ -37,6 +37,8 @@ export interface ClusterLabels3DProps {
   minScreenPx?: number;
   baseFontSize?: number;
   colorDesaturation?: number;
+  /** Cross-fade value from label fade coordinator (0 = clusters visible, 1 = keywords visible) */
+  labelFadeT?: number;
 }
 
 const DEFAULT_MIN_SCREEN_PX = 18;
@@ -67,6 +69,7 @@ export function ClusterLabels3D({
   minScreenPx = DEFAULT_MIN_SCREEN_PX,
   baseFontSize = DEFAULT_BASE_FONT_SIZE,
   colorDesaturation = 0,
+  labelFadeT = 0,
 }: ClusterLabels3DProps) {
   const { camera, size } = useThree();
   const labelRegistry = useRef(new Map<number, LabelRegistration>());
@@ -111,7 +114,7 @@ export function ClusterLabels3D({
       const fadeT = (pixelSize - FADE_START_PX) / (FADE_END_PX - FADE_START_PX);
       const smooth = smoothstep(fadeT);
       const sizeFade = 1 - smooth;
-      const finalOpacity = baseOpacity * sizeFade;
+      const finalOpacity = baseOpacity * sizeFade * (1 - labelFadeT);
       if (material.opacity !== finalOpacity) {
         material.opacity = finalOpacity;
         material.needsUpdate = true;

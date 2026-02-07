@@ -19,11 +19,6 @@ const DEFAULT_BASE_FONT_SIZE = 12;
 const FADE_START_PX = 60;
 const FADE_END_PX = 100;
 
-interface KeywordLabelRange {
-  start: number;
-  full: number;
-}
-
 interface KeywordLabelData {
   node: SimNode;
   text: string;
@@ -41,10 +36,10 @@ interface LabelRegistration {
   labelZ: number;
 }
 
+const MAX_VISIBLE_LABELS = 12;
+
 export interface KeywordLabels3DProps {
   nodes: SimNode[];
-  nodeDegrees: Map<string, number>;
-  keywordLabelRange: KeywordLabelRange;
   clusterColors: Map<number, ClusterColorInfo>;
   pcaTransform: PCATransform | null;
   colorMixRatio: number;
@@ -56,14 +51,16 @@ export interface KeywordLabels3DProps {
   keywordTiers?: KeywordTierMap | null;
   pulledPositionsRef?: LabelRefs["pulledPositionsRef"];
   hoveredKeywordIdRef?: MutableRefObject<string | null>;
+  /** Cursor position in world space for proximity filtering */
+  cursorWorldPosRef?: MutableRefObject<{ x: number; y: number } | null>;
+  /** Cross-fade value from label fade coordinator (0 = hidden, 1 = fully visible) */
+  labelFadeT?: number;
   onKeywordHover?: (keywordId: string | null) => void;
   onKeywordClick?: (keywordId: string) => void;
 }
 
 export function KeywordLabels3D({
   nodes,
-  nodeDegrees,
-  keywordLabelRange,
   clusterColors,
   pcaTransform,
   colorMixRatio,
@@ -75,26 +72,18 @@ export function KeywordLabels3D({
   keywordTiers,
   pulledPositionsRef,
   hoveredKeywordIdRef,
+  cursorWorldPosRef,
+  labelFadeT = 0,
   onKeywordHover,
   onKeywordClick,
 }: KeywordLabels3DProps) {
   const { camera, size } = useThree();
   const labelRegistry = useRef(new Map<string, LabelRegistration>());
-  const nodeDegreesRef = useRef(nodeDegrees);
-  nodeDegreesRef.current = nodeDegrees;
   const searchOpacitiesRef = useRef(searchOpacities);
   searchOpacitiesRef.current = searchOpacities;
   const tempVec = useMemo(() => new THREE.Vector3(), []);
   const scaleVec = useMemo(() => new THREE.Vector3(), []);
   const cameraPos = useMemo(() => new THREE.Vector3(), []);
-
-  const maxDegree = useMemo(() => {
-    let max = 1;
-    nodeDegrees.forEach((value) => {
-      if (value > max) max = value;
-    });
-    return max;
-  }, [nodeDegrees]);
 
   const labelMeta = useMemo<KeywordLabelData[]>(() => {
     return nodes
@@ -132,12 +121,41 @@ export function KeywordLabels3D({
     }
   }, []);
 
+  // Reusable array for sorting by cursor distance (avoids per-frame allocation)
+  const sortBuffer = useRef<{ id: string; dist: number }[]>([]);
+
   useFrame(() => {
-    const degreeThreshold = computeDegreeThreshold(
-      camera.position.z,
-      keywordLabelRange,
-      maxDegree
-    );
+    const cursor = cursorWorldPosRef?.current;
+
+    // Build proximity ranking: closest MAX_VISIBLE_LABELS labels to cursor
+    const visibleSet = new Set<string>();
+    // Map from id -> rank-based fade (1.0 for top labels, fades for tail)
+    const rankFade = new Map<string, number>();
+
+    if (cursor && labelFadeT > 0) {
+      const buf = sortBuffer.current;
+      buf.length = 0;
+      labelRegistry.current.forEach((entry) => {
+        const pulledPos = pulledPositionsRef?.current.get(entry.id);
+        const nx = pulledPos?.x ?? entry.node.x ?? 0;
+        const ny = pulledPos?.y ?? entry.node.y ?? 0;
+        const dx = nx - cursor.x;
+        const dy = ny - cursor.y;
+        buf.push({ id: entry.id, dist: dx * dx + dy * dy });
+      });
+      buf.sort((a, b) => a.dist - b.dist);
+
+      // Top labels get full opacity; labels 10-12 fade to soften cutoff
+      const fadeStart = Math.max(0, MAX_VISIBLE_LABELS - 3); // index 9
+      for (let i = 0; i < Math.min(buf.length, MAX_VISIBLE_LABELS); i++) {
+        visibleSet.add(buf[i].id);
+        if (i >= fadeStart) {
+          // Fade from 1.0 at fadeStart to 0.3 at MAX_VISIBLE_LABELS-1
+          const rankT = (i - fadeStart) / (MAX_VISIBLE_LABELS - 1 - fadeStart);
+          rankFade.set(buf[i].id, 1.0 - rankT * 0.7);
+        }
+      }
+    }
 
     labelRegistry.current.forEach((entry) => {
       const { id, node, billboard, material, baseFontSize: fontSize, baseOpacity } = entry;
@@ -170,8 +188,17 @@ export function KeywordLabels3D({
         billboard.scale.copy(scaleVec);
       }
 
-      const degree = nodeDegreesRef.current.get(id) ?? 0;
-      let opacity = degree >= degreeThreshold ? baseOpacity : 0;
+      // Proximity-based visibility: only show top MAX_VISIBLE_LABELS nearest cursor
+      let opacity = visibleSet.has(id) ? baseOpacity : 0;
+
+      // Apply rank-based tail fade for smooth cutoff
+      const rFade = rankFade.get(id);
+      if (rFade !== undefined) {
+        opacity *= rFade;
+      }
+
+      // Cross-fade with cluster labels
+      opacity *= labelFadeT;
 
       if (pulledPosition) {
         opacity *= 0.55;
@@ -182,9 +209,10 @@ export function KeywordLabels3D({
         opacity *= searchOpacity;
       }
 
+      // Fade out when label gets too large on screen
       const pixelSize = (fontSize * desiredScale) / unitsPerPixel;
-      const fadeT = (pixelSize - FADE_START_PX) / (FADE_END_PX - FADE_START_PX);
-      opacity *= 1 - smoothstep(fadeT);
+      const sizeFadeT = (pixelSize - FADE_START_PX) / (FADE_END_PX - FADE_START_PX);
+      opacity *= 1 - smoothstep(sizeFadeT);
 
       const clampedOpacity = THREE.MathUtils.clamp(opacity, 0, 1);
       if (Math.abs(material.opacity - clampedOpacity) > 0.01) {
@@ -360,17 +388,3 @@ function KeywordLabelSprite({
   );
 }
 
-function computeDegreeThreshold(cameraZ: number, range: KeywordLabelRange, maxDegree: number) {
-  const start = Math.max(range.start, range.full);
-  const full = Math.min(range.start, range.full);
-
-  if (cameraZ >= start) {
-    return Infinity;
-  }
-  if (cameraZ <= full) {
-    return 0;
-  }
-
-  const t = (cameraZ - full) / (start - full || 1);
-  return t * maxDegree;
-}
