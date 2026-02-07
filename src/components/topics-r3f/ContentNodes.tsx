@@ -63,6 +63,8 @@ export interface ContentNodesProps {
   pulledContentPositionsRef?: React.MutableRefObject<Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>>;
   /** Focus-animated positions — keywords in this map are margin-pushed, exclude from primary set */
   focusPositionsRef?: React.RefObject<Map<string, { x: number; y: number }>>;
+  /** Keyword IDs with visible labels (written by KeywordLabels3D, overrides internal primaryKeywordIds) */
+  visibleLabelIdsRef?: React.RefObject<Set<string>>;
 }
 
 export function ContentNodes({
@@ -84,6 +86,7 @@ export function ContentNodes({
   cursorWorldPosRef,
   pulledContentPositionsRef,
   focusPositionsRef,
+  visibleLabelIdsRef,
 }: ContentNodesProps) {
   const { camera, size, viewport } = useThree();
 
@@ -144,16 +147,22 @@ export function ContentNodes({
     // Viewport edge magnets: pull off-screen content nodes to viewport edge
     const zones = computeViewportZones(camera as THREE.PerspectiveCamera, size.width, size.height);
 
-    // Build set of primary (visible) keyword IDs
-    // Primary = on-screen, not in cliff zone, and not focus-pushed to margin
-    const focusPositions = focusPositionsRef?.current;
-    const primaryKeywordIds = new Set<string>();
-    for (const kwNode of simNodes) {
-      if (focusPositions?.has(kwNode.id)) continue;
-      const x = kwNode.x ?? 0;
-      const y = kwNode.y ?? 0;
-      if (isInViewport(x, y, zones.extendedViewport) && !isInCliffZone(x, y, zones.pullBounds)) {
-        primaryKeywordIds.add(kwNode.id);
+    // Use visible label set from KeywordLabels3D (matches label proximity filtering).
+    // Falls back to viewport-based computation when ref is unavailable.
+    const visibleLabels = visibleLabelIdsRef?.current;
+    let primaryKeywordIds: Set<string>;
+    if (visibleLabels && visibleLabels.size > 0) {
+      primaryKeywordIds = visibleLabels;
+    } else {
+      const focusPositions = focusPositionsRef?.current;
+      primaryKeywordIds = new Set<string>();
+      for (const kwNode of simNodes) {
+        if (focusPositions?.has(kwNode.id)) continue;
+        const x = kwNode.x ?? 0;
+        const y = kwNode.y ?? 0;
+        if (isInViewport(x, y, zones.extendedViewport) && !isInCliffZone(x, y, zones.pullBounds)) {
+          primaryKeywordIds.add(kwNode.id);
+        }
       }
     }
 

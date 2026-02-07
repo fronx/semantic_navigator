@@ -177,6 +177,9 @@ export function R3FTopicsScene({
   // Unified simulation tick method (manual frame-sync to prevent jitter)
   const unifiedSimTickRef = useRef<(() => void) | null>(null);
 
+  // Visible keyword label IDs (written by KeywordLabels3D, read by ContentNodes)
+  const visibleLabelIdsRef = useRef<Set<string>>(new Set());
+
 
   // Calculate stable max content node count (available immediately from contentsByKeyword)
   const contentNodeCount = useMemo(() => {
@@ -398,6 +401,7 @@ export function R3FTopicsScene({
           cursorWorldPosRef={labelRefs.cursorWorldPosRef}
           pulledContentPositionsRef={labelRefs.pulledContentPositionsRef}
           focusPositionsRef={focusPositionsRef}
+          visibleLabelIdsRef={visibleLabelIdsRef}
         />
       )}
 
@@ -504,6 +508,7 @@ export function R3FTopicsScene({
           cursorWorldPosRef={labelRefs.cursorWorldPosRef}
           labelFadeT={labelFadeT}
           zoomRange={zoomPhaseConfig.chunkCrossfade}
+          visibleLabelIdsRef={visibleLabelIdsRef}
           onKeywordHover={onKeywordHover}
           onKeywordClick={onKeywordClick}
         />

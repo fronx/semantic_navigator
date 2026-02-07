@@ -65,6 +65,8 @@ export interface KeywordLabels3DProps {
   labelFadeT?: number;
   /** Zoom range for computing keyword dot size (needed for label offset) */
   zoomRange?: ZoomRange;
+  /** Shared ref: written each frame with keyword IDs that have visible labels (read by ContentNodes) */
+  visibleLabelIdsRef?: MutableRefObject<Set<string>>;
   onKeywordHover?: (keywordId: string | null) => void;
   onKeywordClick?: (keywordId: string) => void;
 }
@@ -86,6 +88,7 @@ export function KeywordLabels3D({
   cursorWorldPosRef,
   labelFadeT = 0,
   zoomRange,
+  visibleLabelIdsRef,
   onKeywordHover,
   onKeywordClick,
 }: KeywordLabels3DProps) {
@@ -150,7 +153,7 @@ export function KeywordLabels3D({
     const rankFade = new Map<string, number>();
 
     if (isFocusActive) {
-      // Focus mode: all labels visible, no cursor dependency
+      // Focus mode: all labels visible (margin-pushed get reduced opacity below)
       labelRegistry.current.forEach((entry) => {
         visibleSet.add(entry.id);
       });
@@ -266,6 +269,21 @@ export function KeywordLabels3D({
 
       billboard.visible = clampedOpacity > 0.02;
     });
+
+    // Share content-eligible label set with ContentNodes (excludes margin-pushed)
+    if (visibleLabelIdsRef) {
+      if (isFocusActive && focusPositionsRef) {
+        const contentSet = new Set<string>();
+        for (const id of visibleSet) {
+          if (!focusPositionsRef.current.has(id)) {
+            contentSet.add(id);
+          }
+        }
+        visibleLabelIdsRef.current = contentSet;
+      } else {
+        visibleLabelIdsRef.current = visibleSet;
+      }
+    }
   });
 
   if (labelMeta.length === 0) {
