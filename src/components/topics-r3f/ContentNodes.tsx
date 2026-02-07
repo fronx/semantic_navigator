@@ -61,6 +61,8 @@ export interface ContentNodesProps {
   cursorWorldPosRef?: React.RefObject<{ x: number; y: number } | null>;
   /** Shared ref for pulled content positions (written here, read by content edges) */
   pulledContentPositionsRef?: React.MutableRefObject<Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>>;
+  /** Focus-animated positions — keywords in this map are margin-pushed, exclude from primary set */
+  focusPositionsRef?: React.RefObject<Map<string, { x: number; y: number }>>;
 }
 
 export function ContentNodes({
@@ -81,6 +83,7 @@ export function ContentNodes({
   focusRadius = 0,
   cursorWorldPosRef,
   pulledContentPositionsRef,
+  focusPositionsRef,
 }: ContentNodesProps) {
   const { camera, size, viewport } = useThree();
 
@@ -142,8 +145,11 @@ export function ContentNodes({
     const zones = computeViewportZones(camera as THREE.PerspectiveCamera, size.width, size.height);
 
     // Build set of primary (visible) keyword IDs
+    // Primary = on-screen, not in cliff zone, and not focus-pushed to margin
+    const focusPositions = focusPositionsRef?.current;
     const primaryKeywordIds = new Set<string>();
     for (const kwNode of simNodes) {
+      if (focusPositions?.has(kwNode.id)) continue;
       const x = kwNode.x ?? 0;
       const y = kwNode.y ?? 0;
       if (isInViewport(x, y, zones.extendedViewport) && !isInCliffZone(x, y, zones.pullBounds)) {

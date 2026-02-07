@@ -7,6 +7,7 @@ import { useMemo } from "react";
 
 import type { SimLink, SimNode } from "@/lib/map-renderer";
 import type { PCATransform } from "@/lib/semantic-colors";
+import type { KeywordTierMap } from "@/lib/topics-filter";
 import { EdgeRenderer } from "./EdgeRenderer";
 
 export interface KeywordEdgesProps {
@@ -25,6 +26,10 @@ export interface KeywordEdgesProps {
   hoveredKeywordIdRef?: React.RefObject<string | null>;
   /** Pulled node positions (for position overrides when rendering edges to off-screen nodes) */
   pulledPositionsRef?: React.RefObject<Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>>;
+  /** Focus-animated positions (margin push) — highest priority position override */
+  focusPositionsRef?: React.RefObject<Map<string, { x: number; y: number }>>;
+  /** Keyword tiers for focus mode edge filtering */
+  keywordTiers?: KeywordTierMap | null;
 }
 
 export function KeywordEdges({
@@ -39,6 +44,8 @@ export function KeywordEdges({
   searchOpacities,
   hoveredKeywordIdRef,
   pulledPositionsRef,
+  focusPositionsRef,
+  keywordTiers,
 }: KeywordEdgesProps): React.JSX.Element | null {
   const nodeMap = useMemo(
     () => new Map(simNodes.map((n) => [n.id, n])),
@@ -71,6 +78,8 @@ export function KeywordEdges({
       searchOpacities={searchOpacities}
       hoveredKeywordIdRef={hoveredKeywordIdRef}
       pulledPositionsRef={pulledPositionsRef}
+      focusPositionsRef={focusPositionsRef}
+      keywordTiers={keywordTiers}
     />
   );
 }

@@ -55,6 +55,8 @@ export interface KeywordLabels3DProps {
   labelZ?: number;
   keywordTiers?: KeywordTierMap | null;
   pulledPositionsRef?: LabelRefs["pulledPositionsRef"];
+  /** Focus-animated positions (margin push) — highest priority position override */
+  focusPositionsRef?: MutableRefObject<Map<string, { x: number; y: number }>>;
   hoveredKeywordIdRef?: MutableRefObject<string | null>;
   /** Cursor position in world space for proximity filtering */
   cursorWorldPosRef?: MutableRefObject<{ x: number; y: number } | null>;
@@ -76,6 +78,7 @@ export function KeywordLabels3D({
   labelZ = 0,
   keywordTiers,
   pulledPositionsRef,
+  focusPositionsRef,
   hoveredKeywordIdRef,
   cursorWorldPosRef,
   labelFadeT = 0,
@@ -133,13 +136,20 @@ export function KeywordLabels3D({
 
   useFrame(() => {
     const cursor = cursorWorldPosRef?.current;
+    const isFocusActive = (focusPositionsRef?.current.size ?? 0) > 0;
 
     // Build proximity ranking: closest MAX_VISIBLE_LABELS labels to cursor
     const visibleSet = new Set<string>();
     // Map from id -> rank-based fade (1.0 for top labels, fades for tail)
     const rankFade = new Map<string, number>();
 
-    if (cursor && labelFadeT > 0) {
+    if (isFocusActive) {
+      // Focus mode: all labels visible, no cursor dependency
+      labelRegistry.current.forEach((entry) => {
+        visibleSet.add(entry.id);
+      });
+    } else if (cursor && labelFadeT > 0) {
+      // Normal mode: proximity-based visibility (top N nearest cursor)
       const buf = sortBuffer.current;
       buf.length = 0;
       labelRegistry.current.forEach((entry) => {
@@ -152,7 +162,6 @@ export function KeywordLabels3D({
       });
       buf.sort((a, b) => a.dist - b.dist);
 
-      // Top labels get full opacity; labels 10-12 fade to soften cutoff
       const fadeStart = Math.max(0, MAX_VISIBLE_LABELS - 3); // index 9
       for (let i = 0; i < Math.min(buf.length, MAX_VISIBLE_LABELS); i++) {
         visibleSet.add(buf[i].id);
@@ -168,9 +177,12 @@ export function KeywordLabels3D({
       const { id, node, billboard, material, baseFontSize: fontSize, baseOpacity } = entry;
       if (!billboard) return;
 
-      const pulledPosition = pulledPositionsRef?.current.get(id);
-      const x = pulledPosition?.x ?? node.x ?? 0;
-      const y = pulledPosition?.y ?? node.y ?? 0;
+      // Position priority: focus (margin push) > pulled (edge magnets) > natural
+      const focusPos = focusPositionsRef?.current.get(id);
+      const pulledPosition = !focusPos ? pulledPositionsRef?.current.get(id) : undefined;
+      const isFocusMargin = !!focusPos;
+      const x = focusPos?.x ?? pulledPosition?.x ?? node.x ?? 0;
+      const y = focusPos?.y ?? pulledPosition?.y ?? node.y ?? 0;
       billboard.position.set(x, y, entry.labelZ);
 
       const worldPosition = billboard.getWorldPosition(tempVec);
@@ -184,7 +196,9 @@ export function KeywordLabels3D({
       const minWorldSize = minScreenPx * unitsPerPixel;
       let desiredScale = Math.max(1, minWorldSize / fontSize);
 
-      if (pulledPosition) {
+      if (isFocusMargin) {
+        desiredScale *= 0.7;
+      } else if (pulledPosition) {
         desiredScale *= 0.9;
       }
 
@@ -204,10 +218,12 @@ export function KeywordLabels3D({
         opacity *= rFade;
       }
 
-      // Cross-fade with cluster labels
-      opacity *= labelFadeT;
+      // Cross-fade with cluster labels (bypassed during focus mode)
+      opacity *= isFocusActive ? 1 : labelFadeT;
 
-      if (pulledPosition) {
+      if (isFocusMargin) {
+        opacity *= isHovered ? 0.5 : 0.3;
+      } else if (pulledPosition) {
         opacity *= isHovered ? 0.85 : 0.55;
       }
 

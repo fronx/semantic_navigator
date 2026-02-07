@@ -21,6 +21,7 @@ import type { LabelOverlayManager } from "@/lib/label-overlays";
 import type { CameraState, ContentScreenRect, LabelRefs, LabelsOverlayHandle } from "./R3FLabelContext";
 import type { ContentNode } from "@/lib/content-loader";
 import type { KeywordTierMap } from "@/lib/topics-filter";
+import type { FocusState } from "@/lib/focus-mode";
 
 export interface R3FTopicsCanvasProps {
   nodes: KeywordNode[];
@@ -58,6 +59,8 @@ export interface R3FTopicsCanvasProps {
   /** Transmission panel anisotropic blur strength */
   panelAnisotropicBlur?: number;
   keywordTiers?: KeywordTierMap | null;
+  /** Focus state for click-to-focus interaction (margin push) */
+  focusState?: FocusState | null;
   /** Runtime cluster IDs from useClusterLabels (for label rendering) */
   nodeToCluster?: Map<string, number>;
   /** Search opacity map (node id -> opacity) for semantic search highlighting */
@@ -71,6 +74,8 @@ export interface R3FTopicsCanvasProps {
   onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
   onZoomChange?: (zoomScale: number) => void;
   onChunkHover?: (chunkId: string | null, content: string | null) => void;
+  /** Background click handler (clears focus mode) */
+  onBackgroundClick?: () => void;
   /**
    * Handler for keyword hover.
    * Required because R3F renderer always detects hover and expects a handler.
@@ -106,6 +111,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     panelTransmission,
     panelAnisotropicBlur,
     keywordTiers,
+    focusState,
     nodeToCluster,
     searchOpacities,
     cameraZ,
@@ -116,6 +122,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     onProjectDrag,
     onZoomChange,
     onChunkHover: _onChunkHover,
+    onBackgroundClick,
     onKeywordHover,
   }, ref) {
     // Theme-aware background color that updates when system theme changes
@@ -178,6 +185,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     const hoveredKeywordIdRef = useRef<string | null>(null);
     const pulledPositionsRef = useRef<Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>>(new Map());
     const pulledContentPositionsRef = useRef<Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>>(new Map());
+    const focusPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
     const flyToRef = useRef<((x: number, y: number) => void) | null>(null);
 
     // Keep nodeToCluster ref updated (lint suppressed: updating ref during render is intentional)
@@ -229,7 +237,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
           }}
           gl={{ antialias: true, alpha: false }}
           style={{ width: "100%", height: "100%" }}
-          onPointerMissed={() => console.log('[Canvas] onPointerMissed - click reached R3F but hit nothing')}
+          onPointerMissed={() => { onBackgroundClick?.(); }}
         >
           <color attach="background" args={[backgroundColor]} />
           <ambientLight intensity={1} />
@@ -262,6 +270,8 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
             panelTransmission={panelTransmission}
             panelAnisotropicBlur={panelAnisotropicBlur}
           keywordTiers={keywordTiers}
+          focusState={focusState}
+          focusPositionsRef={focusPositionsRef}
           searchOpacities={searchOpacities}
           cameraZ={cameraZ}
           nodeToCluster={nodeToCluster ?? undefined}

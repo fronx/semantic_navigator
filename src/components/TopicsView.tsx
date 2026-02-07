@@ -18,6 +18,7 @@ import { convertToThreeNodes } from "@/lib/topics-graph-nodes";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 import { loadPCATransform, type PCATransform } from "@/lib/semantic-colors";
 import type { SemanticFilter } from "@/lib/topics-filter";
+import { createFocusState, type FocusState } from "@/lib/focus-mode";
 import type { BaseRendererOptions } from "@/lib/renderer-types";
 import type { SimNode } from "@/lib/map-renderer";
 import { CAMERA_Z_SCALE_BASE } from "@/lib/three/camera-controller";
@@ -172,6 +173,9 @@ export function TopicsView({
   // Camera Z tracking for scale interpolation
   const [cameraZ, setCameraZ] = useState<number | undefined>(undefined);
 
+  // Focus mode state (click-to-focus pushes non-neighbors to margins)
+  const [focusState, setFocusState] = useState<FocusState | null>(null);
+
   // Calculate panel distance ratio automatically based on camera zoom level
   // This creates a fade effect: keywords blur out at medium distance, clear up when close
   const panelDistanceRatio = cameraZ !== undefined ? calculatePanelRatio(cameraZ) : 0.5;
@@ -263,7 +267,13 @@ export function TopicsView({
   // Stable callbacks - won't trigger effect re-runs when parent re-renders
   const handleZoomChange = useStableCallback((zoomScale: number) => {
     if ((rendererType === "three" || rendererType === "r3f") && Number.isFinite(zoomScale) && zoomScale > 0) {
-      setCameraZ(CAMERA_Z_SCALE_BASE / zoomScale);
+      const newCameraZ = CAMERA_Z_SCALE_BASE / zoomScale;
+      setCameraZ(newCameraZ);
+
+      // Implicitly clear focus when zooming out past keyword label range (back to cluster level)
+      if (focusState && newCameraZ > (zoomPhaseConfig ?? DEFAULT_ZOOM_PHASE_CONFIG).keywordLabels.start) {
+        setFocusState(null);
+      }
     }
     onZoomChange?.(zoomScale);
   });
@@ -309,6 +319,35 @@ export function TopicsView({
 
     // Apply cluster filter
     applyClusterFilter(clusterId);
+  });
+
+  // Handle focus click (R3F only) — toggle focus mode instead of filtering
+  const handleFocusClick = useStableCallback((keywordId: string) => {
+    // Toggle: clicking the already-focused keyword clears focus
+    if (focusState?.focusedKeywordId === keywordId) {
+      setFocusState(null);
+      return;
+    }
+
+    const newState = createFocusState(
+      keywordId,
+      activeNodes.map(n => n.id),
+      activeEdges,
+    );
+    setFocusState(newState);
+
+    // Also call external handler with keyword label
+    const node = activeNodes.find(n => n.id === keywordId);
+    if (node) {
+      onKeywordClick?.(node.label);
+    }
+  });
+
+  // Background click clears focus mode
+  const handleBackgroundClick = useStableCallback(() => {
+    if (focusState) {
+      setFocusState(null);
+    }
   });
 
   const handleProjectClick = useStableCallback(onProjectClick);
@@ -535,13 +574,15 @@ export function TopicsView({
           panelRoughness={panelRoughness}
           panelTransmission={panelTransmission}
           panelAnisotropicBlur={panelAnisotropicBlur}
-          keywordTiers={keywordTiers}
+          keywordTiers={focusState ? focusState.keywordTiers : keywordTiers}
+          focusState={focusState}
           nodeToCluster={nodeToCluster}
           searchOpacities={nodeOpacities}
           cameraZ={cameraZ}
-          onKeywordClick={handleKeywordClickInternal}
-          onKeywordLabelClick={handleKeywordLabelClick}
+          onKeywordClick={handleFocusClick}
+          onKeywordLabelClick={handleFocusClick}
           onClusterLabelClick={handleClusterLabelClick}
+          onBackgroundClick={handleBackgroundClick}
           onProjectClick={handleProjectClick}
           onProjectDrag={handleProjectDrag}
           onZoomChange={handleZoomChange}

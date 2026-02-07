@@ -9,6 +9,7 @@ import * as THREE from "three";
 
 import type { SimLink, SimNode } from "@/lib/map-renderer";
 import type { PCATransform, ClusterColorInfo } from "@/lib/semantic-colors";
+import type { KeywordTierMap } from "@/lib/topics-filter";
 import { computeArcPoints } from "@/lib/edge-curves";
 import { getEdgeColor } from "@/lib/edge-colors";
 import { groupNodesByCommunity } from "@/lib/hull-renderer";
@@ -59,6 +60,10 @@ export interface EdgeRendererProps {
   hoveredKeywordIdRef?: React.RefObject<string | null>;
   /** Pulled node positions (for position overrides when rendering edges to off-screen nodes) */
   pulledPositionsRef?: React.RefObject<Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>>;
+  /** Focus-animated positions (margin push) — highest priority position override */
+  focusPositionsRef?: React.RefObject<Map<string, { x: number; y: number }>>;
+  /** Keyword tiers for focus mode edge filtering (only edges within focus set + boundary→margin kept) */
+  keywordTiers?: KeywordTierMap | null;
   /** Hide edges whose source keyword is sitting in the viewport margin zone */
   suppressEdgesFromMarginKeywords?: boolean;
 }
@@ -79,6 +84,8 @@ export function EdgeRenderer({
   searchOpacities,
   hoveredKeywordIdRef,
   pulledPositionsRef,
+  focusPositionsRef,
+  keywordTiers,
   suppressEdgesFromMarginKeywords = false,
 }: EdgeRendererProps): React.JSX.Element | null {
   const lineRef = useRef<THREE.Line>(null);
@@ -145,7 +152,8 @@ export function EdgeRenderer({
     // Hovered node ID for revealing reaching edges on hover
     const hoveredId = hoveredKeywordIdRef?.current ?? null;
 
-    // Pulled node positions for position overrides
+    // Position overrides (focus > pulled > natural)
+    const focusPositions = focusPositionsRef?.current ?? new Map();
     const pulledPositions = pulledPositionsRef?.current ?? new Map();
 
     for (let edgeIndex = 0; edgeIndex < edges.length; edgeIndex++) {
@@ -169,6 +177,21 @@ export function EdgeRenderer({
         continue;
       }
 
+      // Focus mode edge filtering: only keep edges within focus set + boundary→margin
+      const sourceIsMargin = focusPositions.has(sourceId);
+      const targetIsMargin = focusPositions.has(targetId);
+      if (sourceIsMargin || targetIsMargin) {
+        // Keep only if the non-margin endpoint is neighbor-2 (focus boundary)
+        // If both are margin, this correctly hides (neither is neighbor-2)
+        const keep = sourceIsMargin
+          ? keywordTiers?.get(targetId) === "neighbor-2"
+          : keywordTiers?.get(sourceId) === "neighbor-2";
+        if (!keep) {
+          for (let i = 0; i < VERTICES_PER_EDGE * 3; i++) posArray[baseOffset + i] = NaN;
+          continue;
+        }
+      }
+
       // Skip edges if explicitly requested when the source keyword sits in the margin zone
       if (suppressEdgesFromMarginKeywords && sourceNode.type === "keyword") {
         const realX = sourceNode.x ?? 0;
@@ -181,10 +204,13 @@ export function EdgeRenderer({
       }
 
       // Viewport culling: hide if neither node visible, dim if only one visible
-      const sx = sourcePulled ? sourcePulled.x : (sourceNode.x ?? 0);
-      const sy = sourcePulled ? sourcePulled.y : (sourceNode.y ?? 0);
-      const tx = targetPulled ? targetPulled.x : (targetNode.x ?? 0);
-      const ty = targetPulled ? targetPulled.y : (targetNode.y ?? 0);
+      // Position priority: focus (margin push) > pulled (edge magnets) > natural
+      const sourceFocus = focusPositions.get(sourceId);
+      const targetFocus = focusPositions.get(targetId);
+      const sx = sourceFocus?.x ?? sourcePulled?.x ?? (sourceNode.x ?? 0);
+      const sy = sourceFocus?.y ?? sourcePulled?.y ?? (sourceNode.y ?? 0);
+      const tx = targetFocus?.x ?? targetPulled?.x ?? (targetNode.x ?? 0);
+      const ty = targetFocus?.y ?? targetPulled?.y ?? (targetNode.y ?? 0);
       const sourceInView = sx >= minX && sx <= maxX && sy >= minY && sy <= maxY;
       const targetInView = tx >= minX && tx <= maxX && ty >= minY && ty <= maxY;
       if (!sourceInView && !targetInView) {

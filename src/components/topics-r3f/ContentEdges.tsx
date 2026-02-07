@@ -8,6 +8,7 @@ import { useMemo } from "react";
 
 import type { SimNode, SimLink } from "@/lib/map-renderer";
 import type { PCATransform } from "@/lib/semantic-colors";
+import type { KeywordTierMap } from "@/lib/topics-filter";
 import { EdgeRenderer } from "./EdgeRenderer";
 
 export interface ContentEdgesProps {
@@ -28,6 +29,10 @@ export interface ContentEdgesProps {
   pulledPositionsRef?: React.RefObject<Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>>;
   /** Pulled content positions (for position overrides when content node is pulled to edge) */
   pulledContentPositionsRef?: React.RefObject<Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>>;
+  /** Focus-animated positions (margin push) — hide edges to focus-margin keywords */
+  focusPositionsRef?: React.RefObject<Map<string, { x: number; y: number }>>;
+  /** Keyword tiers for focus mode edge filtering */
+  keywordTiers?: KeywordTierMap | null;
 }
 
 export function ContentEdges({
@@ -43,6 +48,8 @@ export function ContentEdges({
   hoveredKeywordIdRef,
   pulledPositionsRef,
   pulledContentPositionsRef,
+  focusPositionsRef,
+  keywordTiers,
 }: ContentEdgesProps): React.JSX.Element | null {
   // Create containment edges (keyword -> content node) from ContentSimNode parentIds
   // After deduplication, each content node can have multiple parents
@@ -120,6 +127,8 @@ export function ContentEdges({
     searchOpacities={searchOpacities}
     hoveredKeywordIdRef={hoveredKeywordIdRef}
     pulledPositionsRef={combinedPulledPositionsRef}
+    focusPositionsRef={focusPositionsRef}
+    keywordTiers={keywordTiers}
   />
 );
 }

@@ -31,6 +31,7 @@ import type { ZoomPhaseConfig } from "@/lib/zoom-phase-config";
 import type { LabelRefs } from "./R3FLabelContext";
 import type { ContentNode } from "@/lib/content-loader";
 import type { KeywordTierMap } from "@/lib/topics-filter";
+import type { FocusState } from "@/lib/focus-mode";
 import { ClusterLabels3D } from "./ClusterLabels3D";
 import { KeywordLabels3D } from "./KeywordLabels3D";
 import { computeLabelFade } from "@/lib/label-fade-coordinator";
@@ -97,6 +98,10 @@ export interface R3FTopicsSceneProps {
   /** Transmission panel anisotropic blur strength */
   panelAnisotropicBlur?: number;
   keywordTiers?: KeywordTierMap | null;
+  /** Focus state for click-to-focus interaction */
+  focusState?: FocusState | null;
+  /** Shared ref for focus-animated positions (written by KeywordNodes, read by edges + labels) */
+  focusPositionsRef?: React.MutableRefObject<Map<string, { x: number; y: number }>>;
   /** Search opacity map (node id -> opacity) for semantic search highlighting */
   searchOpacities?: Map<string, number>;
   /** Current camera Z position for zoom-dependent effects */
@@ -147,6 +152,8 @@ export function R3FTopicsScene({
   panelTransmission,
   panelAnisotropicBlur,
   keywordTiers,
+  focusState,
+  focusPositionsRef,
   searchOpacities,
   cameraZ,
   nodeToCluster,
@@ -237,7 +244,11 @@ export function R3FTopicsScene({
     }
 
     if (!cursorPosition) {
-      labelRefs.cursorWorldPosRef.current = null;
+      // Fallback to camera center when mouse isn't hovering
+      labelRefs.cursorWorldPosRef.current = {
+        x: camera.position.x,
+        y: camera.position.y,
+      };
       return;
     }
     const fov = (camera as import("three").PerspectiveCamera).fov * Math.PI / 180;
@@ -386,6 +397,7 @@ export function R3FTopicsScene({
           focusRadius={focusRadius}
           cursorWorldPosRef={labelRefs.cursorWorldPosRef}
           pulledContentPositionsRef={labelRefs.pulledContentPositionsRef}
+          focusPositionsRef={focusPositionsRef}
         />
       )}
 
@@ -415,6 +427,8 @@ export function R3FTopicsScene({
           hoveredKeywordIdRef={labelRefs.hoveredKeywordIdRef}
           pulledPositionsRef={labelRefs.pulledPositionsRef}
           pulledContentPositionsRef={labelRefs.pulledContentPositionsRef}
+          focusPositionsRef={focusPositionsRef}
+          keywordTiers={keywordTiers}
         />
       )}
 
@@ -432,6 +446,8 @@ export function R3FTopicsScene({
           searchOpacities={searchOpacities}
           hoveredKeywordIdRef={labelRefs.hoveredKeywordIdRef}
           pulledPositionsRef={labelRefs.pulledPositionsRef}
+          focusPositionsRef={focusPositionsRef}
+          keywordTiers={keywordTiers}
         />
       )}
 
@@ -446,6 +462,8 @@ export function R3FTopicsScene({
           zoomRange={zoomPhaseConfig.chunkCrossfade}
           keywordSizeMultiplier={keywordSizeMultiplier}
           keywordTiers={keywordTiers}
+          focusState={focusState}
+          focusPositionsRef={focusPositionsRef}
           searchOpacities={searchOpacities}
           onKeywordClick={onKeywordClick}
           adjacencyMap={adjacencyMap}
@@ -478,6 +496,7 @@ export function R3FTopicsScene({
           searchOpacities={searchOpacities}
           keywordTiers={keywordTiers}
           pulledPositionsRef={labelRefs.pulledPositionsRef}
+          focusPositionsRef={focusPositionsRef}
           hoveredKeywordIdRef={labelRefs.hoveredKeywordIdRef}
           cursorWorldPosRef={labelRefs.cursorWorldPosRef}
           labelFadeT={labelFadeT}

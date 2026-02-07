@@ -15,151 +15,78 @@ Replace the current click-to-filter behavior with a more fluid "focus mode" inte
 - More fluid, less jarring than filter on/off
 - Leverages existing viewport edge magnets infrastructure
 
-## Implementation Plan
+## Implementation Insights (captured during coding)
 
-### 1. Core Focus Mode Computation (NEW file)
+### Click handler mismatch (pre-existing)
+The R3F click path passes **node IDs** (`KeywordNodes.handleClick → onKeywordClick(clickedNode.id)`), but `handleKeywordClickInternal` in TopicsView expected **keyword labels** (`activeNodes.find(n => n.label === keyword)`). This meant the old click-to-filter never actually worked for R3F keyword node clicks. Focus mode fixes this by accepting IDs directly via `handleFocusClick(keywordId: string)`.
 
-**Create:** `src/lib/focus-mode.ts`
+### Animation lives in KeywordNodes.useFrame (not R3FTopicsScene)
+Original plan put animation coordination in R3FTopicsScene. Actual implementation puts it in KeywordNodes.useFrame because:
+- Margin target positions need `clampToBounds()` which requires current camera/viewport zones
+- Camera is only available via `useThree()` inside the render loop
+- KeywordNodes already computes pulled positions using the same viewport zones
+- Same pattern: compute positions → write to shared ref → other components read
 
-Pure computation functions for focus state:
+### focusPositionsRef is NOT in LabelRefs
+Kept as a separate prop chain (R3FTopicsCanvas → R3FTopicsScene → KeywordNodes/KeywordEdges/KeywordLabels3D) rather than adding to LabelRefs. Reason: keyword labels are now 3D (KeywordLabels3D), so the DOM-based LabelsOverlay doesn't need focus positions. Adding to LabelRefs would be unnecessary coupling.
 
-```typescript
-export interface FocusState {
-  focusedKeywordId: string;
-  focusedNodeIds: Set<string>;  // focused + 1-hop + 2-hop neighbors
-  marginNodeIds: Set<string>;   // all others (pushed to margin)
-}
+### Post-animation viewport tracking
+After the 500ms push animation completes, margin nodes must continuously track the viewport edges (recalculated each frame via `clampToBounds`). Without this, panning/zooming while focused would leave margin nodes stranded at stale positions.
 
-export interface FocusAnimationTarget {
-  nodeId: string;
-  targetX: number;
-  targetY: number;
-  startX: number;
-  startY: number;
-}
+### topics-hover-controller.ts: NO changes needed
+The hover controller's `onFilterClick` isn't connected to R3F at all (R3F handles clicks via `onPointerMissed` on Canvas and `onClick` on instancedMesh). No need to modify the hover controller.
+
+### Focus mode edge filtering
+Only edges within the focus set + boundary outgoing edges are shown. The rule: if either endpoint is a margin node, the edge is hidden UNLESS the non-margin endpoint is `"neighbor-2"` (the boundary of the focus set). This keeps the graph readable while preserving structural context at the focus boundary. Uses `keywordTiers` passed through to EdgeRenderer.
+
+### Focus mode labels: no cursor dependency
+In focus mode, all keyword labels are unconditionally visible — no proximity-based filtering, no cursor position needed. The `isFocusActive` flag (derived from `focusPositionsRef.current.size > 0`) bypasses both the `MAX_VISIBLE_LABELS` proximity limit and the `labelFadeT` cross-fade.
+
+### Content node visibility in focus mode
+Content nodes are only shown for "primary" keywords — on-screen, not in cliff zone, and not focus-margin pushed. The `focusPositionsRef` is checked when building `primaryKeywordIds` in ContentNodes. Content edges to non-primary keywords are also hidden via the same EdgeRenderer focus filtering.
+
+### Camera center fallback
+When the mouse isn't hovering over the canvas, `cursorWorldPosRef` falls back to camera center instead of null. This ensures proximity-based label filtering still works (labels near screen center visible).
+
+### Implicit zoom-out reset
+Focus is automatically cleared when zooming out past the keyword label range (`zoomPhaseConfig.keywordLabels.start`), returning to cluster-level view.
+
+## Implementation Status — COMPLETE
+
+1. `src/lib/focus-mode.ts` — `FocusState` type + `createFocusState()` using `createSemanticFilter` + `computeKeywordTiers`
+2. `src/components/TopicsView.tsx` — `focusState` state, `handleFocusClick` (toggles focus), `handleBackgroundClick` (clears), zoom-out reset, passes `focusState` + effective tiers to R3FTopicsCanvas
+3. `src/components/topics-r3f/R3FTopicsCanvas.tsx` — accepts `focusState`, `onBackgroundClick`; creates `focusPositionsRef`; wires `onPointerMissed` → `onBackgroundClick`; passes down
+4. `src/components/topics-r3f/R3FTopicsScene.tsx` — accepts + passes `focusState`, `focusPositionsRef`, `keywordTiers` to KeywordNodes, KeywordEdges, ContentEdges, ContentNodes, KeywordLabels3D; camera center fallback for cursorWorldPosRef
+5. `src/components/topics-r3f/KeywordNodes.tsx` — full animation logic:
+   - `FocusAnimationState` ref with push/return types
+   - Detects focusState changes via `prevFocusIdRef`
+   - Push animation (500ms ease-out cubic) computes targets via `clampToBounds`
+   - Return animation (400ms) from current positions back to natural
+   - Post-animation continuous viewport tracking
+   - Position priority: focus > pulled > natural
+   - Margin nodes: 0.6x scale, 0.4x opacity (same as pulled)
+   - Click on margin node → flyTo real position
+6. `src/components/topics-r3f/KeywordEdges.tsx` — accepts + passes `focusPositionsRef` and `keywordTiers` to EdgeRenderer
+7. `src/components/topics-r3f/EdgeRenderer.tsx` — focus position priority (focus > pulled > natural); focus edge filtering using `keywordTiers` (only focus-set + boundary→margin edges shown)
+8. `src/components/topics-r3f/KeywordLabels3D.tsx` — `focusPositionsRef` for position overrides, focus-active bypasses proximity limit and labelFadeT, margin labels 0.7x scale / 0.3x opacity
+9. `src/components/topics-r3f/ContentNodes.tsx` — `focusPositionsRef` excludes margin keywords from primary set, hiding their content nodes
+10. `src/components/topics-r3f/ContentEdges.tsx` — passes `focusPositionsRef` and `keywordTiers` to EdgeRenderer, hiding content edges to non-primary keywords
+
+## Architecture
+
 ```
-
-**Key functions:**
-- `computeFocusState()` - Use existing `computeSemanticNeighborhoods()` from `topics-filter.ts` to identify 1-hop and 2-hop neighbors
-- `computeMarginTargets()` - Reuse `clampToBounds()` from `viewport-edge-magnets.ts` to position margin nodes at viewport edges
-- `computeReturnTargets()` - Calculate positions for animating nodes back to natural positions
-
-### 2. State Management
-
-**Modify:** `src/components/TopicsView.tsx`
-
-- Add `focusState: FocusState | null` state
-- Add `handleFocusClick(keywordId: string | null)` handler
-  - Build adjacency map from `activeEdges`
-  - Call `computeFocusState()` when clicking keyword
-  - Set `null` when clicking background
-- Pass `focusState` to `<R3FTopicsCanvas>`
-
-**Modify:** `src/lib/topics-hover-controller.ts`
-
-Update `handleClick()`:
-- If empty space → call `onFocusClick(null)` to clear focus
-- If keyword hovered → call `onFocusClick(keywordId)` to activate focus
-- Remove existing `onFilterClick()` behavior
-
-### 3. Animation Infrastructure
-
-**Modify:** `src/components/topics-r3f/R3FTopicsScene.tsx`
-
-Add focus animation ref (ref-driven, no React re-renders):
-```typescript
-const focusAnimationRef = useRef<{
-  targets: Map<string, FocusAnimationTarget>;
-  startTime: number;
-  duration: number;  // 500ms for push, 400ms for return
-  currentPositions: Map<string, { x: number; y: number }>;
-} | null>(null);
+TopicsView                      (state: focusState, zoom-out reset)
+  └─ R3FTopicsCanvas            (creates focusPositionsRef, wires onPointerMissed)
+       ├─ R3FTopicsScene        (passes props through, camera center fallback)
+       │    ├─ KeywordNodes     (WRITES focusPositionsRef in useFrame — animation + tracking)
+       │    ├─ KeywordEdges     (READS focusPositionsRef + keywordTiers for edge filtering)
+       │    │    └─ EdgeRenderer (focus position priority, focus edge filtering)
+       │    ├─ ContentNodes     (READS focusPositionsRef for primary keyword set)
+       │    ├─ ContentEdges     (READS focusPositionsRef + keywordTiers for edge filtering)
+       │    │    └─ EdgeRenderer
+       │    └─ KeywordLabels3D  (READS focusPositionsRef for positions + visibility)
+       └─ LabelsOverlay         (NOT affected — keyword labels are 3D now)
 ```
-
-In `useEffect` watching `focusState`:
-- When focus activates → compute margin targets and initialize animation
-- When focus clears → compute return targets and initialize reverse animation
-- Pass `focusAnimationRef` to `<KeywordNodes>`
-
-**Modify:** `src/components/topics-r3f/KeywordNodes.tsx`
-
-In `useFrame`:
-- Add ease-out cubic easing function: `(t) => 1 - (1 - t)^3`
-- For each animating node, interpolate position:
-  ```typescript
-  const x = startX + (targetX - startX) * eased
-  const y = startY + (targetY - startY) * eased
-  ```
-- **Position priority:** focus animation > viewport edge magnets > natural position
-- Update `currentPositions` map for chaining animations
-- Clear `focusAnimationRef` when `t >= 1`
-
-### 4. Visual Hierarchy
-
-**In KeywordNodes.tsx:**
-
-Apply visual tiers based on focus state:
-- **Focused keyword:** 1.2x scale (or use existing tier scaling from `semantic-filter-config.ts`)
-- **1-hop neighbors:** 1.0x scale (normal)
-- **2-hop neighbors:** 1.0x scale (normal)
-- **Margin nodes:** 0.6x scale, 0.4x opacity (same as pulled nodes)
-
-### 5. Edge Rendering
-
-**Modify:** `src/components/topics-r3f/KeywordEdges.tsx`
-
-- Add `focusPositionsRef` prop (similar to `pulledPositionsRef`)
-- In edge rendering, use focus positions with priority:
-  ```typescript
-  const pos = focusPositionsRef.get(nodeId) ?? pulledPositionsRef.get(nodeId) ?? naturalPos
-  ```
-- Show edges from margin nodes to focused cluster (user preference)
-
-**Modify:** `src/components/topics-r3f/LabelsOverlay.tsx`
-
-- Add `focusPositionsRef` to label position calculation
-- Same priority: focus > pulled > natural
-
-### 6. Click Handler Integration
-
-**Modify:** `src/components/topics-r3f/KeywordNodes.tsx`
-
-Update `handleClick`:
-- Remove special case for pulled nodes (or keep if focus mode should respect it)
-- Call `onKeywordClick(clickedNode.id)` which flows to `handleFocusClick`
-
-**Modify:** `src/components/topics-r3f/R3FTopicsCanvas.tsx`
-
-- Replace `onKeywordClick` with focus-aware handler
-- Keep `onPointerMissed` for background clicks
-
-## Critical Files
-
-### Core implementation:
-- `src/lib/focus-mode.ts` (NEW) - Computation logic
-- `src/components/topics-r3f/KeywordNodes.tsx` - Animation in useFrame
-- `src/components/topics-r3f/R3FTopicsScene.tsx` - Animation coordination
-- `src/components/TopicsView.tsx` - State management
-- `src/lib/topics-hover-controller.ts` - Click handling
-
-### Supporting updates:
-- `src/components/topics-r3f/KeywordEdges.tsx` - Edge positioning
-- `src/components/topics-r3f/LabelsOverlay.tsx` - Label positioning
-
-### Reuse existing utilities:
-- `src/lib/topics-filter.ts` → `computeSemanticNeighborhoods()` for 1-hop/2-hop
-- `src/lib/viewport-edge-magnets.ts` → `clampToBounds()` for margin positioning
-- `src/lib/semantic-filter-config.ts` → Tier scaling constants
-
-## Implementation Sequence
-
-1. Create `focus-mode.ts` with computation functions
-2. Add state management in `TopicsView.tsx`
-3. Add animation ref in `R3FTopicsScene.tsx`
-4. Implement animation in `KeywordNodes.tsx` useFrame
-5. Update click handlers in hover controller
-6. Update edge/label rendering for focus positions
-7. Test and refine animation timing/easing
 
 ## Verification
 
@@ -171,11 +98,18 @@ Update `handleClick`:
 5. Click different keyword during animation → verify graceful interrupt
 6. Test with very small graph (all nodes are neighbors) → verify margin set is empty
 7. Test interaction with viewport edge magnets (zoom/pan to trigger automatic pulling)
+8. Click same keyword twice → verify toggle (focus on, focus off)
+9. Zoom out to cluster level → verify focus auto-clears
+10. Verify only focus-set + boundary edges visible (no margin-to-margin clutter)
+11. Verify content nodes hidden for non-primary keywords
+12. Verify labels visible without hovering (camera center fallback)
 
 **Visual checks:**
-- Focused keyword is larger than neighbors
+- Focused keyword is larger than neighbors (1.5x from tier scales)
 - Margin nodes are 0.6x scale, 0.4x opacity
-- Edges from margin to focus cluster are visible
+- Only boundary→margin edges visible (not all margin edges)
+- Margin labels are 0.7x scale, 0.3x opacity
+- Content nodes only shown for focus-set keywords
 - Animation uses smooth ease-out (no linear motion)
 
 **Performance:**
@@ -188,4 +122,4 @@ Update `handleClick`:
 - Animation is fully ref-driven (no setState in useFrame)
 - Priority system ensures focus animation overrides viewport edge magnets
 - Reuses existing infrastructure (clampToBounds, computeSemanticNeighborhoods)
-- Edge case: clicking pulled node might need special handling (TBD during implementation)
+- Clicking pulled or margin node → flyTo real position (not focus toggle)
