@@ -8,12 +8,13 @@ import { useMemo } from "react";
 
 import type { SimNode, SimLink } from "@/lib/map-renderer";
 import type { PCATransform } from "@/lib/semantic-colors";
-import { CONTENT_Z_DEPTH } from "@/lib/content-zoom-config";
 import { EdgeRenderer } from "./EdgeRenderer";
 
 export interface ContentEdgesProps {
   simNodes: SimNode[];
   contentNodes: SimNode[];
+  /** Z depth for content edges (must match ContentNodes' contentZDepth) */
+  contentZDepth: number;
   curveIntensity: number;
   curveDirections: Map<string, number>;
   colorMixRatio: number;
@@ -21,33 +22,41 @@ export interface ContentEdgesProps {
   pcaTransform?: PCATransform;
   /** Search opacity map (node id -> opacity) for semantic search highlighting */
   searchOpacities?: Map<string, number>;
+  /** Hovered keyword ID ref — reaching edges only show for hovered node */
+  hoveredKeywordIdRef?: React.RefObject<string | null>;
 }
 
 export function ContentEdges({
   simNodes,
   contentNodes,
+  contentZDepth,
   curveIntensity,
   curveDirections,
   colorMixRatio,
   colorDesaturation,
   pcaTransform,
   searchOpacities,
+  hoveredKeywordIdRef,
 }: ContentEdgesProps): React.JSX.Element | null {
-  // Create containment edges (keyword -> content node) from ContentSimNode parentId
+  // Create containment edges (keyword -> content node) from ContentSimNode parentIds
+  // After deduplication, each content node can have multiple parents
   const containmentEdges = useMemo(() => {
     const edges: SimLink[] = [];
     for (const node of contentNodes) {
-      // ContentSimNode has parentId field
-      const parentId = (node as { parentId?: string }).parentId;
-      if (parentId) {
-        edges.push({
-          source: parentId,
-          target: node.id,
-        });
+      // ContentSimNode has parentIds array (multiple parents after deduplication)
+      const parentIds = (node as { parentIds?: string[] }).parentIds;
+      if (parentIds) {
+        // Create edge from each parent keyword to this content node
+        for (const parentId of parentIds) {
+          edges.push({
+            source: parentId,
+            target: node.id,
+          });
+        }
       }
     }
     return edges;
-  }, [contentNodes]);
+  }, [contentNodes, simNodes]);
 
   // Combined node map (keywords + content nodes)
   const nodeMap = useMemo(
@@ -61,18 +70,19 @@ export function ContentEdges({
 
   return (
     <EdgeRenderer
-      edges={containmentEdges}
-      nodeMap={nodeMap}
-      zDepth={CONTENT_Z_DEPTH}
-      opacity="chunk"
-      renderOrder={-2}
-      curveIntensity={curveIntensity}
-      curveDirections={curveDirections}
-      colorMixRatio={colorMixRatio}
-      colorDesaturation={colorDesaturation}
-      pcaTransform={pcaTransform}
-      simNodes={simNodes}
-      searchOpacities={searchOpacities}
-    />
-  );
+    edges={containmentEdges}
+    nodeMap={nodeMap}
+    zDepth={contentZDepth}
+    opacity={"chunk"}
+    renderOrder={-2}
+    curveIntensity={curveIntensity}
+    curveDirections={curveDirections}
+    colorMixRatio={colorMixRatio}
+    colorDesaturation={colorDesaturation}
+    pcaTransform={pcaTransform}
+    simNodes={simNodes}
+    searchOpacities={searchOpacities}
+    hoveredKeywordIdRef={hoveredKeywordIdRef}
+  />
+);
 }

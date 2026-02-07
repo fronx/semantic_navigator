@@ -399,10 +399,10 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
       // Only show labels for chunk nodes
       if (node.type !== "chunk") continue;
 
-      // Composite key: parentId:chunkId — chunks shared across keywords create
-      // duplicate nodes with the same id. Without this, they collide in all Maps.
-      const parentId = (node as ContentSimNode).parentId;
-      const chunkKey = parentId ? `${parentId}:${node.id}` : node.id;
+      // After deduplication, each chunk has a unique node in the graph (no duplicates).
+      // Use node.id directly as the key.
+      const parentIds = (node as ContentSimNode).parentIds;
+      const chunkKey = node.id;
 
       // Get screen rect from ChunkNodes (single source of truth)
       const screenRect = screenRects.get(chunkKey);
@@ -435,7 +435,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
         labelEl = document.createElement("div");
         labelEl.className = "content-preview-label";
         labelEl.dataset.chunkId = node.id;
-        if (parentId) labelEl.dataset.parentKeywordId = parentId;
+        if (parentIds[0]) labelEl.dataset.parentKeywordId = parentIds[0];
         // Static styles (set once when created)
         labelEl.style.overflow = "hidden";
         labelEl.style.transform = "none";
@@ -480,7 +480,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
 
       // Display full content
       const targetContent = (node as ContentSimNode).content || node.label;
-      const parentKeywordId = (node as ContentSimNode).parentId;
+      const parentKeywordId = parentIds[0]; // Use first parent for display
 
       // Only notify React when chunk becomes newly visible (not every frame)
       if (!reportedVisibleChunks.has(chunkKey)) {

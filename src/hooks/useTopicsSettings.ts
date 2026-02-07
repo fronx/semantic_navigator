@@ -26,10 +26,14 @@ export interface TopicsSettings {
   colorDesaturation: number;
   chunkZOffset: number;
   contentTextDepthScale: number;
+  /** Size multiplier for keyword nodes (default 1.0) */
+  keywordSizeMultiplier: number;
   contentSizeMultiplier: number;
   contentTextContrast: number;
   /** Focus radius in world units (0 = disabled). Nodes within this distance from screen center scale to full size; beyond it they shrink. */
   focusRadius: number;
+  /** Spring force strength for content node tethering to keywords (0.01-100, default 0.1, logarithmic scale) */
+  contentSpringStrength: number;
   /** Transmission panel roughness (0 = smooth/clear, 1 = rough/frosted) */
   panelRoughness: number;
   /** Transmission panel transparency (0 = opaque, 1 = fully transparent) */
@@ -38,7 +42,11 @@ export interface TopicsSettings {
   panelAnisotropicBlur: number;
   /** Transmission panel thickness multiplier (scales auto-computed thickness) */
   panelThicknessMultiplier: number;
+  /** Charge force strength for node repulsion (negative = repel, default -200) */
+  chargeStrength: number;
   dynamicClustering: boolean;
+  /** Use unified simulation (keywords + content in single simulation) vs separate simulations */
+  unifiedSimulation: boolean;
 
   // UI state
   sidebarCollapsed: boolean;
@@ -62,20 +70,25 @@ const DEFAULT_SETTINGS: TopicsSettings = {
   colorDesaturation: 0.3,
   chunkZOffset: 0.5,
   contentTextDepthScale: -15.0,
+  keywordSizeMultiplier: 1.0,
   contentSizeMultiplier: 1.5,
   contentTextContrast: 0.7,
   focusRadius: 0,
+  contentSpringStrength: 0.1,
+  chargeStrength: -200,
   panelRoughness: 1.0,
   panelTransmission: 0.97,
   panelAnisotropicBlur: 5.0,
   panelThicknessMultiplier: 1.0,
   dynamicClustering: true,
+  unifiedSimulation: false,
   sidebarCollapsed: false,
   sectionStates: {
     Renderer: true,
     Display: true,
     Graph: true,
     Hover: true,
+    "Content Layout": true,
     "Zoom Phases": false,
     Debug: false,
   },

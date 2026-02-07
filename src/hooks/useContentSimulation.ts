@@ -11,7 +11,8 @@ import { BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/three/node-renderer";
 
 /**
  * Custom force that tethers content nodes to their parent keywords.
- * Applies spring force toward parent and enforces dynamic max distance constraint.
+ * Each content node can have multiple parents - applies combined spring force
+ * toward all parents and enforces max distance from closest parent.
  */
 function tetherToParent(
   keywords: Map<string, SimNode>,
@@ -28,36 +29,76 @@ function tetherToParent(
     const nodes = (force as any).nodes() as ContentSimNode[];
 
     for (const node of nodes) {
-      const parent = keywords.get(node.parentId);
-      if (!parent || parent.x === undefined || parent.y === undefined) continue;
+      // Content nodes now have multiple parents (parentIds: string[])
+      if (!node.parentIds || node.parentIds.length === 0) continue;
       if (node.x === undefined || node.y === undefined) {
-        node.x = parent.x;
-        node.y = parent.y;
+        // Initialize at centroid of parents
+        let centerX = 0;
+        let centerY = 0;
+        let validCount = 0;
+        for (const parentId of node.parentIds) {
+          const parent = keywords.get(parentId);
+          if (parent && parent.x !== undefined && parent.y !== undefined) {
+            centerX += parent.x;
+            centerY += parent.y;
+            validCount++;
+          }
+        }
+        if (validCount > 0) {
+          node.x = centerX / validCount;
+          node.y = centerY / validCount;
+        }
         continue;
       }
 
-      // Spring force toward parent
-      const dx = parent.x - node.x;
-      const dy = parent.y - node.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+      // Apply spring force from ALL parent keywords (sum of forces)
+      let totalFx = 0;
+      let totalFy = 0;
+      let closestDist = Infinity;
+      let closestParentId: string | null = null;
 
-      if (dist > 0) {
-        const forceStrength = springStrength * alpha;
-        node.vx = (node.vx || 0) + dx * forceStrength;
-        node.vy = (node.vy || 0) + dy * forceStrength;
+      for (const parentId of node.parentIds) {
+        const parent = keywords.get(parentId);
+        if (!parent || parent.x === undefined || parent.y === undefined) continue;
+
+        const dx = parent.x - node.x;
+        const dy = parent.y - node.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        // Track closest parent for distance constraint
+        if (dist < closestDist) {
+          closestDist = dist;
+          closestParentId = parentId;
+        }
+
+        // Accumulate spring forces from all parents
+        if (dist > 0) {
+          const forceStrength = springStrength * alpha;
+          totalFx += dx * forceStrength;
+          totalFy += dy * forceStrength;
+        }
       }
 
-      // DYNAMIC max distance based on sibling count
-      const contentCount = contentCountsByParent.get(node.parentId) ?? 1;
-      const baseDistance = keywordRadius * baseDistanceMultiplier;
-      const additionalSpace = Math.sqrt(contentCount) * contentRadius * contentSpreadFactor;
-      const maxDistance = baseDistance + additionalSpace;
+      // Apply combined force
+      node.vx = (node.vx || 0) + totalFx;
+      node.vy = (node.vy || 0) + totalFy;
 
-      // Hard constraint: enforce max distance
-      if (dist > maxDistance) {
-        const scale = maxDistance / dist;
-        node.x = parent.x + (node.x - parent.x) * scale;
-        node.y = parent.y + (node.y - parent.y) * scale;
+      // DYNAMIC max distance based on closest parent's sibling count
+      if (closestParentId) {
+        const contentCount = contentCountsByParent.get(closestParentId) ?? 1;
+        const baseDistance = keywordRadius * baseDistanceMultiplier;
+        const additionalSpace = Math.sqrt(contentCount) * contentRadius * contentSpreadFactor;
+        const maxDistance = baseDistance + additionalSpace;
+
+        // Hard constraint: enforce max distance from closest parent
+        if (closestDist > maxDistance) {
+          const closestParent = keywords.get(closestParentId);
+          if (closestParent && closestParent.x !== undefined && closestParent.y !== undefined) {
+            const scale = maxDistance / closestDist;
+            node.x = closestParent.x + (node.x - closestParent.x) * scale;
+            node.y = closestParent.y + (node.y - closestParent.y) * scale;
+          }
+        }
       }
     }
   }
@@ -79,6 +120,8 @@ export interface UseContentSimulationOptions {
   keywordRadius: number;
   /** Content size multiplier (1.0-3.0, affects collision radius) */
   contentSizeMultiplier?: number;
+  /** Spring force strength for tethering to parent keywords (0.01-1.0, default 0.1) */
+  springStrength?: number;
   /** Collision strength (0-1, how hard content nodes push apart) */
   collisionStrength?: number;
   /** Spread factor for dynamic tether distance (default: 1.5) */
@@ -117,6 +160,7 @@ export function useContentSimulation({
   keywords,
   keywordRadius,
   contentSizeMultiplier = 1.5,
+  springStrength = 0.1,
   collisionStrength = 0.8,
   contentSpreadFactor = 1.5,
 }: UseContentSimulationOptions): ContentSimulation {
@@ -131,7 +175,10 @@ export function useContentSimulation({
   const contentCountsByParent = useMemo(() => {
     const counts = new Map<string, number>();
     for (const node of contentNodes) {
-      counts.set(node.parentId, (counts.get(node.parentId) ?? 0) + 1);
+      // Each content node can have multiple parents
+      for (const parentId of node.parentIds) {
+        counts.set(parentId, (counts.get(parentId) ?? 0) + 1);
+      }
     }
     return counts;
   }, [contentNodes]);
@@ -151,7 +198,7 @@ export function useContentSimulation({
         contentCountsByParent,
         keywordRadius,
         contentRadius,
-        0.1, // springStrength
+        springStrength,
         2.5, // baseDistanceMultiplier
         contentSpreadFactor
       ))
@@ -176,7 +223,7 @@ export function useContentSimulation({
     }
   }, [contentNodes]);
 
-  // Update forces when content size changes (e.g., during zoom)
+  // Update forces when content size or spring strength changes
   useEffect(() => {
     if (!simulationRef.current) return;
 
@@ -192,14 +239,14 @@ export function useContentSimulation({
       contentCountsByParent,
       keywordRadius,
       contentRadius,
-      0.1, // springStrength
+      springStrength,
       2.5, // baseDistanceMultiplier
       contentSpreadFactor
     ));
 
-    // Reignite simulation with moderate heat to let nodes adjust
-    simulationRef.current.alpha(0.3).restart();
-  }, [contentRadius, keywords, contentCountsByParent, keywordRadius, contentSpreadFactor]);
+    // Reignite simulation with high heat to quickly respond to changes
+    simulationRef.current.alpha(0.8).restart();
+  }, [contentRadius, keywords, contentCountsByParent, keywordRadius, springStrength, contentSpreadFactor]);
 
   return useMemo(() => ({
     tick: () => simulationRef.current?.tick(),

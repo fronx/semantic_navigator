@@ -49,6 +49,8 @@ export interface EdgeRendererProps {
   simNodes?: SimNode[];
   /** Search opacity map (node id -> opacity) for semantic search highlighting */
   searchOpacities?: Map<string, number>;
+  /** Hovered keyword ID ref — reaching edges only show for hovered node */
+  hoveredKeywordIdRef?: React.RefObject<string | null>;
 }
 
 export function EdgeRenderer({
@@ -65,10 +67,11 @@ export function EdgeRenderer({
   clusterColors: providedClusterColors,
   simNodes,
   searchOpacities,
+  hoveredKeywordIdRef,
 }: EdgeRendererProps): React.JSX.Element | null {
   const lineRef = useRef<THREE.Line>(null);
   const tempColor = useRef(new THREE.Color());
-  const { camera } = useThree();
+  const { camera, size } = useThree();
 
   // Compute cluster colors if not provided
   const clusterColors = useMemo(() => {
@@ -115,32 +118,71 @@ export function EdgeRenderer({
     const posArray = line.geometry.attributes.position.array as Float32Array;
     const colArray = line.geometry.attributes.color.array as Float32Array;
 
+    // Compute viewport bounds for edge culling (hide edges where neither node is visible)
+    const fov = (camera as THREE.PerspectiveCamera).fov * Math.PI / 180;
+    const visibleHeight = 2 * camera.position.z * Math.tan(fov / 2);
+    const visibleWidth = visibleHeight * (size.width / size.height);
+    const marginX = visibleWidth * 0.2;
+    const marginY = visibleHeight * 0.2;
+    const minX = camera.position.x - visibleWidth / 2 - marginX;
+    const maxX = camera.position.x + visibleWidth / 2 + marginX;
+    const minY = camera.position.y - visibleHeight / 2 - marginY;
+    const maxY = camera.position.y + visibleHeight / 2 + marginY;
+
+    // Hovered node ID for revealing reaching edges on hover
+    const hoveredId = hoveredKeywordIdRef?.current ?? null;
+
     for (let edgeIndex = 0; edgeIndex < edges.length; edgeIndex++) {
       const edge = edges[edgeIndex];
       const sourceId = getLinkNodeId(edge.source);
       const targetId = getLinkNodeId(edge.target);
       const sourceNode = nodeMap.get(sourceId);
       const targetNode = nodeMap.get(targetId);
-      if (!sourceNode || !targetNode) continue;
+      const baseOffset = edgeIndex * VERTICES_PER_EDGE * 3;
+      if (!sourceNode || !targetNode) {
+        for (let i = 0; i < VERTICES_PER_EDGE * 3; i++) posArray[baseOffset + i] = NaN;
+        continue;
+      }
+
+      // Viewport culling: hide if neither node visible, dim if only one visible
+      const sx = sourceNode.x ?? 0, sy = sourceNode.y ?? 0;
+      const tx = targetNode.x ?? 0, ty = targetNode.y ?? 0;
+      const sourceInView = sx >= minX && sx <= maxX && sy >= minY && sy <= maxY;
+      const targetInView = tx >= minX && tx <= maxX && ty >= minY && ty <= maxY;
+      if (!sourceInView && !targetInView) {
+        for (let i = 0; i < VERTICES_PER_EDGE * 3; i++) posArray[baseOffset + i] = NaN;
+        continue;
+      }
+      // Edges reaching off-screen: only show when hovering the visible endpoint
+      if (!sourceInView || !targetInView) {
+        if (hoveredId !== sourceId && hoveredId !== targetId) {
+          for (let i = 0; i < VERTICES_PER_EDGE * 3; i++) posArray[baseOffset + i] = NaN;
+          continue;
+        }
+      }
 
       const direction = curveDirections.get(`${sourceId}->${targetId}`) ?? 1;
       const arcPoints = computeArcPoints(
-        { x: sourceNode.x ?? 0, y: sourceNode.y ?? 0 },
-        { x: targetNode.x ?? 0, y: targetNode.y ?? 0 },
+        { x: sx, y: sy },
+        { x: tx, y: ty },
         curveIntensity,
         direction,
         EDGE_SEGMENTS
       );
 
-      const baseOffset = edgeIndex * VERTICES_PER_EDGE * 3;
+      // Get Z positions for source and target (support 3D edges across layers)
+      // Keywords are at z=0, content nodes at their z property (or zDepth default)
+      const sourceZ = sourceNode.type === "keyword" ? 0 : ((sourceNode as any).z ?? zDepth);
+      const targetZ = targetNode.type === "keyword" ? 0 : ((targetNode as any).z ?? zDepth);
 
-      // Write arc positions
+      // Write arc positions with interpolated Z
       if (arcPoints.length >= ARC_VERTEX_COUNT) {
         for (let i = 0; i < ARC_VERTEX_COUNT; i++) {
           const idx = baseOffset + i * 3;
+          const t = i / (ARC_VERTEX_COUNT - 1); // 0 to 1 along the edge
           posArray[idx] = arcPoints[i].x;
           posArray[idx + 1] = arcPoints[i].y;
-          posArray[idx + 2] = zDepth;
+          posArray[idx + 2] = sourceZ + t * (targetZ - sourceZ); // Interpolate Z
         }
       } else {
         // Straight line case - interpolate endpoints to fill vertices
@@ -151,7 +193,7 @@ export function EdgeRenderer({
           const t = i / (ARC_VERTEX_COUNT - 1);
           posArray[idx] = first.x + t * (last.x - first.x);
           posArray[idx + 1] = first.y + t * (last.y - first.y);
-          posArray[idx + 2] = zDepth;
+          posArray[idx + 2] = sourceZ + t * (targetZ - sourceZ); // Interpolate Z
         }
       }
 

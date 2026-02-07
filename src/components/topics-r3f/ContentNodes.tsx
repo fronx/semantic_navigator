@@ -51,6 +51,8 @@ export interface ContentNodesProps {
   searchOpacities?: Map<string, number>;
   /** Focus radius in world units (0 = disabled). Proximity-based node scaling. */
   focusRadius?: number;
+  /** World-space cursor position for focus center (null = use camera center) */
+  cursorWorldPosRef?: React.RefObject<{ x: number; y: number } | null>;
 }
 
 export function ContentNodes({
@@ -69,6 +71,7 @@ export function ContentNodes({
   contentScreenRectsRef,
   searchOpacities,
   focusRadius = 0,
+  cursorWorldPosRef,
 }: ContentNodesProps) {
   const { camera, size, viewport } = useThree();
 
@@ -152,15 +155,23 @@ export function ContentNodes({
       const z = contentZDepth;
 
       // Calculate scale - incorporate search opacity so non-matching content nodes stay small
+      // Use max opacity across all parent keywords (show if ANY parent matches)
       let nodeScale = contentScale;
       if (searchOpacities && searchOpacities.size > 0) {
-        const searchOpacity = searchOpacities.get(node.parentId) ?? 1.0;
-        nodeScale *= searchOpacity;
+        let maxSearchOpacity = 0;
+        for (const parentId of node.parentIds) {
+          const opacity = searchOpacities.get(parentId) ?? 1.0;
+          maxSearchOpacity = Math.max(maxSearchOpacity, opacity);
+        }
+        nodeScale *= maxSearchOpacity;
       }
 
-      // Apply proximity-based scaling (nodes near screen center are larger)
+      // Apply proximity-based scaling (nodes near cursor or screen center are larger)
       if (focusRadius > 0) {
-        nodeScale *= computeProximityScale(x, y, camera.position.x, camera.position.y, focusRadius);
+        const center = cursorWorldPosRef?.current;
+        const cx = center?.x ?? camera.position.x;
+        const cy = center?.y ?? camera.position.y;
+        nodeScale *= computeProximityScale(x, y, cx, cy, focusRadius);
       }
 
       // Compose matrix with position and scale
@@ -169,8 +180,9 @@ export function ContentNodes({
       matrixRef.current.compose(positionRef.current, quaternionRef.current, scaleRef.current);
       meshRef.current.setMatrixAt(i, matrixRef.current);
 
-      // Get color from parent keyword
-      const parentNode = keywordMap.get(node.parentId);
+      // Get color from primary parent keyword (first in list)
+      const primaryParentId = node.parentIds[0];
+      const parentNode = primaryParentId ? keywordMap.get(primaryParentId) : undefined;
       if (parentNode) {
         const color = getNodeColor(
           parentNode,
@@ -192,10 +204,14 @@ export function ContentNodes({
         adjustContrast(colorRef.current.getHexString(), contentTextContrast, isDarkMode())
       );
 
-      // Apply search opacity from parent keyword
+      // Apply search opacity from parent keywords (use max across all parents)
       if (searchOpacities && searchOpacities.size > 0) {
-        const searchOpacity = searchOpacities.get(node.parentId) ?? 1.0;
-        colorRef.current.multiplyScalar(searchOpacity);
+        let maxSearchOpacity = 0;
+        for (const parentId of node.parentIds) {
+          const opacity = searchOpacities.get(parentId) ?? 1.0;
+          maxSearchOpacity = Math.max(maxSearchOpacity, opacity);
+        }
+        colorRef.current.multiplyScalar(maxSearchOpacity);
       }
 
       meshRef.current.setColorAt(i, colorRef.current);
@@ -225,10 +241,8 @@ export function ContentNodes({
         const screenHalfWidth = Math.abs(screenEdgeX - screenCenterX);
         const screenWidth = screenHalfWidth * 2;
 
-        // Composite key: parentId:contentId — needed because content nodes shared across
-        // keywords create duplicate nodes with the same id but different parents
-        const contentKey = `${node.parentId}:${node.id}`;
-        contentScreenRectsRef.current.set(contentKey, {
+        // Each content node appears only once (no duplicates), so use node.id directly
+        contentScreenRectsRef.current.set(node.id, {
           x: screenCenterX,
           y: screenCenterY,
           width: screenWidth,

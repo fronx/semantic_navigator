@@ -79,10 +79,18 @@ export interface TopicsViewProps {
   contentZDepth?: number;
   /** Scale factor for converting panel thickness to chunk text depth offset */
   contentTextDepthScale?: number;
+  /** Size multiplier for keyword nodes (default 1.0) */
+  keywordSizeMultiplier?: number;
   /** Size multiplier for chunk/article nodes (default 1.5) */
   contentSizeMultiplier?: number;
   /** Text contrast for content labels: 0 = low contrast, 1 = high contrast */
   contentTextContrast?: number;
+  /** Spring force strength for content node tethering (0.01-1.0, default 0.1) */
+  contentSpringStrength?: number;
+  /** Charge force strength for node repulsion (negative = repel, default -200) */
+  chargeStrength?: number;
+  /** Use unified simulation (keywords + content in single simulation) instead of separate simulations */
+  unifiedSimulation?: boolean;
   /** Focus radius in world units (0 = disabled). Proximity-based node scaling. */
   focusRadius?: number;
   /** Transmission panel roughness (0 = smooth, 1 = frosted) */
@@ -141,8 +149,12 @@ export function TopicsView({
   showKNNEdges = false,
   contentZDepth = -150,
   contentTextDepthScale = -15.0,
+  keywordSizeMultiplier = 1.0,
   contentSizeMultiplier = 1.5,
   contentTextContrast = 0.7,
+  contentSpringStrength = 0.1,
+  chargeStrength = -200,
+  unifiedSimulation = false,
   focusRadius = 0,
   panelRoughness = 1.0,
   panelTransmission = 0.97,
@@ -374,7 +386,7 @@ export function TopicsView({
     ...baseRendererOptions,
     enabled: rendererType === "three",
     containerRef,
-    contentsByKeyword,
+    chunksByKeyword: contentsByKeyword,
     cameraZ,
     zoomPhaseConfig,
   });
@@ -513,8 +525,12 @@ export function TopicsView({
           zoomPhaseConfig={zoomPhaseConfig ?? DEFAULT_ZOOM_PHASE_CONFIG}
           contentZDepth={contentZDepth}
           contentTextDepthScale={contentTextDepthScale}
+          keywordSizeMultiplier={keywordSizeMultiplier}
           contentSizeMultiplier={contentSizeMultiplier}
           contentTextContrast={contentTextContrast}
+          contentSpringStrength={contentSpringStrength}
+          chargeStrength={chargeStrength}
+          unifiedSimulation={unifiedSimulation}
           focusRadius={focusRadius}
           panelRoughness={panelRoughness}
           panelTransmission={panelTransmission}

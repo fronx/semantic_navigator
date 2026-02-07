@@ -16,6 +16,8 @@ import {
 export interface ForceSimulationProps {
   nodes: KeywordNode[];
   edges: SimilarityEdge[];
+  /** Charge force strength for node repulsion (negative = repel, default -200) */
+  chargeStrength?: number;
   /** Callback to get keyword simulation nodes (keywords only, no chunks) */
   onSimulationReady?: (keywordNodes: SimNode[]) => void;
   /** Current camera Z position for zoom-dependent simulation energy */
@@ -30,6 +32,7 @@ const SAFETY_TIMEOUT_MS = 20000;
 export function ForceSimulation({
   nodes,
   edges,
+  chargeStrength = -200,
   onSimulationReady,
   cameraZ,
 }: ForceSimulationProps) {
@@ -76,7 +79,7 @@ export function ForceSimulation({
             return 0.2 + sim * 0.8;
           })
       )
-      .force("charge", d3.forceManyBody().strength(-200))
+      .force("charge", d3.forceManyBody().strength(chargeStrength))
       .force("center", d3.forceCenter(0, 0))
       .alphaDecay(0.01)
       .velocityDecay(INITIAL_VELOCITY_DECAY)
@@ -92,7 +95,7 @@ export function ForceSimulation({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     // cameraZ intentionally excluded -- handled by the zoom effect below
-  }, [nodes, edges, onSimulationReady]);
+  }, [nodes, edges, chargeStrength, onSimulationReady]);
 
   // Adjust simulation energy when zoom changes
   useEffect(() => {

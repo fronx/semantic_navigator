@@ -21,6 +21,8 @@ export interface KeywordEdgesProps {
   showKNNEdges?: boolean;
   /** Search opacity map (node id -> opacity) for semantic search highlighting */
   searchOpacities?: Map<string, number>;
+  /** Hovered keyword ID ref — reaching edges only show for hovered node */
+  hoveredKeywordIdRef?: React.RefObject<string | null>;
 }
 
 export function KeywordEdges({
@@ -33,6 +35,7 @@ export function KeywordEdges({
   pcaTransform,
   showKNNEdges = false,
   searchOpacities,
+  hoveredKeywordIdRef,
 }: KeywordEdgesProps): React.JSX.Element | null {
   const nodeMap = useMemo(
     () => new Map(simNodes.map((n) => [n.id, n])),
@@ -63,6 +66,7 @@ export function KeywordEdges({
       pcaTransform={pcaTransform}
       simNodes={simNodes}
       searchOpacities={searchOpacities}
+      hoveredKeywordIdRef={hoveredKeywordIdRef}
     />
   );
 }

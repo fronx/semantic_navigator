@@ -522,8 +522,8 @@ export default function TopicsPage() {
             nodeCount,
             clusterCount,
           }}
-          hoveredContentId={hoveredContentId}
-          hoveredContentContent={hoveredContentContent}
+          hoveredChunkId={hoveredContentId}
+          hoveredChunkContent={hoveredContentContent}
           keywordChunksDebug={keywordChunksDebug}
           searchFilterKeywords={searchFilterKeywords}
           onClearSearchFilter={handleClearSearchFilter}
@@ -571,8 +571,12 @@ export default function TopicsPage() {
             showKNNEdges={settings.showKNNEdges}
             contentZDepth={contentZDepth}
             contentTextDepthScale={settings.contentTextDepthScale}
+            keywordSizeMultiplier={settings.keywordSizeMultiplier}
             contentSizeMultiplier={settings.contentSizeMultiplier}
             contentTextContrast={settings.contentTextContrast}
+            contentSpringStrength={settings.contentSpringStrength}
+            chargeStrength={settings.chargeStrength}
+            unifiedSimulation={settings.unifiedSimulation}
             focusRadius={settings.focusRadius}
             panelRoughness={settings.panelRoughness}
             panelTransmission={settings.panelTransmission}

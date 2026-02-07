@@ -10,7 +10,7 @@ import type { SimNode } from "@/lib/map-renderer";
 import type { PCATransform } from "@/lib/semantic-colors";
 import type { ZoomRange } from "@/lib/zoom-phase-config";
 import type { KeywordTierMap } from "@/lib/topics-filter";
-import { calculateScales, computeProximityScale } from "@/lib/content-scale";
+import { calculateScales } from "@/lib/content-scale";
 import { getNodeColor, BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/three/node-renderer";
 import { KEYWORD_TIER_SCALES } from "@/lib/semantic-filter-config";
 import { useInstancedMeshMaterial } from "@/hooks/useInstancedMeshMaterial";
@@ -26,11 +26,11 @@ export interface KeywordNodesProps {
   colorDesaturation: number;
   pcaTransform: PCATransform | null;
   zoomRange: ZoomRange;
+  /** Size multiplier for keyword nodes (default 1.0) */
+  keywordSizeMultiplier?: number;
   keywordTiers?: KeywordTierMap | null;
   /** Search opacity map (node id -> opacity) for semantic search highlighting */
   searchOpacities?: Map<string, number>;
-  /** Focus radius in world units (0 = disabled). Proximity-based node scaling. */
-  focusRadius?: number;
   /** Handler for keyword node click */
   onKeywordClick?: (keywordId: string) => void;
 }
@@ -42,9 +42,9 @@ export function KeywordNodes({
   colorDesaturation,
   pcaTransform,
   zoomRange,
+  keywordSizeMultiplier = 1.0,
   keywordTiers,
   searchOpacities,
-  focusRadius = 0,
   onKeywordClick,
 }: KeywordNodesProps) {
   const { camera } = useThree();
@@ -100,12 +100,7 @@ export function KeywordNodes({
         }
       }
 
-      // Apply proximity-based scaling (nodes near screen center are larger)
-      if (focusRadius > 0) {
-        scaleMultiplier *= computeProximityScale(x, y, camera.position.x, camera.position.y, focusRadius);
-      }
-
-      const finalScale = keywordScale * scaleMultiplier;
+      const finalScale = keywordScale * scaleMultiplier * keywordSizeMultiplier;
 
       // Compose matrix with position and scale
       positionRef.current.set(x, y, z);

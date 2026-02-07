@@ -63,6 +63,8 @@ export interface LabelRefs {
   contentScreenRectsRef: React.MutableRefObject<Map<string, ContentScreenRect>>;
   /** Cursor position in world coordinates (from hover controller) */
   cursorWorldPosRef: React.MutableRefObject<{ x: number; y: number } | null>;
+  /** Currently hovered keyword ID (set by label overlay hover detection) */
+  hoveredKeywordIdRef: React.MutableRefObject<string | null>;
 }
 
 /**

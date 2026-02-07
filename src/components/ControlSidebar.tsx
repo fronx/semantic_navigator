@@ -437,6 +437,42 @@ export function ControlSidebar({
             />
           </Section>
 
+          {/* Content Layout */}
+          <Section {...section("Content Layout")}>
+            <Checkbox
+              label="Unified simulation"
+              checked={settings.unifiedSimulation}
+              onChange={(v) => update("unifiedSimulation", v)}
+            />
+            <Slider
+              label="Charge"
+              value={settings.chargeStrength}
+              onChange={(v) => update("chargeStrength", v)}
+              min={-500}
+              max={0}
+              step={10}
+              format={(v) => `${v}`}
+            />
+            <Slider
+              label="Keyword size"
+              value={settings.keywordSizeMultiplier}
+              onChange={(v) => update("keywordSizeMultiplier", v)}
+              min={0.1}
+              max={5}
+              step={0.1}
+              format={(v) => `${v.toFixed(1)}x`}
+            />
+            <Slider
+              label="Spring force"
+              value={Math.log10(settings.contentSpringStrength)}
+              onChange={(logV) => update("contentSpringStrength", Math.pow(10, logV))}
+              min={-2}
+              max={2}
+              step={0.01}
+              format={(logV) => Math.pow(10, logV).toFixed(Math.pow(10, logV) < 1 ? 3 : 1)}
+            />
+          </Section>
+
           {/* Zoom Phases */}
           <Section {...section("Zoom Phases")}>
             <div className="space-y-3">

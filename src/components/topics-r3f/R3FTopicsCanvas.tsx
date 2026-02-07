@@ -39,8 +39,15 @@ export interface R3FTopicsCanvasProps {
   zoomPhaseConfig: ZoomPhaseConfig;
   contentZDepth?: number;
   contentTextDepthScale?: number;
+  keywordSizeMultiplier?: number;
   contentSizeMultiplier?: number;
   contentTextContrast?: number;
+  /** Spring force strength for content node tethering (0.01-1.0, default 0.1) */
+  contentSpringStrength?: number;
+  /** Charge force strength for node repulsion (negative = repel, default -200) */
+  chargeStrength?: number;
+  /** Use unified simulation (keywords + content in single simulation) instead of separate simulations */
+  unifiedSimulation?: boolean;
   /** Focus radius in world units (0 = disabled). Proximity-based node scaling. */
   focusRadius?: number;
   /** Transmission panel roughness */
@@ -87,8 +94,12 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     zoomPhaseConfig,
     contentZDepth,
     contentTextDepthScale,
+    keywordSizeMultiplier,
     contentSizeMultiplier,
     contentTextContrast,
+    contentSpringStrength,
+    chargeStrength,
+    unifiedSimulation,
     focusRadius,
     panelRoughness,
     panelTransmission,
@@ -163,6 +174,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     const labelManagerRef = useRef<LabelOverlayManager | null>(null);
     const contentScreenRectsRef = useRef<Map<string, ContentScreenRect>>(new Map());
     const cursorWorldPosRef = useRef<{ x: number; y: number } | null>(null);
+    const hoveredKeywordIdRef = useRef<string | null>(null);
 
     // Keep nodeToCluster ref updated
     nodeToClusterRef.current = nodeToCluster ?? new Map();
@@ -177,6 +189,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
       labelManagerRef,
       contentScreenRectsRef,
       cursorWorldPosRef,
+      hoveredKeywordIdRef,
     };
 
     // Forward wheel events from DOM overlays to canvas
@@ -220,8 +233,12 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
             zoomPhaseConfig={zoomPhaseConfig}
             contentZDepth={contentZDepth}
             contentTextDepthScale={contentTextDepthScale}
+            keywordSizeMultiplier={keywordSizeMultiplier}
             contentSizeMultiplier={contentSizeMultiplier}
             contentTextContrast={contentTextContrast}
+            contentSpringStrength={contentSpringStrength}
+            chargeStrength={chargeStrength}
+            unifiedSimulation={unifiedSimulation}
             focusRadius={focusRadius}
             panelRoughness={panelRoughness}
             panelTransmission={panelTransmission}
@@ -247,7 +264,10 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
           searchOpacities={searchOpacities}
           onKeywordLabelClick={onKeywordLabelClick}
           onClusterLabelClick={onClusterLabelClick}
-          onKeywordHover={onKeywordHover}
+          onKeywordHover={(id) => {
+            hoveredKeywordIdRef.current = id;
+            onKeywordHover(id);
+          }}
         />
       </div>
     );

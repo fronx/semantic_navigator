@@ -3,10 +3,11 @@
  * Orchestrates all child components (camera, simulation, nodes, edges, labels).
  */
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useThree, useFrame } from "@react-three/fiber";
 import { CameraController } from "./CameraController";
 import { ForceSimulation } from "./ForceSimulation";
+import { UnifiedSimulation } from "./UnifiedSimulation";
 import { KeywordNodes } from "./KeywordNodes";
 import { ContentNodes } from "./ContentNodes";
 import { TransmissionPanel } from "./TransmissionPanel";
@@ -15,7 +16,7 @@ import { ContentEdges } from "./ContentEdges";
 import { LabelsUpdater } from "./LabelsUpdater";
 import { useEdgeCurveDirections } from "@/hooks/useEdgeCurveDirections";
 import { useContentSimulation } from "@/hooks/useContentSimulation";
-import { createContentNodes } from "@/lib/content-layout";
+import { createContentNodes, type ContentSimNode } from "@/lib/content-layout";
 import { computeNodeDegrees } from "@/lib/label-overlays";
 import { groupNodesByCommunity } from "@/lib/hull-renderer";
 import { computeClusterColors } from "@/lib/semantic-colors";
@@ -68,10 +69,18 @@ export interface R3FTopicsSceneProps {
   contentZDepth?: number;
   /** Scale factor for converting panel thickness to content text depth offset */
   contentTextDepthScale?: number;
+  /** Size multiplier for keyword nodes (default 1.0) */
+  keywordSizeMultiplier?: number;
   /** Size multiplier for content nodes (default 1.5) */
   contentSizeMultiplier?: number;
   /** Text contrast for adjusting content node background brightness: 0 = low contrast, 1 = high contrast */
   contentTextContrast?: number;
+  /** Spring force strength for content node tethering (0.01-1.0, default 0.1) */
+  contentSpringStrength?: number;
+  /** Charge force strength for node repulsion (negative = repel, default -200) */
+  chargeStrength?: number;
+  /** Use unified simulation (keywords + content in single simulation) instead of separate simulations */
+  unifiedSimulation?: boolean;
   /** Focus radius in world units (0 = disabled). Proximity-based node scaling. */
   focusRadius?: number;
   /** Transmission panel roughness */
@@ -112,8 +121,12 @@ export function R3FTopicsScene({
   zoomPhaseConfig,
   contentZDepth = -150,
   contentTextDepthScale = -15.0,
+  keywordSizeMultiplier = 1.0,
   contentSizeMultiplier = 1.5,
   contentTextContrast = 0.7,
+  contentSpringStrength = 0.1,
+  chargeStrength = -200,
+  unifiedSimulation = false,
   focusRadius = 0,
   panelRoughness,
   panelTransmission,
@@ -128,8 +141,14 @@ export function R3FTopicsScene({
   labelRefs,
   cursorPosition,
 }: R3FTopicsSceneProps) {
-  // Level 1: Keyword simulation nodes (from ForceSimulation)
+  // Level 1: Simulation nodes
+  // - Unified mode: all nodes (keywords + content) from UnifiedSimulation
+  // - Separate mode: keywords from ForceSimulation, content added separately
   const [keywordNodes, setKeywordNodes] = useState<SimNode[]>([]);
+  const [unifiedNodes, setUnifiedNodes] = useState<(SimNode | ContentSimNode)[]>([]);
+
+  // Unified simulation tick method (manual frame-sync to prevent jitter)
+  const unifiedSimTickRef = useRef<(() => void) | null>(null);
 
   // Calculate stable max content node count (available immediately from contentsByKeyword)
   const contentNodeCount = useMemo(() => {
@@ -157,24 +176,58 @@ export function R3FTopicsScene({
     return new Map<string, SimNode>(keywordNodes.map(n => [n.id, n]));
   }, [keywordNodes]);
 
-  // Level 2: Content simulation (separate from keyword simulation)
+  // Level 2: Content simulation (only in separate mode)
   const keywordRadius = BASE_DOT_RADIUS * DOT_SCALE_FACTOR;
   const contentSimulation = useContentSimulation({
-    contentNodes: contentNodes,
+    contentNodes: unifiedSimulation ? [] : contentNodes, // Disable in unified mode
     keywords: keywordMap,
     keywordRadius,
     contentSizeMultiplier,
+    springStrength: contentSpringStrength,
   });
 
-  // Tick content simulation every frame
+  // Tick simulations every frame (manual frame-sync prevents jitter)
+  // Also update cursor world position from screen coords + current camera (stays accurate during panning)
   useFrame(() => {
-    contentSimulation.tick();
+    if (unifiedSimulation) {
+      // Manual tick for unified simulation (frame-synced)
+      unifiedSimTickRef.current?.();
+    } else {
+      // Manual tick for separate content simulation
+      contentSimulation.tick();
+    }
+
+    if (!cursorPosition) {
+      labelRefs.cursorWorldPosRef.current = null;
+      return;
+    }
+    const fov = (camera as import("three").PerspectiveCamera).fov * Math.PI / 180;
+    const visibleHeight = 2 * camera.position.z * Math.tan(fov / 2);
+    const visibleWidth = visibleHeight * (size.width / size.height);
+    const ndcX = (cursorPosition.x / size.width) * 2 - 1;
+    const ndcY = -((cursorPosition.y / size.height) * 2 - 1);
+    labelRefs.cursorWorldPosRef.current = {
+      x: camera.position.x + ndcX * (visibleWidth / 2),
+      y: camera.position.y + ndcY * (visibleHeight / 2),
+    };
   });
 
   // Combine keyword and content nodes for rendering
   const simNodes = useMemo(() => {
-    return [...keywordNodes, ...contentNodes];
-  }, [keywordNodes, contentNodes]);
+    if (unifiedSimulation) {
+      return unifiedNodes; // Already combined by UnifiedSimulation
+    }
+    return [...keywordNodes, ...contentNodes]; // Separate simulations
+  }, [unifiedSimulation, unifiedNodes, keywordNodes, contentNodes]);
+
+  // Extract keyword and content nodes for rendering (works for both modes)
+  const renderKeywordNodes = useMemo(() => {
+    return simNodes.filter(n => n.type === "keyword") as SimNode[];
+  }, [simNodes]);
+
+  const renderContentNodes = useMemo(() => {
+    return simNodes.filter(n => n.type !== "keyword") as ContentSimNode[];
+  }, [simNodes]);
 
   // Update labelRefs when simNodes change (for label rendering)
   useEffect(() => {
@@ -203,7 +256,7 @@ export function R3FTopicsScene({
   const curveDirections = useEdgeCurveDirections(simNodes, edges as SimLink[]);
 
   // Calculate dynamic max zoom distance based on visible node positions
-  const { size } = useThree();
+  const { size, camera } = useThree();
   const maxDistance = useMemo(() => {
     if (simNodes.length === 0) {
       return CAMERA_Z_MAX; // Fallback to default
@@ -225,18 +278,34 @@ export function R3FTopicsScene({
       {/* Labels updater - updates camera state and triggers label renders */}
       <LabelsUpdater labelRefs={labelRefs} />
 
-      <ForceSimulation
-        nodes={nodes}
-        edges={edges}
-        onSimulationReady={setKeywordNodes}
-        cameraZ={cameraZ}
-      />
+      {/* Simulation: unified or separate */}
+      {unifiedSimulation ? (
+        <UnifiedSimulation
+          keywordNodes={nodes}
+          contentsByKeyword={contentsByKeyword}
+          edges={edges}
+          chargeStrength={chargeStrength}
+          springStrength={contentSpringStrength}
+          contentSizeMultiplier={contentSizeMultiplier}
+          onSimulationReady={setUnifiedNodes}
+          onTickReady={(tick) => { unifiedSimTickRef.current = tick; }}
+          cameraZ={cameraZ}
+        />
+      ) : (
+        <ForceSimulation
+          nodes={nodes}
+          edges={edges}
+          chargeStrength={chargeStrength}
+          onSimulationReady={setKeywordNodes}
+          cameraZ={cameraZ}
+        />
+      )}
 
       {/* Content layer (furthest back, z < 0) */}
-      {contentNodes.length > 0 && (
+      {renderContentNodes.length > 0 && (
         <ContentNodes
           nodeCount={contentNodeCount}
-          contentNodes={contentNodes}
+          contentNodes={renderContentNodes}
           simNodes={simNodes}
           colorMixRatio={colorMixRatio}
           colorDesaturation={colorDesaturation}
@@ -250,12 +319,13 @@ export function R3FTopicsScene({
           contentScreenRectsRef={labelRefs.contentScreenRectsRef}
           searchOpacities={searchOpacities}
           focusRadius={focusRadius}
+          cursorWorldPosRef={labelRefs.cursorWorldPosRef}
         />
       )}
 
       {/* Frosted glass panel (between content nodes and keywords) */}
       <TransmissionPanel
-        enabled={blurEnabled && contentNodes.length > 0}
+        enabled={blurEnabled && renderContentNodes.length > 0}
         distanceRatio={panelDistanceRatio}
         thickness={panelThickness}
         roughness={panelRoughness}
@@ -264,29 +334,26 @@ export function R3FTopicsScene({
       />
 
       {/* Content containment edges (keyword → content node) */}
-      {keywordNodes.length > 0 && contentNodes.length > 0 && (
-        // These edges go all over the place.
-        // We might bring them back at some point,
-        // but for now they add visual clutter and hurt performance.
-        <>
-        </>
-        //
-        // <ContentEdges
-        //   simNodes={keywordNodes}
-        //   contentNodes={contentNodes}
-        //   curveIntensity={0.25}
-        //   curveDirections={curveDirections}
-        //   colorMixRatio={colorMixRatio}
-        //   colorDesaturation={colorDesaturation}
-        //   pcaTransform={pcaTransform ?? undefined}
-        //   searchOpacities={searchOpacities}
-        // />
+      {/* Only shown in unified mode to visualize multi-parent relationships */}
+      {unifiedSimulation && renderKeywordNodes.length > 0 && renderContentNodes.length > 0 && (
+        <ContentEdges
+          simNodes={renderKeywordNodes}
+          contentNodes={renderContentNodes}
+          contentZDepth={contentZDepth}
+          curveIntensity={0.25}
+          curveDirections={curveDirections}
+          colorMixRatio={colorMixRatio}
+          colorDesaturation={colorDesaturation}
+          pcaTransform={pcaTransform ?? undefined}
+          searchOpacities={searchOpacities}
+          hoveredKeywordIdRef={labelRefs.hoveredKeywordIdRef}
+        />
       )}
 
       {/* Keyword similarity edges - constant opacity */}
-      {keywordNodes.length > 0 && edges.length > 0 && (
+      {renderKeywordNodes.length > 0 && edges.length > 0 && (
         <KeywordEdges
-          simNodes={keywordNodes}
+          simNodes={renderKeywordNodes}
           edges={edges as SimLink[]}
           curveIntensity={0.25}
           curveDirections={curveDirections}
@@ -295,21 +362,22 @@ export function R3FTopicsScene({
           pcaTransform={pcaTransform ?? undefined}
           showKNNEdges={showKNNEdges}
           searchOpacities={searchOpacities}
+          hoveredKeywordIdRef={labelRefs.hoveredKeywordIdRef}
         />
       )}
 
       {/* Keyword layer */}
-      {keywordNodes.length > 0 && (
+      {renderKeywordNodes.length > 0 && (
         <KeywordNodes
           nodeCount={totalKeywordCount}
-          simNodes={keywordNodes}
+          simNodes={renderKeywordNodes}
           colorMixRatio={colorMixRatio}
           colorDesaturation={colorDesaturation}
           pcaTransform={pcaTransform}
           zoomRange={zoomPhaseConfig.chunkCrossfade}
+          keywordSizeMultiplier={keywordSizeMultiplier}
           keywordTiers={keywordTiers}
           searchOpacities={searchOpacities}
-          focusRadius={focusRadius}
           onKeywordClick={onKeywordClick}
         />
       )}
