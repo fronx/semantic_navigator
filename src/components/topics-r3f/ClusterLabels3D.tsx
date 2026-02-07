@@ -1,12 +1,13 @@
-import { useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Billboard } from "@react-three/drei";
 import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
-import type { Text as TroikaText } from "troika-three-text";
-import { GraphTextLabel } from "./GraphTextLabel";
 import { computeClusterLabels } from "@/lib/cluster-labels";
 import { clusterColorToCSS, type ClusterColorInfo } from "@/lib/semantic-colors";
 import type { SimNode } from "@/lib/map-renderer";
+import { Text as ThreeTextCore } from "three-text/three";
+import type { ThreeTextGeometryInfo } from "three-text/three";
+import { ensureThreeTextInitialized } from "@/lib/three-text-config";
 
 function buildClusterSearchOpacity(
   nodeToCluster: Map<string, number> | undefined,
@@ -43,6 +44,69 @@ const DEFAULT_MIN_SCREEN_PX = 14;
 const DEFAULT_BASE_FONT_SIZE = 52;
 const FADE_START_PX = 30;
 const FADE_END_PX = 80;
+const LABEL_LINE_HEIGHT = 1.05;
+const FONT_DEFAULT = "/fonts/source-code-pro-regular.woff2";
+
+interface GeometryEntry {
+  geometry: THREE.BufferGeometry;
+  planeBounds: ThreeTextGeometryInfo["planeBounds"];
+}
+
+const geometryCache = new Map<string, GeometryEntry>();
+
+interface LabelRegistration {
+  communityId: number;
+  billboard: THREE.Group | null;
+  material: THREE.MeshBasicMaterial;
+  baseOpacity: number;
+  baseFontSize: number;
+  clusterNodes: SimNode[];
+  labelZ: number;
+}
+
+function useClusterGeometry(text: string, fontSize: number) {
+  const [entry, setEntry] = useState<GeometryEntry | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const key = `${fontSize}::${text}`;
+    const cached = geometryCache.get(key);
+    if (cached) {
+      setEntry(cached);
+      return;
+    }
+
+    ensureThreeTextInitialized();
+    ThreeTextCore.create({
+      text,
+      font: FONT_DEFAULT,
+      size: fontSize,
+      lineHeight: LABEL_LINE_HEIGHT,
+      color: [1, 1, 1],
+    })
+      .then((result) => {
+        if (cancelled) {
+          result.geometry.dispose();
+          return;
+        }
+        const newEntry: GeometryEntry = {
+          geometry: result.geometry,
+          planeBounds: result.planeBounds,
+        };
+        geometryCache.set(key, newEntry);
+        setEntry(newEntry);
+      })
+      .catch((err) => {
+        console.error("Failed to create cluster label geometry", err);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [text, fontSize]);
+
+  return entry;
+}
 
 export function ClusterLabels3D({
   nodes,
@@ -57,6 +121,59 @@ export function ClusterLabels3D({
   colorDesaturation = 0,
 }: ClusterLabels3DProps) {
   const { camera, size } = useThree();
+  const labelRegistry = useRef(new Map<number, LabelRegistration>());
+  const tempVec = useMemo(() => new THREE.Vector3(), []);
+  const scaleVec = useMemo(() => new THREE.Vector3(), []);
+  const cameraPos = useMemo(() => new THREE.Vector3(), []);
+
+  const registerLabel = useCallback(
+    (communityId: number, data: LabelRegistration | null) => {
+      if (data) {
+        labelRegistry.current.set(communityId, data);
+      } else {
+        labelRegistry.current.delete(communityId);
+      }
+    },
+    []
+  );
+
+  useFrame(() => {
+    labelRegistry.current.forEach((entry) => {
+      const { billboard, material, baseOpacity, baseFontSize, clusterNodes, labelZ } = entry;
+      if (!billboard) return;
+      if (clusterNodes && clusterNodes.length > 0) {
+        let sumX = 0;
+        let sumY = 0;
+        for (const node of clusterNodes) {
+          sumX += node.x;
+          sumY += node.y;
+        }
+        billboard.position.set(sumX / clusterNodes.length, sumY / clusterNodes.length, labelZ);
+      }
+      const worldPosition = billboard.getWorldPosition(tempVec);
+      const unitsPerPixel = computeUnitsPerPixel(camera, size, worldPosition, cameraPos);
+      const minWorldSize = minScreenPx * unitsPerPixel;
+      const desiredScale = Math.max(1, minWorldSize / baseFontSize);
+      scaleVec.setScalar(desiredScale);
+      if (!billboard.scale.equals(scaleVec)) {
+        billboard.scale.setScalar(desiredScale);
+      }
+
+      const pixelSize = (baseFontSize * desiredScale) / unitsPerPixel;
+      const fadeT = THREE.MathUtils.clamp(
+        (pixelSize - FADE_START_PX) / (FADE_END_PX - FADE_START_PX),
+        0,
+        1
+      );
+      const smooth = fadeT * fadeT * (3 - 2 * fadeT);
+      const sizeFade = 1 - smooth;
+      const finalOpacity = baseOpacity * sizeFade;
+      if (material.opacity !== finalOpacity) {
+        material.opacity = finalOpacity;
+        material.needsUpdate = true;
+      }
+    });
+  });
 
   const labelData = useMemo(() => {
     if (!visible || nodes.length === 0) {
@@ -89,6 +206,9 @@ export function ClusterLabels3D({
   return (
     <>
       {labelData.map((data) => {
+        const nodesInCluster = nodes.filter(
+          (node) => nodeToCluster?.get(node.id) === data.communityId
+        );
         const text = data.label.split(/\s+/).join("\n");
         const visibilityOpacity = Math.max(0.2, data.visibilityRatio) * 0.7;
         const searchOpacity = clusterSearchOpacity?.get(data.communityId) ?? 1;
@@ -102,10 +222,10 @@ export function ClusterLabels3D({
             position={[data.centroid[0], data.centroid[1], labelZ]}
             baseOpacity={baseOpacity}
             onClusterLabelClick={onClusterLabelClick}
-            camera={camera}
-            size={size}
-            minScreenPx={minScreenPx}
             baseFontSize={baseFontSize}
+            registerLabel={registerLabel}
+            clusterNodes={nodesInCluster}
+            labelZ={labelZ}
           />
         );
       })}
@@ -120,10 +240,10 @@ interface ClusterLabelSpriteProps {
   position: [number, number, number];
   baseOpacity: number;
   onClusterLabelClick?: (clusterId: number) => void;
-  camera: THREE.Camera;
-  size: { width: number; height: number };
-  minScreenPx: number;
   baseFontSize: number;
+  registerLabel: (communityId: number, data: LabelRegistration | null) => void;
+  clusterNodes: SimNode[];
+  labelZ: number;
 }
 
 function ClusterLabelSprite({
@@ -133,48 +253,73 @@ function ClusterLabelSprite({
   position,
   baseOpacity,
   onClusterLabelClick,
-  camera,
-  size,
-  minScreenPx,
   baseFontSize,
+  registerLabel,
+  clusterNodes,
+  labelZ,
 }: ClusterLabelSpriteProps) {
-  const textRef = useRef<TroikaText>(null);
+  const geometryEntry = useClusterGeometry(text, baseFontSize);
   const billboardRef = useRef<THREE.Group>(null);
-  const tempVec = useMemo(() => new THREE.Vector3(), []);
-  const scaleVec = useMemo(() => new THREE.Vector3(), []);
-  const cameraPos = useMemo(() => new THREE.Vector3(), []);
+  const registrationRef = useRef<LabelRegistration | null>(null);
+  const anchorOffset = useMemo<[number, number]>(() => {
+    if (!geometryEntry) return [0, 0];
+    const { min, max } = geometryEntry.planeBounds;
+    return [(min.x + max.x) / 2, (min.y + max.y) / 2];
+  }, [geometryEntry]);
+  const material = useMemo(
+    () =>
+      new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        toneMapped: false,
+        depthTest: false,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        opacity: baseOpacity,
+      }),
+    [color, baseOpacity]
+  );
 
-  useFrame(() => {
-    if (!textRef.current || !textRef.current.material || !billboardRef.current) return;
-    const worldPosition = billboardRef.current.getWorldPosition(tempVec);
-    const unitsPerPixel = computeUnitsPerPixel(camera, size, worldPosition, cameraPos);
-    const minWorldSize = minScreenPx * unitsPerPixel;
-    const desiredScale = Math.max(1, minWorldSize / baseFontSize);
-    scaleVec.setScalar(desiredScale);
-    if (!billboardRef.current.scale.equals(scaleVec)) {
-      billboardRef.current.scale.setScalar(desiredScale);
-    }
+  useEffect(() => {
+    material.color.set(color);
+  }, [material, color]);
 
-    const pixelSize = (baseFontSize * desiredScale) / unitsPerPixel;
-    const fadeT = THREE.MathUtils.clamp(
-      (pixelSize - FADE_START_PX) / (FADE_END_PX - FADE_START_PX),
-      0,
-      1
-    );
-    const smooth = fadeT * fadeT * (3 - 2 * fadeT); // smoothstep easing
-    const sizeFade = 1 - smooth;
-    const finalOpacity = baseOpacity * sizeFade;
-    const material = textRef.current.material as THREE.Material & { opacity: number; transparent: boolean };
-    if (material.opacity !== finalOpacity) {
-      material.opacity = finalOpacity;
-      material.transparent = true;
-      material.needsUpdate = true;
+  useEffect(() => {
+    material.opacity = baseOpacity;
+  }, [material, baseOpacity]);
+
+  useEffect(() => () => {
+    material.dispose();
+  }, [material]);
+
+  useEffect(() => {
+    if (!geometryEntry) {
+      registerLabel(communityId, null);
+      registrationRef.current = null;
+      return;
     }
-    if (textRef.current.fillOpacity !== finalOpacity) {
-      textRef.current.fillOpacity = finalOpacity;
-      textRef.current.outlineOpacity = finalOpacity;
+    const registration: LabelRegistration = {
+      communityId,
+      billboard: billboardRef.current,
+      material,
+      baseOpacity,
+      baseFontSize,
+      clusterNodes,
+      labelZ,
+    };
+    registrationRef.current = registration;
+    registerLabel(communityId, registration);
+    return () => {
+      registerLabel(communityId, null);
+      registrationRef.current = null;
+    };
+  }, [communityId, geometryEntry, material, baseFontSize, registerLabel]);
+
+  useEffect(() => {
+    if (registrationRef.current) {
+      registrationRef.current.baseOpacity = baseOpacity;
     }
-  });
+  }, [baseOpacity]);
 
   const handleClick = onClusterLabelClick
     ? (event: ThreeEvent<MouseEvent>) => {
@@ -183,16 +328,27 @@ function ClusterLabelSprite({
       }
     : undefined;
 
+  const setBillboardRef = useCallback((instance: THREE.Group | null) => {
+    billboardRef.current = instance;
+    if (registrationRef.current) {
+      registrationRef.current.billboard = instance;
+    }
+  }, []);
+
+  if (!geometryEntry) {
+    return null;
+  }
+
   return (
-    <Billboard ref={billboardRef} position={position} follow={false} lockZ>
-      <GraphTextLabel
-        ref={textRef}
-        text={text}
-        color={color}
-        fontSize={baseFontSize}
-        opacity={baseOpacity}
-        onClick={handleClick}
-      />
+    <Billboard ref={setBillboardRef} position={position} follow={false} lockZ>
+      <group position={[-anchorOffset[0], -anchorOffset[1], 0]}>
+        <mesh
+          geometry={geometryEntry.geometry}
+          material={material}
+          frustumCulled={false}
+          onClick={handleClick}
+        />
+      </group>
     </Billboard>
   );
 }
