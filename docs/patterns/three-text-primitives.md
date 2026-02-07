@@ -57,5 +57,17 @@ The cluster labels and markdown billboard now share the same building blocks:
 - Geometry cache (keyed by text + font properties)
 - Material factory (color, transparency, no depth test)
 - Registration-based animation loop
+- `useThreeTextGeometry` hook (src/hooks/useThreeTextGeometry.ts) handles caching + async creation
+- `computeUnitsPerPixel` + `smoothstep` helpers (src/lib/three-text-utils.ts) keep scale + fade consistent across layers
+- `KeywordLabels3D` demonstrates how to reuse the same primitives for high-volume labels without touching the DOM. Each label registers itself with a parent registry, and a single `useFrame` loop (inside the component) keeps position/scale/opacity in sync with node degrees, zoom ranges, search opacities, and hover refs.
+
+### Keyword label implementation
+
+`src/components/topics-r3f/KeywordLabels3D.tsx` is the reference implementation for high-volume labels:
+
+- Filters to keyword nodes and maps each to a cached geometry/material pair (via `useThreeTextGeometry`).
+- Registers each label so a single `useFrame` loop can update centroid position, zoom-based scale, camera-facing min size, and zoom-phase opacity thresholds derived from `zoomPhaseConfig.keywordLabels`.
+- Reads shared refs (`nodeDegreesRef`, `pulledPositionsRef`, `hoveredKeywordIdRef`) so behavior matches the legacy label manager (degree filtering, pulled-node dimming, hover scaling, search opacity, etc.).
+- Emits hover + click events that reuse the existing handlers, so the rest of the interaction stack (edges, sidebar, hover controller) stays unchanged.
 
 If we need more three-text surfaces (content cards, inline annotations, etc.), consider extracting a `GraphThreeText` helper that bundles those pieces. Until then, the pattern above is enough to keep new meshes performant and in sync with the graph simulation.

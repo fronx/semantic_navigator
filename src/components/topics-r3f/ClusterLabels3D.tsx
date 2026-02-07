@@ -1,13 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { Billboard } from "@react-three/drei";
 import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 import { computeClusterLabels } from "@/lib/cluster-labels";
 import { clusterColorToCSS, type ClusterColorInfo } from "@/lib/semantic-colors";
 import type { SimNode } from "@/lib/map-renderer";
-import { Text as ThreeTextCore } from "three-text/three";
-import type { ThreeTextGeometryInfo } from "three-text/three";
-import { ensureThreeTextInitialized } from "@/lib/three-text-config";
+import { useThreeTextGeometry } from "@/hooks/useThreeTextGeometry";
+import { computeUnitsPerPixel, smoothstep } from "@/lib/three-text-utils";
 
 function buildClusterSearchOpacity(
   nodeToCluster: Map<string, number> | undefined,
@@ -40,19 +39,12 @@ export interface ClusterLabels3DProps {
   colorDesaturation?: number;
 }
 
-const DEFAULT_MIN_SCREEN_PX = 14;
+const DEFAULT_MIN_SCREEN_PX = 18;
 const DEFAULT_BASE_FONT_SIZE = 52;
-const FADE_START_PX = 30;
-const FADE_END_PX = 80;
+const FADE_START_PX = 60;
+const FADE_END_PX = 100;
 const LABEL_LINE_HEIGHT = 1.05;
 const FONT_DEFAULT = "/fonts/source-code-pro-regular.woff2";
-
-interface GeometryEntry {
-  geometry: THREE.BufferGeometry;
-  planeBounds: ThreeTextGeometryInfo["planeBounds"];
-}
-
-const geometryCache = new Map<string, GeometryEntry>();
 
 interface LabelRegistration {
   communityId: number;
@@ -62,50 +54,6 @@ interface LabelRegistration {
   baseFontSize: number;
   clusterNodes: SimNode[];
   labelZ: number;
-}
-
-function useClusterGeometry(text: string, fontSize: number) {
-  const [entry, setEntry] = useState<GeometryEntry | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    const key = `${fontSize}::${text}`;
-    const cached = geometryCache.get(key);
-    if (cached) {
-      setEntry(cached);
-      return;
-    }
-
-    ensureThreeTextInitialized();
-    ThreeTextCore.create({
-      text,
-      font: FONT_DEFAULT,
-      size: fontSize,
-      lineHeight: LABEL_LINE_HEIGHT,
-      color: [1, 1, 1],
-    })
-      .then((result) => {
-        if (cancelled) {
-          result.geometry.dispose();
-          return;
-        }
-        const newEntry: GeometryEntry = {
-          geometry: result.geometry,
-          planeBounds: result.planeBounds,
-        };
-        geometryCache.set(key, newEntry);
-        setEntry(newEntry);
-      })
-      .catch((err) => {
-        console.error("Failed to create cluster label geometry", err);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [text, fontSize]);
-
-  return entry;
 }
 
 export function ClusterLabels3D({
@@ -160,12 +108,8 @@ export function ClusterLabels3D({
       }
 
       const pixelSize = (baseFontSize * desiredScale) / unitsPerPixel;
-      const fadeT = THREE.MathUtils.clamp(
-        (pixelSize - FADE_START_PX) / (FADE_END_PX - FADE_START_PX),
-        0,
-        1
-      );
-      const smooth = fadeT * fadeT * (3 - 2 * fadeT);
+      const fadeT = (pixelSize - FADE_START_PX) / (FADE_END_PX - FADE_START_PX);
+      const smooth = smoothstep(fadeT);
       const sizeFade = 1 - smooth;
       const finalOpacity = baseOpacity * sizeFade;
       if (material.opacity !== finalOpacity) {
@@ -258,7 +202,12 @@ function ClusterLabelSprite({
   clusterNodes,
   labelZ,
 }: ClusterLabelSpriteProps) {
-  const geometryEntry = useClusterGeometry(text, baseFontSize);
+  const geometryEntry = useThreeTextGeometry({
+    text,
+    fontSize: baseFontSize,
+    fontUrl: FONT_DEFAULT,
+    lineHeight: LABEL_LINE_HEIGHT,
+  });
   const billboardRef = useRef<THREE.Group>(null);
   const registrationRef = useRef<LabelRegistration | null>(null);
   const anchorOffset = useMemo<[number, number]>(() => {
@@ -351,22 +300,4 @@ function ClusterLabelSprite({
       </group>
     </Billboard>
   );
-}
-
-function computeUnitsPerPixel(
-  camera: THREE.Camera,
-  size: { width: number; height: number },
-  position: THREE.Vector3,
-  cameraPos: THREE.Vector3
-) {
-  if ((camera as THREE.PerspectiveCamera).isPerspectiveCamera) {
-    const perspective = camera as THREE.PerspectiveCamera;
-    const distance = cameraPos.copy(perspective.position).distanceTo(position);
-    const fov = THREE.MathUtils.degToRad(perspective.fov);
-    return (2 * Math.tan(fov / 2) * Math.max(distance, 1e-3)) / size.height;
-  }
-
-  const ortho = camera as THREE.OrthographicCamera;
-  const height = ortho.top - ortho.bottom;
-  return height / size.height;
 }

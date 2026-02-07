@@ -79,6 +79,8 @@ export interface LabelOverlayOptions {
   onKeywordHover?: (keywordId: string | null) => void;
   /** Disable legacy cluster labels (allow renderer to provide its own) */
   disableClusterLabels?: boolean;
+  /** Disable DOM keyword labels (for 3D label experiments) */
+  disableKeywordLabels?: boolean;
 }
 
 // ============================================================================
@@ -103,6 +105,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     onKeywordHover,
     getSearchOpacities,
     disableClusterLabels = false,
+    disableKeywordLabels = false,
   } = options;
 
   // Create overlay for cluster labels (optional)
@@ -113,10 +116,12 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
   }
 
   // Create overlay for keyword labels (z-index above cluster labels)
-  const keywordOverlay = document.createElement("div");
-  keywordOverlay.className = "graph-label-overlay";
-  keywordOverlay.style.zIndex = "1";
-  container.appendChild(keywordOverlay);
+  const keywordOverlay = disableKeywordLabels ? null : document.createElement("div");
+  if (keywordOverlay) {
+    keywordOverlay.className = "graph-label-overlay";
+    keywordOverlay.style.zIndex = "1";
+    container.appendChild(keywordOverlay);
+  }
 
   // Create overlay for chunk labels (z-index above keyword labels)
   const chunkOverlay = document.createElement("div");
@@ -263,6 +268,9 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
   }
 
   function updateKeywordLabels(nodes: SimNode[], nodeDegrees: Map<string, number>) {
+    if (disableKeywordLabels || !keywordOverlay) {
+      return;
+    }
     const rect = container.getBoundingClientRect();
     const cameraZ = getCameraZ();
     const keywordRange = getKeywordLabelRange();
@@ -735,7 +743,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
       labelEl.remove();
     }
     keywordLabelCache.clear();
-    if (keywordOverlay.parentNode === container) {
+    if (keywordOverlay && keywordOverlay.parentNode === container) {
       container.removeChild(keywordOverlay);
     }
 

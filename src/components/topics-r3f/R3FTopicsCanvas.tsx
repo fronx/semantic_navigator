@@ -267,6 +267,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
           onProjectDrag={onProjectDrag}
           onZoomChange={onZoomChange}
           onKeywordClick={keywordClickHandler}
+          onKeywordHover={stableOnKeywordHover}
           onClusterLabelClick={onClusterLabelClick}
           flyToRef={flyToRef}
           labelRefs={labelRefs}
@@ -285,6 +286,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
           onClusterLabelClick={onClusterLabelClick}
           onKeywordHover={stableOnKeywordHover}
           disableClusterLabels
+          disableKeywordLabels
         />
       </div>
     );

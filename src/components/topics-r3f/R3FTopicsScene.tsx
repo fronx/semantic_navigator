@@ -32,6 +32,7 @@ import type { LabelRefs } from "./R3FLabelContext";
 import type { ContentNode } from "@/lib/content-loader";
 import type { KeywordTierMap } from "@/lib/topics-filter";
 import { ClusterLabels3D } from "./ClusterLabels3D";
+import { KeywordLabels3D } from "./KeywordLabels3D";
 
 /**
  * Group nodes by cluster ID from nodeToCluster map.
@@ -51,7 +52,7 @@ function groupNodesByMap(nodes: SimNode[], nodeToCluster: Map<string, number>): 
   return map;
 }
 
-const ENABLE_MARKDOWN_TEST = true;
+const ENABLE_MARKDOWN_TEST = false;
 const FORCE_SAMPLE_MARKDOWN = true;
 
 export interface R3FTopicsSceneProps {
@@ -106,6 +107,8 @@ export interface R3FTopicsSceneProps {
   onZoomChange?: (zoomScale: number) => void;
   /** Handler for keyword node click */
   onKeywordClick?: (keywordId: string) => void;
+  /** Handler for keyword hover (shared with overlay + hover controller) */
+  onKeywordHover?: (keywordId: string | null) => void;
   /** Handler for cluster label click */
   onClusterLabelClick?: (clusterId: number) => void;
   /** Refs for label rendering (bridging to DOM overlay) */
@@ -150,6 +153,7 @@ export function R3FTopicsScene({
   onProjectDrag,
   onZoomChange,
   onKeywordClick,
+  onKeywordHover,
   onClusterLabelClick,
   labelRefs,
   cursorPosition,
@@ -161,6 +165,7 @@ export function R3FTopicsScene({
   const [keywordNodes, setKeywordNodes] = useState<SimNode[]>([]);
   const [unifiedNodes, setUnifiedNodes] = useState<(SimNode | ContentSimNode)[]>([]);
   const [clusterColors, setClusterColors] = useState<Map<number, ClusterColorInfo>>(new Map());
+  const [nodeDegrees, setNodeDegrees] = useState<Map<string, number>>(new Map());
 
   // Unified simulation tick method (manual frame-sync to prevent jitter)
   const unifiedSimTickRef = useRef<(() => void) | null>(null);
@@ -271,6 +276,7 @@ export function R3FTopicsScene({
       const empty = new Map<number, ClusterColorInfo>();
       labelRefs.clusterColorsRef.current = empty;
       setClusterColors(empty);
+      setNodeDegrees(new Map());
       return;
     }
 
@@ -279,6 +285,7 @@ export function R3FTopicsScene({
       edges as SimLink[]
     );
     labelRefs.nodeDegreesRef.current = degrees;
+    setNodeDegrees(new Map(degrees));
 
     const runtimeClusterMap = nodeToCluster ?? labelRefs.nodeToClusterRef.current;
     const grouped = runtimeClusterMap && runtimeClusterMap.size > 0
@@ -452,6 +459,24 @@ export function R3FTopicsScene({
           onClusterLabelClick={onClusterLabelClick}
           labelZ={0}
           colorDesaturation={colorDesaturation}
+        />
+      )}
+
+      {renderKeywordNodes.length > 0 && (
+        <KeywordLabels3D
+          nodes={renderKeywordNodes}
+          nodeDegrees={nodeDegrees}
+          keywordLabelRange={zoomPhaseConfig.keywordLabels}
+          clusterColors={clusterColors}
+          pcaTransform={pcaTransform}
+          colorMixRatio={colorMixRatio}
+          colorDesaturation={colorDesaturation}
+          searchOpacities={searchOpacities}
+          keywordTiers={keywordTiers}
+          pulledPositionsRef={labelRefs.pulledPositionsRef}
+          hoveredKeywordIdRef={labelRefs.hoveredKeywordIdRef}
+          onKeywordHover={onKeywordHover}
+          onKeywordClick={onKeywordClick}
         />
       )}
 

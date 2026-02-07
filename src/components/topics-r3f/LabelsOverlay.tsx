@@ -37,10 +37,12 @@ export interface LabelsOverlayProps {
   onKeywordHover?: (keywordId: string | null) => void;
   /** Disable DOM-based cluster labels (for 3D label experiments) */
   disableClusterLabels?: boolean;
+  /** Disable DOM-based keyword labels (for three-text replacements) */
+  disableKeywordLabels?: boolean;
 }
 
 export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>(
-  function LabelsOverlay({ labelRefs, keywordLabelRange, contentsByKeyword, searchOpacities, onKeywordLabelClick, onClusterLabelClick, onKeywordHover, disableClusterLabels = false }, ref) {
+  function LabelsOverlay({ labelRefs, keywordLabelRange, contentsByKeyword, searchOpacities, onKeywordLabelClick, onClusterLabelClick, onKeywordHover, disableClusterLabels = false, disableKeywordLabels = false }, ref) {
     const {
       cameraStateRef,
       containerRef,
@@ -171,6 +173,7 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
         onKeywordHover: stableOnKeywordHover,
         getSearchOpacities: () => searchOpacitiesRef.current,
         disableClusterLabels,
+        disableKeywordLabels,
       });
 
       labelManagerRef.current = labelManager;
