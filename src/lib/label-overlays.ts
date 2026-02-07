@@ -376,11 +376,6 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
         newFontSize *= 0.6;
       }
 
-      // Scale up if this keyword is hovered
-      if (hoveredKeyword && node.id === hoveredKeyword.id) {
-        newFontSize *= 1.5; // Scale multiplier for readable hover size
-      }
-
       // Update label styles with change detection to prevent flickering
       labelEl.style.display = "block";
       updateLabelStyles(labelEl, [

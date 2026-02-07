@@ -10,6 +10,7 @@ import type { ViewportSize } from "@/lib/three-text-utils";
 import { computeUnitsPerPixel, smoothstep } from "@/lib/three-text-utils";
 import { useThreeTextGeometry } from "@/hooks/useThreeTextGeometry";
 import { getNodeColor } from "@/lib/three/node-renderer";
+import { isDarkMode } from "@/lib/theme";
 import type { LabelRefs } from "./R3FLabelContext";
 
 const FONT_DEFAULT = "/fonts/source-code-pro-regular.woff2";
@@ -18,6 +19,9 @@ const DEFAULT_MIN_SCREEN_PX = 12;
 const DEFAULT_BASE_FONT_SIZE = 12;
 const FADE_START_PX = 60;
 const FADE_END_PX = 100;
+
+/** Shared invisible material for hit area planes (no per-sprite allocation needed) */
+const HIT_AREA_MAT = new THREE.MeshBasicMaterial({ visible: false });
 
 interface KeywordLabelData {
   node: SimNode;
@@ -31,6 +35,7 @@ interface LabelRegistration {
   node: SimNode;
   billboard: THREE.Group | null;
   material: THREE.MeshBasicMaterial;
+  baseColor: THREE.Color;
   baseFontSize: number;
   baseOpacity: number;
   labelZ: number;
@@ -84,6 +89,8 @@ export function KeywordLabels3D({
   const tempVec = useMemo(() => new THREE.Vector3(), []);
   const scaleVec = useMemo(() => new THREE.Vector3(), []);
   const cameraPos = useMemo(() => new THREE.Vector3(), []);
+  const tempColor = useMemo(() => new THREE.Color(), []);
+  const glowTarget = useMemo(() => new THREE.Color(), []);
 
   const labelMeta = useMemo<KeywordLabelData[]>(() => {
     return nodes
@@ -177,9 +184,7 @@ export function KeywordLabels3D({
       const minWorldSize = minScreenPx * unitsPerPixel;
       let desiredScale = Math.max(1, minWorldSize / fontSize);
 
-      if (hoveredKeywordIdRef?.current === id) {
-        desiredScale *= 1.3;
-      } else if (pulledPosition) {
+      if (pulledPosition) {
         desiredScale *= 0.9;
       }
 
@@ -187,6 +192,8 @@ export function KeywordLabels3D({
       if (!billboard.scale.equals(scaleVec)) {
         billboard.scale.copy(scaleVec);
       }
+
+      const isHovered = hoveredKeywordIdRef?.current === id;
 
       // Proximity-based visibility: only show top MAX_VISIBLE_LABELS nearest cursor
       let opacity = visibleSet.has(id) ? baseOpacity : 0;
@@ -201,7 +208,7 @@ export function KeywordLabels3D({
       opacity *= labelFadeT;
 
       if (pulledPosition) {
-        opacity *= 0.55;
+        opacity *= isHovered ? 0.85 : 0.55;
       }
 
       const searchOpacity = searchOpacitiesRef.current?.get(id);
@@ -219,6 +226,17 @@ export function KeywordLabels3D({
         material.opacity = clampedOpacity;
         material.needsUpdate = true;
       }
+
+      // Soft glow: shift color toward white (dark mode) or black (light mode)
+      tempColor.copy(entry.baseColor);
+      if (isHovered) {
+        glowTarget.set(isDarkMode() ? 0xffffff : 0x000000);
+        tempColor.lerp(glowTarget, 0.35);
+      }
+      if (!material.color.equals(tempColor)) {
+        material.color.copy(tempColor);
+      }
+
       billboard.visible = clampedOpacity > 0.02;
     });
   });
@@ -286,6 +304,18 @@ function KeywordLabelSprite({
     return [(min.x + max.x) / 2, (min.y + max.y) / 2];
   }, [geometryEntry]);
 
+  // Invisible hit area covering the full bounding box of the label text
+  const hitAreaGeo = useMemo(() => {
+    if (!geometryEntry) return null;
+    const { min, max } = geometryEntry.planeBounds;
+    const w = max.x - min.x;
+    const h = max.y - min.y;
+    const pad = h * 0.15; // small padding around text
+    return new THREE.PlaneGeometry(w + pad * 2, h + pad * 2);
+  }, [geometryEntry]);
+
+  useEffect(() => () => { hitAreaGeo?.dispose(); }, [hitAreaGeo]);
+
   const material = useMemo(
     () =>
       new THREE.MeshBasicMaterial({
@@ -301,6 +331,9 @@ function KeywordLabelSprite({
 
   useEffect(() => {
     material.color.set(color);
+    if (registrationRef.current) {
+      registrationRef.current.baseColor.set(color);
+    }
   }, [material, color]);
 
   useEffect(() => {
@@ -321,6 +354,7 @@ function KeywordLabelSprite({
       node,
       billboard: billboardRef.current,
       material,
+      baseColor: new THREE.Color(color),
       baseFontSize,
       baseOpacity,
       labelZ,
@@ -379,10 +413,18 @@ function KeywordLabelSprite({
           geometry={geometryEntry.geometry}
           material={material}
           frustumCulled={false}
-          onPointerOver={handlePointerOver}
-          onPointerOut={handlePointerOut}
-          onClick={handleClick}
+          raycast={() => {}} // text glyphs don't need raycasting; hit area handles it
         />
+        {hitAreaGeo && (
+          <mesh
+            geometry={hitAreaGeo}
+            material={HIT_AREA_MAT}
+            frustumCulled={false}
+            onPointerOver={handlePointerOver}
+            onPointerOut={handlePointerOut}
+            onClick={handleClick}
+          />
+        )}
       </group>
     </Billboard>
   );
