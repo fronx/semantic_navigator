@@ -573,6 +573,11 @@ export default function TopicsPage() {
             contentTextDepthScale={settings.contentTextDepthScale}
             contentSizeMultiplier={settings.contentSizeMultiplier}
             contentTextContrast={settings.contentTextContrast}
+            focusRadius={settings.focusRadius}
+            panelRoughness={settings.panelRoughness}
+            panelTransmission={settings.panelTransmission}
+            panelAnisotropicBlur={settings.panelAnisotropicBlur}
+            panelThicknessMultiplier={settings.panelThicknessMultiplier}
             onSemanticFilterChange={setSemanticFilterData}
             onChunkHover={handleContentHover}
             onKeywordHover={handleKeywordHover}

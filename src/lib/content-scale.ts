@@ -79,3 +79,30 @@ export function calculateScales(cameraZ: number, range: ZoomRange = DEFAULT_RANG
 
   return scales;
 }
+
+/**
+ * Compute a proximity-based scale multiplier for a node relative to screen center.
+ * Uses smoothstep falloff: 1.0 at center, minScale at radius edge and beyond.
+ *
+ * @param nodeX - Node world X position
+ * @param nodeY - Node world Y position
+ * @param cameraX - Camera world X position (screen center)
+ * @param cameraY - Camera world Y position (screen center)
+ * @param worldRadius - Focus radius in world units
+ * @param minScale - Minimum scale at and beyond the radius edge (default 0.3)
+ */
+export function computeProximityScale(
+  nodeX: number,
+  nodeY: number,
+  cameraX: number,
+  cameraY: number,
+  worldRadius: number,
+  minScale: number = 0.3,
+): number {
+  const dx = nodeX - cameraX;
+  const dy = nodeY - cameraY;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const t = Math.min(dist / worldRadius, 1.0);
+  const smooth = t * t * (3 - 2 * t); // smoothstep(0, 1, t)
+  return 1.0 - smooth * (1.0 - minScale);
+}

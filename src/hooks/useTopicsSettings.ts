@@ -28,6 +28,16 @@ export interface TopicsSettings {
   contentTextDepthScale: number;
   contentSizeMultiplier: number;
   contentTextContrast: number;
+  /** Focus radius in world units (0 = disabled). Nodes within this distance from screen center scale to full size; beyond it they shrink. */
+  focusRadius: number;
+  /** Transmission panel roughness (0 = smooth/clear, 1 = rough/frosted) */
+  panelRoughness: number;
+  /** Transmission panel transparency (0 = opaque, 1 = fully transparent) */
+  panelTransmission: number;
+  /** Transmission panel anisotropic blur strength */
+  panelAnisotropicBlur: number;
+  /** Transmission panel thickness multiplier (scales auto-computed thickness) */
+  panelThicknessMultiplier: number;
   dynamicClustering: boolean;
 
   // UI state
@@ -54,6 +64,11 @@ const DEFAULT_SETTINGS: TopicsSettings = {
   contentTextDepthScale: -15.0,
   contentSizeMultiplier: 1.5,
   contentTextContrast: 0.7,
+  focusRadius: 0,
+  panelRoughness: 1.0,
+  panelTransmission: 0.97,
+  panelAnisotropicBlur: 5.0,
+  panelThicknessMultiplier: 1.0,
   dynamicClustering: true,
   sidebarCollapsed: false,
   sectionStates: {

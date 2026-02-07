@@ -72,6 +72,14 @@ export interface R3FTopicsSceneProps {
   contentSizeMultiplier?: number;
   /** Text contrast for adjusting content node background brightness: 0 = low contrast, 1 = high contrast */
   contentTextContrast?: number;
+  /** Focus radius in world units (0 = disabled). Proximity-based node scaling. */
+  focusRadius?: number;
+  /** Transmission panel roughness */
+  panelRoughness?: number;
+  /** Transmission panel transparency */
+  panelTransmission?: number;
+  /** Transmission panel anisotropic blur strength */
+  panelAnisotropicBlur?: number;
   keywordTiers?: KeywordTierMap | null;
   /** Search opacity map (node id -> opacity) for semantic search highlighting */
   searchOpacities?: Map<string, number>;
@@ -106,6 +114,10 @@ export function R3FTopicsScene({
   contentTextDepthScale = -15.0,
   contentSizeMultiplier = 1.5,
   contentTextContrast = 0.7,
+  focusRadius = 0,
+  panelRoughness,
+  panelTransmission,
+  panelAnisotropicBlur,
   keywordTiers,
   searchOpacities,
   cameraZ,
@@ -237,6 +249,7 @@ export function R3FTopicsScene({
           contentTextContrast={contentTextContrast}
           contentScreenRectsRef={labelRefs.contentScreenRectsRef}
           searchOpacities={searchOpacities}
+          focusRadius={focusRadius}
         />
       )}
 
@@ -245,6 +258,9 @@ export function R3FTopicsScene({
         enabled={blurEnabled && contentNodes.length > 0}
         distanceRatio={panelDistanceRatio}
         thickness={panelThickness}
+        roughness={panelRoughness}
+        transmission={panelTransmission}
+        anisotropicBlur={panelAnisotropicBlur}
       />
 
       {/* Content containment edges (keyword → content node) */}
@@ -293,6 +309,7 @@ export function R3FTopicsScene({
           zoomRange={zoomPhaseConfig.chunkCrossfade}
           keywordTiers={keywordTiers}
           searchOpacities={searchOpacities}
+          focusRadius={focusRadius}
           onKeywordClick={onKeywordClick}
         />
       )}

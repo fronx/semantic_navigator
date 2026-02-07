@@ -83,6 +83,16 @@ export interface TopicsViewProps {
   contentSizeMultiplier?: number;
   /** Text contrast for content labels: 0 = low contrast, 1 = high contrast */
   contentTextContrast?: number;
+  /** Focus radius in world units (0 = disabled). Proximity-based node scaling. */
+  focusRadius?: number;
+  /** Transmission panel roughness (0 = smooth, 1 = frosted) */
+  panelRoughness?: number;
+  /** Transmission panel transparency (0 = opaque, 1 = transparent) */
+  panelTransmission?: number;
+  /** Transmission panel anisotropic blur strength */
+  panelAnisotropicBlur?: number;
+  /** Transmission panel thickness multiplier (scales auto-computed value) */
+  panelThicknessMultiplier?: number;
   /** Callback when cluster count changes */
   onClusterCountChange?: (count: number) => void;
   /** Callback when semantic filter state changes (for breadcrumb UI) */
@@ -133,6 +143,11 @@ export function TopicsView({
   contentTextDepthScale = -15.0,
   contentSizeMultiplier = 1.5,
   contentTextContrast = 0.7,
+  focusRadius = 0,
+  panelRoughness = 1.0,
+  panelTransmission = 0.97,
+  panelAnisotropicBlur = 5.0,
+  panelThicknessMultiplier = 1.0,
   onClusterCountChange,
   onSemanticFilterChange,
   onChunkHover,
@@ -151,7 +166,7 @@ export function TopicsView({
 
   // Calculate panel material thickness (controls blur strength)
   // Thickness ramps from 0 (no blur) to 20 (full blur) as camera approaches threshold
-  const panelThickness = cameraZ !== undefined ? calculatePanelThickness(cameraZ) : 0;
+  const panelThickness = (cameraZ !== undefined ? calculatePanelThickness(cameraZ) : 0) * panelThicknessMultiplier;
 
   // Client-side Leiden clustering (must come before useTopicsFilter)
   const { nodeToCluster, baseClusters, labels } = useClusterLabels(
@@ -500,6 +515,10 @@ export function TopicsView({
           contentTextDepthScale={contentTextDepthScale}
           contentSizeMultiplier={contentSizeMultiplier}
           contentTextContrast={contentTextContrast}
+          focusRadius={focusRadius}
+          panelRoughness={panelRoughness}
+          panelTransmission={panelTransmission}
+          panelAnisotropicBlur={panelAnisotropicBlur}
           keywordTiers={keywordTiers}
           nodeToCluster={nodeToCluster}
           searchOpacities={nodeOpacities}

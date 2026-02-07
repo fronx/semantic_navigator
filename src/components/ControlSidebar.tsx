@@ -304,6 +304,39 @@ export function ControlSidebar({
               checked={settings.blurEnabled}
               onChange={(v) => update("blurEnabled", v)}
             />
+            <Slider
+              label="Roughness"
+              value={settings.panelRoughness}
+              onChange={(v) => update("panelRoughness", v)}
+              min={0}
+              max={1}
+              step={0.05}
+            />
+            <Slider
+              label="Transmission"
+              value={settings.panelTransmission}
+              onChange={(v) => update("panelTransmission", v)}
+              min={0}
+              max={1}
+              step={0.01}
+            />
+            <Slider
+              label="Blur strength"
+              value={settings.panelAnisotropicBlur}
+              onChange={(v) => update("panelAnisotropicBlur", v)}
+              min={0}
+              max={20}
+              step={0.5}
+            />
+            <Slider
+              label="Thickness"
+              value={settings.panelThicknessMultiplier}
+              onChange={(v) => update("panelThicknessMultiplier", v)}
+              min={0}
+              max={3}
+              step={0.1}
+              format={(v) => `${v.toFixed(1)}x`}
+            />
             <Checkbox
               label="Show k-NN edges"
               checked={settings.showKNNEdges}
@@ -331,6 +364,15 @@ export function ControlSidebar({
               max={1}
               step={0.05}
               format={(v) => `${(v * 100).toFixed(0)}%`}
+            />
+            <Slider
+              label="Focus radius"
+              value={settings.focusRadius}
+              onChange={(v) => update("focusRadius", v)}
+              min={0}
+              max={200}
+              step={5}
+              format={(v) => v === 0 ? "Off" : `${v}`}
             />
           </Section>
 
@@ -454,10 +496,10 @@ export function ControlSidebar({
                   label="Depth"
                   value={settings.chunkZOffset}
                   onChange={(value) => update("chunkZOffset", value)}
-                  min={0.1}
-                  max={2.0}
-                  step={0.1}
-                  format={(value) => value.toFixed(1)}
+                  min={-0.1}
+                  max={0.1}
+                  step={0.01}
+                  format={(value) => value.toFixed(2)}
                 />
                 <Slider
                   label="Text depth"

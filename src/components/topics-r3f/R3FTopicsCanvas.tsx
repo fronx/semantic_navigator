@@ -41,6 +41,14 @@ export interface R3FTopicsCanvasProps {
   contentTextDepthScale?: number;
   contentSizeMultiplier?: number;
   contentTextContrast?: number;
+  /** Focus radius in world units (0 = disabled). Proximity-based node scaling. */
+  focusRadius?: number;
+  /** Transmission panel roughness */
+  panelRoughness?: number;
+  /** Transmission panel transparency */
+  panelTransmission?: number;
+  /** Transmission panel anisotropic blur strength */
+  panelAnisotropicBlur?: number;
   keywordTiers?: KeywordTierMap | null;
   /** Runtime cluster IDs from useClusterLabels (for label rendering) */
   nodeToCluster?: Map<string, number>;
@@ -81,6 +89,10 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     contentTextDepthScale,
     contentSizeMultiplier,
     contentTextContrast,
+    focusRadius,
+    panelRoughness,
+    panelTransmission,
+    panelAnisotropicBlur,
     keywordTiers,
     nodeToCluster,
     searchOpacities,
@@ -210,6 +222,10 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
             contentTextDepthScale={contentTextDepthScale}
             contentSizeMultiplier={contentSizeMultiplier}
             contentTextContrast={contentTextContrast}
+            focusRadius={focusRadius}
+            panelRoughness={panelRoughness}
+            panelTransmission={panelTransmission}
+            panelAnisotropicBlur={panelAnisotropicBlur}
             keywordTiers={keywordTiers}
             searchOpacities={searchOpacities}
             cameraZ={cameraZ}

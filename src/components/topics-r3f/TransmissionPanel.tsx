@@ -22,9 +22,22 @@ export interface TransmissionPanelProps {
   distanceRatio: number;
   /** Material thickness (controls blur strength, 0 = no blur, 20 = full blur) */
   thickness: number;
+  /** Surface roughness (0 = smooth/clear, 1 = rough/frosted). Default 1.0. */
+  roughness?: number;
+  /** Transmission amount (0 = opaque, 1 = fully transparent). Default 0.97. */
+  transmission?: number;
+  /** Anisotropic blur strength. Default 5.0. */
+  anisotropicBlur?: number;
 }
 
-export function TransmissionPanel({ enabled = true, distanceRatio, thickness }: TransmissionPanelProps) {
+export function TransmissionPanel({
+  enabled = true,
+  distanceRatio,
+  thickness,
+  roughness = 1.0,
+  transmission = 0.97,
+  anisotropicBlur = 5.0,
+}: TransmissionPanelProps) {
   const meshRef = useRef<Mesh>(null);
   const { camera, viewport } = useThree();
 
@@ -87,9 +100,9 @@ export function TransmissionPanel({ enabled = true, distanceRatio, thickness }: 
         samples={16}
         resolution={resolution}
         thickness={thickness}
-        roughness={1.0}
-        transmission={0.97}
-        anisotropicBlur={5.0}
+        roughness={roughness}
+        transmission={transmission}
+        anisotropicBlur={anisotropicBlur}
       />
     </mesh>
   );

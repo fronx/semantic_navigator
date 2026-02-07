@@ -13,7 +13,7 @@ import type { PCATransform } from "@/lib/semantic-colors";
 import type { ZoomRange } from "@/lib/zoom-phase-config";
 import type { ContentScreenRect } from "./R3FLabelContext";
 import { CONTENT_Z_DEPTH } from "@/lib/content-zoom-config";
-import { calculateScales } from "@/lib/content-scale";
+import { calculateScales, computeProximityScale } from "@/lib/content-scale";
 import { getNodeColor, BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/three/node-renderer";
 import { useInstancedMeshMaterial } from "@/hooks/useInstancedMeshMaterial";
 import { useStableInstanceCount } from "@/hooks/useStableInstanceCount";
@@ -49,6 +49,8 @@ export interface ContentNodesProps {
   contentScreenRectsRef?: React.MutableRefObject<Map<string, ContentScreenRect>>;
   /** Search opacity map (node id -> opacity) for semantic search highlighting */
   searchOpacities?: Map<string, number>;
+  /** Focus radius in world units (0 = disabled). Proximity-based node scaling. */
+  focusRadius?: number;
 }
 
 export function ContentNodes({
@@ -66,6 +68,7 @@ export function ContentNodes({
   contentTextContrast = 0.7,
   contentScreenRectsRef,
   searchOpacities,
+  focusRadius = 0,
 }: ContentNodesProps) {
   const { camera, size, viewport } = useThree();
 
@@ -153,6 +156,11 @@ export function ContentNodes({
       if (searchOpacities && searchOpacities.size > 0) {
         const searchOpacity = searchOpacities.get(node.parentId) ?? 1.0;
         nodeScale *= searchOpacity;
+      }
+
+      // Apply proximity-based scaling (nodes near screen center are larger)
+      if (focusRadius > 0) {
+        nodeScale *= computeProximityScale(x, y, camera.position.x, camera.position.y, focusRadius);
       }
 
       // Compose matrix with position and scale
