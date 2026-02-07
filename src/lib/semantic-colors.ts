@@ -239,8 +239,19 @@ export function nodeColorFromCluster(
  * Convert ClusterColorInfo to CSS HSL string.
  * Used by both D3 and Three.js renderers for consistent label coloring.
  */
-export function clusterColorToCSS(info: ClusterColorInfo): string {
-  return `hsl(${info.h.toFixed(0)}, ${info.s.toFixed(0)}%, ${info.l.toFixed(0)}%)`;
+export function clusterColorToCSS(info: ClusterColorInfo, desaturation: number = 0): string {
+  const base = chroma.hsl(info.h, info.s / 100, info.l / 100);
+  if (desaturation <= 0) {
+    const [h, s, l] = base.hsl();
+    return `hsl(${h.toFixed(0)}, ${(s * 100).toFixed(0)}%, ${(l * 100).toFixed(0)}%)`;
+  }
+
+  const l = base.get("lch.l");
+  const c = base.get("lch.c");
+  const h = base.get("lch.h") || 0;
+  const reduced = chroma.lch(l, c * (1 - desaturation), h);
+  const [h2, s2, l2] = reduced.hsl();
+  return `hsl(${h2.toFixed(0)}, ${(s2 * 100).toFixed(0)}%, ${(l2 * 100).toFixed(0)}%)`;
 }
 
 /** Node with embedding */

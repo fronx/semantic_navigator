@@ -6,7 +6,7 @@
  * refs to access camera state that's updated by components inside Canvas.
  */
 
-import { useEffect, useImperativeHandle, forwardRef, useState, useCallback, useRef } from "react";
+import { useImperativeHandle, forwardRef, useState, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
 import { createLabelOverlayManager } from "@/lib/label-overlays";
@@ -35,10 +35,12 @@ export interface LabelsOverlayProps {
   onClusterLabelClick?: (clusterId: number) => void;
   /** Handler for keyword hover */
   onKeywordHover?: (keywordId: string | null) => void;
+  /** Disable DOM-based cluster labels (for 3D label experiments) */
+  disableClusterLabels?: boolean;
 }
 
 export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>(
-  function LabelsOverlay({ labelRefs, keywordLabelRange, contentsByKeyword, searchOpacities, onKeywordLabelClick, onClusterLabelClick, onKeywordHover }, ref) {
+  function LabelsOverlay({ labelRefs, keywordLabelRange, contentsByKeyword, searchOpacities, onKeywordLabelClick, onClusterLabelClick, onKeywordHover, disableClusterLabels = false }, ref) {
     const {
       cameraStateRef,
       containerRef,
@@ -55,10 +57,12 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
 
     // Ref for search opacities (so label manager closure always reads latest value)
     const searchOpacitiesRef = useRef(searchOpacities);
+    // eslint-disable-next-line react-hooks/refs
     searchOpacitiesRef.current = searchOpacities;
 
     // Ref for contentsByKeyword to prevent handleChunkLabelContainer from recreating on every content update
     const contentsByKeywordRef = useRef(contentsByKeyword);
+    // eslint-disable-next-line react-hooks/refs
     contentsByKeywordRef.current = contentsByKeyword;
 
     // Track visible chunk labels for portal rendering
@@ -150,45 +154,9 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
         };
       }
 
-      /**
-       * Convert 3D world coordinates to screen coordinates with perspective projection.
-       * Uses proper perspective projection accounting for Z depth and parallax.
-       */
-      function worldToScreen3D(world: { x: number; y: number; z: number }): { x: number; y: number } | null {
-        const rect = containerEl.getBoundingClientRect();
-        if (rect.width === 0 || rect.height === 0) return null;
-
-        const camera = cameraStateRef.current;
-
-        // Calculate perspective-corrected position
-        // Using similar math to Three.js perspective projection
-        const dx = world.x - camera.x;
-        const dy = world.y - camera.y;
-        const dz = world.z - camera.z;
-
-        // Check if behind camera (negative Z in view space)
-        if (dz >= 0) return null;
-
-        // Perspective division: project onto near plane
-        // FOV determines the projection scale
-        const halfFovTan = Math.tan(CAMERA_FOV_RADIANS / 2);
-        const aspect = rect.width / rect.height;
-
-        // Project X and Y with perspective
-        const ndcX = (dx / (-dz * halfFovTan * aspect));
-        const ndcY = (dy / (-dz * halfFovTan));
-
-        // Convert NDC to screen coordinates
-        return {
-          x: ((ndcX + 1) / 2) * rect.width,
-          y: ((1 - ndcY) / 2) * rect.height, // Flip Y (screen Y down, world Y up)
-        };
-      }
-
       const labelManager = createLabelOverlayManager({
         container,
         worldToScreen,
-        worldToScreen3D,
         getCameraZ: () => cameraStateRef.current.z,
         getNodeRadius: (node: SimNode) => getNodeRadius(node, 1) * DOT_SCALE_FACTOR,
         getClusterColors: () => clusterColorsRef.current,
@@ -202,6 +170,7 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
         onChunkLabelContainer: handleChunkLabelContainer,
         onKeywordHover: stableOnKeywordHover,
         getSearchOpacities: () => searchOpacitiesRef.current,
+        disableClusterLabels,
       });
 
       labelManagerRef.current = labelManager;

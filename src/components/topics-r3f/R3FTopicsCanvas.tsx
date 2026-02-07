@@ -3,8 +3,8 @@
  * Uses React Three Fiber's declarative component model.
  */
 
-import { useState, useEffect, useRef, useMemo, forwardRef } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { useState, useEffect, useRef, forwardRef } from "react";
+import { Canvas } from "@react-three/fiber";
 import { Environment } from "@react-three/drei";
 
 import { R3FTopicsScene } from "./R3FTopicsScene";
@@ -115,7 +115,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     onProjectClick,
     onProjectDrag,
     onZoomChange,
-    onChunkHover,
+    onChunkHover: _onChunkHover,
     onKeywordHover,
   }, ref) {
     // Theme-aware background color that updates when system theme changes
@@ -180,8 +180,12 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     const pulledContentPositionsRef = useRef<Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>>(new Map());
     const flyToRef = useRef<((x: number, y: number) => void) | null>(null);
 
-    // Keep nodeToCluster ref updated
+    // Keep nodeToCluster ref updated (lint suppressed: updating ref during render is intentional)
+    // eslint-disable-next-line react-hooks/refs
     nodeToClusterRef.current = nodeToCluster ?? new Map();
+
+    const keywordClickHandler = onKeywordClick ?? onKeywordLabelClick;
+    void _onChunkHover;
 
     const labelRefs: LabelRefs = {
       cameraStateRef,
@@ -255,17 +259,19 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
             panelRoughness={panelRoughness}
             panelTransmission={panelTransmission}
             panelAnisotropicBlur={panelAnisotropicBlur}
-            keywordTiers={keywordTiers}
-            searchOpacities={searchOpacities}
-            cameraZ={cameraZ}
-            onProjectClick={onProjectClick}
-            onProjectDrag={onProjectDrag}
-            onZoomChange={onZoomChange}
-            onKeywordClick={onKeywordLabelClick}
-            flyToRef={flyToRef}
-            labelRefs={labelRefs}
-            cursorPosition={cursorPosition}
-          />
+          keywordTiers={keywordTiers}
+          searchOpacities={searchOpacities}
+          cameraZ={cameraZ}
+          nodeToCluster={nodeToCluster ?? undefined}
+          onProjectClick={onProjectClick}
+          onProjectDrag={onProjectDrag}
+          onZoomChange={onZoomChange}
+          onKeywordClick={keywordClickHandler}
+          onClusterLabelClick={onClusterLabelClick}
+          flyToRef={flyToRef}
+          labelRefs={labelRefs}
+          cursorPosition={cursorPosition}
+        />
         </Canvas>
 
         {/* DOM-based label overlay (sibling to Canvas) */}
@@ -278,6 +284,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
           onKeywordLabelClick={onKeywordLabelClick}
           onClusterLabelClick={onClusterLabelClick}
           onKeywordHover={stableOnKeywordHover}
+          disableClusterLabels
         />
       </div>
     );

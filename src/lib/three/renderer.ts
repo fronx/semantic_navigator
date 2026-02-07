@@ -193,8 +193,6 @@ export async function createThreeRenderer(options: ThreeRendererOptions): Promis
   const labelManager = createLabelOverlayManager({
     container,
     worldToScreen: (world) => cameraController.worldToScreen(world),
-    // Three.js renderer doesn't use 3D chunk positioning yet, so delegate to 2D
-    worldToScreen3D: (world) => cameraController.worldToScreen({ x: world.x, y: world.y }),
     getCameraZ: () => cameraController.getCameraZ(),
     getNodeRadius: (node) => getNodeRadius(node, immediateParams.current.dotScale) * DOT_SCALE_FACTOR,
     getClusterColors: () => clusterColors,

@@ -51,8 +51,6 @@ export interface LabelOverlayOptions {
   container: HTMLElement;
   /** Function to convert world coordinates to screen coordinates */
   worldToScreen: (world: { x: number; y: number }) => { x: number; y: number } | null;
-  /** Function to convert 3D world coordinates to screen coordinates (with perspective) */
-  worldToScreen3D: (world: { x: number; y: number; z: number }) => { x: number; y: number } | null;
   /** Function to get current camera Z position (for zoom-based visibility) */
   getCameraZ: () => number;
   /** Function to get node radius in world units */
@@ -79,6 +77,8 @@ export interface LabelOverlayOptions {
   onChunkLabelContainer?: (chunkId: string, container: HTMLElement, content: string, visible: boolean, parentKeywordId?: string) => void;
   /** Callback when hovered keyword changes (for debug display) */
   onKeywordHover?: (keywordId: string | null) => void;
+  /** Disable legacy cluster labels (allow renderer to provide its own) */
+  disableClusterLabels?: boolean;
 }
 
 // ============================================================================
@@ -89,7 +89,6 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
   const {
     container,
     worldToScreen,
-    worldToScreen3D,
     getCameraZ,
     getNodeRadius,
     getClusterColors,
@@ -103,12 +102,15 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     onChunkLabelContainer,
     onKeywordHover,
     getSearchOpacities,
+    disableClusterLabels = false,
   } = options;
 
-  // Create overlay for cluster labels
-  const clusterOverlay = document.createElement("div");
-  clusterOverlay.className = "graph-label-overlay";
-  container.appendChild(clusterOverlay);
+  // Create overlay for cluster labels (optional)
+  const clusterOverlay = disableClusterLabels ? null : document.createElement("div");
+  if (clusterOverlay) {
+    clusterOverlay.className = "graph-label-overlay";
+    container.appendChild(clusterOverlay);
+  }
 
   // Create overlay for keyword labels (z-index above cluster labels)
   const keywordOverlay = document.createElement("div");
@@ -151,6 +153,9 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
   let hoveredKeyword: SimNode | null = null;
 
   function updateClusterLabels(nodes: SimNode[]) {
+    if (disableClusterLabels || !clusterOverlay) {
+      return;
+    }
     const rect = container.getBoundingClientRect();
     const clusterColors = getClusterColors();
     const nodeToCluster = getNodeToCluster?.() ?? undefined;
@@ -402,6 +407,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
   }
 
   function updateContentLabels(nodes: SimNode[], parentColors: Map<string, string>) {
+    void parentColors; // Placeholder until chunk label colors are driven by parent colors
     const rect = container.getBoundingClientRect();
 
     // Get screen rects calculated by ChunkNodes (data sharing, not duplication)
@@ -720,7 +726,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
       labelEl.remove();
     }
     clusterLabelCache.clear();
-    if (clusterOverlay.parentNode === container) {
+    if (clusterOverlay && clusterOverlay.parentNode === container) {
       container.removeChild(clusterOverlay);
     }
 

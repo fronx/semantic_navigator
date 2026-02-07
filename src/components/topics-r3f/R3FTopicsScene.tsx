@@ -14,12 +14,13 @@ import { TransmissionPanel } from "./TransmissionPanel";
 import { KeywordEdges } from "./KeywordEdges";
 import { ContentEdges } from "./ContentEdges";
 import { LabelsUpdater } from "./LabelsUpdater";
+import { MarkdownTextBillboard } from "./MarkdownTextBillboard";
 import { useEdgeCurveDirections } from "@/hooks/useEdgeCurveDirections";
 import { useContentSimulation } from "@/hooks/useContentSimulation";
 import { createContentNodes, type ContentSimNode } from "@/lib/content-layout";
 import { computeNodeDegrees } from "@/lib/label-overlays";
 import { groupNodesByCommunity } from "@/lib/hull-renderer";
-import { computeClusterColors } from "@/lib/semantic-colors";
+import { computeClusterColors, type ClusterColorInfo } from "@/lib/semantic-colors";
 import { calculateBoundingBox, calculateCameraZForBounds } from "@/lib/dynamic-zoom-bounds";
 import { CAMERA_Z_MAX } from "@/lib/content-zoom-config";
 import { BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/three/node-renderer";
@@ -30,6 +31,7 @@ import type { ZoomPhaseConfig } from "@/lib/zoom-phase-config";
 import type { LabelRefs } from "./R3FLabelContext";
 import type { ContentNode } from "@/lib/content-loader";
 import type { KeywordTierMap } from "@/lib/topics-filter";
+import { ClusterLabels3D } from "./ClusterLabels3D";
 
 /**
  * Group nodes by cluster ID from nodeToCluster map.
@@ -48,6 +50,8 @@ function groupNodesByMap(nodes: SimNode[], nodeToCluster: Map<string, number>): 
   }
   return map;
 }
+
+const ENABLE_MARKDOWN_TEST = false;
 
 export interface R3FTopicsSceneProps {
   nodes: KeywordNode[];
@@ -94,11 +98,15 @@ export interface R3FTopicsSceneProps {
   searchOpacities?: Map<string, number>;
   /** Current camera Z position for zoom-dependent effects */
   cameraZ?: number;
+  /** Runtime cluster IDs map (for label rendering) */
+  nodeToCluster?: Map<string, number>;
   onProjectClick?: (projectId: string) => void;
   onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
   onZoomChange?: (zoomScale: number) => void;
   /** Handler for keyword node click */
   onKeywordClick?: (keywordId: string) => void;
+  /** Handler for cluster label click */
+  onClusterLabelClick?: (clusterId: number) => void;
   /** Refs for label rendering (bridging to DOM overlay) */
   labelRefs: LabelRefs;
   /** Cursor position for 3D text proximity filtering */
@@ -136,10 +144,12 @@ export function R3FTopicsScene({
   keywordTiers,
   searchOpacities,
   cameraZ,
+  nodeToCluster,
   onProjectClick,
   onProjectDrag,
   onZoomChange,
   onKeywordClick,
+  onClusterLabelClick,
   labelRefs,
   cursorPosition,
   flyToRef,
@@ -149,6 +159,7 @@ export function R3FTopicsScene({
   // - Separate mode: keywords from ForceSimulation, content added separately
   const [keywordNodes, setKeywordNodes] = useState<SimNode[]>([]);
   const [unifiedNodes, setUnifiedNodes] = useState<(SimNode | ContentSimNode)[]>([]);
+  const [clusterColors, setClusterColors] = useState<Map<number, ClusterColorInfo>>(new Map());
 
   // Unified simulation tick method (manual frame-sync to prevent jitter)
   const unifiedSimTickRef = useRef<(() => void) | null>(null);
@@ -173,6 +184,21 @@ export function R3FTopicsScene({
     const { contentNodes: nodes } = createContentNodes(keywordNodes, contentsByKeyword);
     return nodes;
   }, [keywordNodes, contentsByKeyword]);
+
+  const prototypeMarkdown = useMemo(() => {
+    if (!contentsByKeyword || contentsByKeyword.size === 0) {
+      return null;
+    }
+
+    for (const chunks of contentsByKeyword.values()) {
+      const chunk = chunks.find((item) => item.content && item.content.trim().length > 0);
+      if (chunk) {
+        return chunk.content;
+      }
+    }
+
+    return null;
+  }, [contentsByKeyword]);
 
   // Build keyword map for content simulation
   const keywordMap = useMemo(() => {
@@ -236,24 +262,28 @@ export function R3FTopicsScene({
   useEffect(() => {
     labelRefs.simNodesRef.current = simNodes;
 
-    // Compute node degrees for keyword label visibility
-    if (simNodes.length > 0) {
-      const degrees = computeNodeDegrees(
-        simNodes.map(n => n.id),
-        edges as SimLink[]
-      );
-      labelRefs.nodeDegreesRef.current = degrees;
-
-      // Compute cluster colors for label coloring
-      // Use Leiden cluster IDs from nodeToClusterRef if available, otherwise fall back to node.communityId
-      const nodeToCluster = labelRefs.nodeToClusterRef.current;
-      const grouped = nodeToCluster.size > 0
-        ? groupNodesByMap(simNodes, nodeToCluster)
-        : groupNodesByCommunity(simNodes);
-      const colors = computeClusterColors(grouped, pcaTransform ?? undefined);
-      labelRefs.clusterColorsRef.current = colors;
+    if (simNodes.length === 0) {
+      labelRefs.nodeDegreesRef.current = new Map();
+      const empty = new Map<number, ClusterColorInfo>();
+      labelRefs.clusterColorsRef.current = empty;
+      setClusterColors(empty);
+      return;
     }
-  }, [simNodes, edges, pcaTransform, labelRefs]);
+
+    const degrees = computeNodeDegrees(
+      simNodes.map(n => n.id),
+      edges as SimLink[]
+    );
+    labelRefs.nodeDegreesRef.current = degrees;
+
+    const runtimeClusterMap = nodeToCluster ?? labelRefs.nodeToClusterRef.current;
+    const grouped = runtimeClusterMap && runtimeClusterMap.size > 0
+      ? groupNodesByMap(simNodes, runtimeClusterMap)
+      : groupNodesByCommunity(simNodes);
+    const colors = computeClusterColors(grouped, pcaTransform ?? undefined);
+    labelRefs.clusterColorsRef.current = colors;
+    setClusterColors(new Map(colors));
+  }, [simNodes, edges, pcaTransform, labelRefs, nodeToCluster]);
 
   // Build adjacency map for viewport edge magnets (node ID -> neighbors)
   const adjacencyMap = useMemo(() => {
@@ -407,6 +437,22 @@ export function R3FTopicsScene({
           pulledPositionsRef={labelRefs.pulledPositionsRef}
           flyToRef={flyToRef}
         />
+      )}
+
+      {renderKeywordNodes.length > 0 && (
+        <ClusterLabels3D
+          nodes={renderKeywordNodes}
+          clusterColors={clusterColors}
+          nodeToCluster={nodeToCluster}
+          searchOpacities={searchOpacities}
+          onClusterLabelClick={onClusterLabelClick}
+          labelZ={0}
+          colorDesaturation={colorDesaturation}
+        />
+      )}
+
+      {ENABLE_MARKDOWN_TEST && (
+        <MarkdownTextBillboard markdown={prototypeMarkdown} />
       )}
     </>
   );
