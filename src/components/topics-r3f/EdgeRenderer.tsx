@@ -14,6 +14,12 @@ import { getEdgeColor } from "@/lib/edge-colors";
 import { groupNodesByCommunity } from "@/lib/hull-renderer";
 import { computeClusterColors } from "@/lib/semantic-colors";
 import { calculateScales } from "@/lib/content-scale";
+import {
+  computeViewportZones,
+  isInViewport,
+  isInCliffZone,
+} from "@/lib/viewport-edge-magnets";
+import { shouldHideEdgeForPulledEndpoints } from "@/lib/edge-visibility";
 
 const EDGE_SEGMENTS = 16;
 const ARC_VERTEX_COUNT = EDGE_SEGMENTS + 1;
@@ -53,6 +59,8 @@ export interface EdgeRendererProps {
   hoveredKeywordIdRef?: React.RefObject<string | null>;
   /** Pulled node positions (for position overrides when rendering edges to off-screen nodes) */
   pulledPositionsRef?: React.RefObject<Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>>;
+  /** Hide edges whose source keyword is sitting in the viewport margin zone */
+  suppressEdgesFromMarginKeywords?: boolean;
 }
 
 export function EdgeRenderer({
@@ -71,6 +79,7 @@ export function EdgeRenderer({
   searchOpacities,
   hoveredKeywordIdRef,
   pulledPositionsRef,
+  suppressEdgesFromMarginKeywords = false,
 }: EdgeRendererProps): React.JSX.Element | null {
   const lineRef = useRef<THREE.Line>(null);
   const tempColor = useRef(new THREE.Color());
@@ -122,15 +131,16 @@ export function EdgeRenderer({
     const colArray = line.geometry.attributes.color.array as Float32Array;
 
     // Compute viewport bounds for edge culling (hide edges where neither node is visible)
-    const fov = (camera as THREE.PerspectiveCamera).fov * Math.PI / 180;
-    const visibleHeight = 2 * camera.position.z * Math.tan(fov / 2);
-    const visibleWidth = visibleHeight * (size.width / size.height);
-    const marginX = visibleWidth * 0.2;
-    const marginY = visibleHeight * 0.2;
-    const minX = camera.position.x - visibleWidth / 2 - marginX;
-    const maxX = camera.position.x + visibleWidth / 2 + marginX;
-    const minY = camera.position.y - visibleHeight / 2 - marginY;
-    const maxY = camera.position.y + visibleHeight / 2 + marginY;
+    const perspectiveCamera = camera as THREE.PerspectiveCamera;
+    const zones = computeViewportZones(perspectiveCamera, size.width, size.height);
+    const viewportWidth = zones.viewport.right - zones.viewport.left;
+    const viewportHeight = zones.viewport.top - zones.viewport.bottom;
+    const marginX = viewportWidth * 0.2;
+    const marginY = viewportHeight * 0.2;
+    const minX = zones.viewport.left - marginX;
+    const maxX = zones.viewport.right + marginX;
+    const minY = zones.viewport.bottom - marginY;
+    const maxY = zones.viewport.top + marginY;
 
     // Hovered node ID for revealing reaching edges on hover
     const hoveredId = hoveredKeywordIdRef?.current ?? null;
@@ -153,6 +163,22 @@ export function EdgeRenderer({
       // Position override for pulled nodes: use clamped position if node is pulled
       const sourcePulled = pulledPositions.get(sourceId);
       const targetPulled = pulledPositions.get(targetId);
+
+      if (shouldHideEdgeForPulledEndpoints(sourcePulled, targetPulled)) {
+        for (let i = 0; i < VERTICES_PER_EDGE * 3; i++) posArray[baseOffset + i] = NaN;
+        continue;
+      }
+
+      // Skip edges if explicitly requested when the source keyword sits in the margin zone
+      if (suppressEdgesFromMarginKeywords && sourceNode.type === "keyword") {
+        const realX = sourceNode.x ?? 0;
+        const realY = sourceNode.y ?? 0;
+        const isCliffKeyword = isInViewport(realX, realY, zones.viewport) && isInCliffZone(realX, realY, zones.pullBounds);
+        if (isCliffKeyword) {
+          for (let i = 0; i < VERTICES_PER_EDGE * 3; i++) posArray[baseOffset + i] = NaN;
+          continue;
+        }
+      }
 
       // Viewport culling: hide if neither node visible, dim if only one visible
       const sx = sourcePulled ? sourcePulled.x : (sourceNode.x ?? 0);

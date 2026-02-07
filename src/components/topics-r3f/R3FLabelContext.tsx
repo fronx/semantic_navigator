@@ -67,6 +67,8 @@ export interface LabelRefs {
   hoveredKeywordIdRef: React.MutableRefObject<string | null>;
   /** Pulled (off-screen) keyword positions clamped to viewport edge (written by KeywordNodes, read by edges + labels) */
   pulledPositionsRef: React.MutableRefObject<Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>>;
+  /** Pulled (off-screen) content positions clamped to viewport edge (written by ContentNodes, read by content edges) */
+  pulledContentPositionsRef: React.MutableRefObject<Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>>;
 }
 
 /**

@@ -358,9 +358,8 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
       const newTop = screenPos.y;
       let newFontSize = baseFontSize * zoomScale;
 
-      // Reduce scale for off-screen pulled nodes (not cliff/margin nodes)
-      // Cliff nodes have empty connectedPrimaryIds — they're primary nodes repositioned to the edge
-      if (pulledData && pulledData.connectedPrimaryIds.length > 0) {
+      // Reduce scale for pulled nodes (cliff or off-screen)
+      if (pulledData) {
         newFontSize *= 0.6;
       }
 
@@ -377,11 +376,11 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
         { prop: "fontSize", key: "lastFontSize", value: newFontSize, threshold: 0.5 },
       ]);
 
-      // Apply reduced opacity for off-screen pulled nodes (not cliff/margin nodes)
-      if (pulledData && pulledData.connectedPrimaryIds.length > 0) {
+      // Apply reduced opacity for any pulled node
+      if (pulledData) {
         labelEl.style.opacity = "0.4";
       } else {
-        // Reset opacity for normal and cliff nodes (will be overridden by updateLabelOpacity if needed)
+        // Reset opacity for normal nodes (will be overridden by updateLabelOpacity if needed)
         labelEl.style.opacity = "1";
       }
 

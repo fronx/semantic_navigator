@@ -177,6 +177,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     const cursorWorldPosRef = useRef<{ x: number; y: number } | null>(null);
     const hoveredKeywordIdRef = useRef<string | null>(null);
     const pulledPositionsRef = useRef<Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>>(new Map());
+    const pulledContentPositionsRef = useRef<Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>>(new Map());
     const flyToRef = useRef<((x: number, y: number) => void) | null>(null);
 
     // Keep nodeToCluster ref updated
@@ -194,6 +195,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
       cursorWorldPosRef,
       hoveredKeywordIdRef,
       pulledPositionsRef,
+      pulledContentPositionsRef,
     };
 
     // Forward wheel events from DOM overlays to canvas

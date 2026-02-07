@@ -24,6 +24,10 @@ export interface ContentEdgesProps {
   searchOpacities?: Map<string, number>;
   /** Hovered keyword ID ref — reaching edges only show for hovered node */
   hoveredKeywordIdRef?: React.RefObject<string | null>;
+  /** Pulled keyword positions (for position overrides when keyword is pulled to edge) */
+  pulledPositionsRef?: React.RefObject<Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>>;
+  /** Pulled content positions (for position overrides when content node is pulled to edge) */
+  pulledContentPositionsRef?: React.RefObject<Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>>;
 }
 
 export function ContentEdges({
@@ -37,6 +41,8 @@ export function ContentEdges({
   pcaTransform,
   searchOpacities,
   hoveredKeywordIdRef,
+  pulledPositionsRef,
+  pulledContentPositionsRef,
 }: ContentEdgesProps): React.JSX.Element | null {
   // Create containment edges (keyword -> content node) from ContentSimNode parentIds
   // After deduplication, each content node can have multiple parents
@@ -64,6 +70,36 @@ export function ContentEdges({
     [simNodes, contentNodes]
   );
 
+  // Merge keyword and content pulled positions into a single map for EdgeRenderer
+  // This allows edges to use clamped positions for both pulled keywords and pulled content
+  const combinedPulledPositionsRef = useMemo(() => {
+    return {
+      get current() {
+        const combined = new Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>();
+
+        // Add keyword pulled positions
+        if (pulledPositionsRef?.current) {
+          for (const [id, data] of pulledPositionsRef.current) {
+            combined.set(id, data);
+          }
+        }
+
+        // Add content pulled positions, preserving their anchor metadata
+        if (pulledContentPositionsRef?.current) {
+          for (const [id, data] of pulledContentPositionsRef.current) {
+            combined.set(id, {
+              x: data.x,
+              y: data.y,
+              connectedPrimaryIds: data.connectedPrimaryIds ?? [],
+            });
+          }
+        }
+
+        return combined;
+      }
+    };
+  }, [pulledPositionsRef, pulledContentPositionsRef]);
+
   if (containmentEdges.length === 0) {
     return null;
   }
@@ -83,6 +119,7 @@ export function ContentEdges({
     simNodes={simNodes}
     searchOpacities={searchOpacities}
     hoveredKeywordIdRef={hoveredKeywordIdRef}
+    pulledPositionsRef={combinedPulledPositionsRef}
   />
 );
 }

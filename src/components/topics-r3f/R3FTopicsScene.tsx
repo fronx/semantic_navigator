@@ -340,6 +340,7 @@ export function R3FTopicsScene({
           searchOpacities={searchOpacities}
           focusRadius={focusRadius}
           cursorWorldPosRef={labelRefs.cursorWorldPosRef}
+          pulledContentPositionsRef={labelRefs.pulledContentPositionsRef}
         />
       )}
 
@@ -367,6 +368,8 @@ export function R3FTopicsScene({
           pcaTransform={pcaTransform ?? undefined}
           searchOpacities={searchOpacities}
           hoveredKeywordIdRef={labelRefs.hoveredKeywordIdRef}
+          pulledPositionsRef={labelRefs.pulledPositionsRef}
+          pulledContentPositionsRef={labelRefs.pulledContentPositionsRef}
         />
       )}
 

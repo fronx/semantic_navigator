@@ -19,6 +19,12 @@ import { useInstancedMeshMaterial } from "@/hooks/useInstancedMeshMaterial";
 import { useStableInstanceCount } from "@/hooks/useStableInstanceCount";
 import { adjustContrast } from "@/lib/colors";
 import { isDarkMode } from "@/lib/theme";
+import {
+  computeViewportZones,
+  isInViewport,
+  isInCliffZone,
+} from "@/lib/viewport-edge-magnets";
+import { computeContentPullState } from "@/lib/content-pull-state";
 
 const VISIBILITY_THRESHOLD = 0.01;
 
@@ -53,6 +59,8 @@ export interface ContentNodesProps {
   focusRadius?: number;
   /** World-space cursor position for focus center (null = use camera center) */
   cursorWorldPosRef?: React.RefObject<{ x: number; y: number } | null>;
+  /** Shared ref for pulled content positions (written here, read by content edges) */
+  pulledContentPositionsRef?: React.MutableRefObject<Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>>;
 }
 
 export function ContentNodes({
@@ -72,6 +80,7 @@ export function ContentNodes({
   searchOpacities,
   focusRadius = 0,
   cursorWorldPosRef,
+  pulledContentPositionsRef,
 }: ContentNodesProps) {
   const { camera, size, viewport } = useThree();
 
@@ -129,6 +138,30 @@ export function ContentNodes({
     meshRef.current.visible = contentScale >= VISIBILITY_THRESHOLD;
     if (!meshRef.current.visible) return;
 
+    // Viewport edge magnets: pull off-screen content nodes to viewport edge
+    const zones = computeViewportZones(camera as THREE.PerspectiveCamera, size.width, size.height);
+
+    // Build set of primary (visible) keyword IDs
+    const primaryKeywordIds = new Set<string>();
+    for (const kwNode of simNodes) {
+      const x = kwNode.x ?? 0;
+      const y = kwNode.y ?? 0;
+      if (isInViewport(x, y, zones.extendedViewport) && !isInCliffZone(x, y, zones.pullBounds)) {
+        primaryKeywordIds.add(kwNode.id);
+      }
+    }
+
+    const pulledContentMap = computeContentPullState({
+      contentNodes,
+      primaryKeywordIds,
+      zones,
+    });
+
+    // Write pulled content positions to shared ref (for content edges)
+    if (pulledContentPositionsRef) {
+      pulledContentPositionsRef.current.clear();
+    }
+
     // Calculate Z position for text labels based on transmission panel blur
     // Converts panel thickness (shader units 0-20) to world-space offset
     //
@@ -149,14 +182,46 @@ export function ContentNodes({
     for (let i = 0; i < contentNodes.length; i++) {
       const node = contentNodes[i] as ContentSimNode;
 
-      // Position at parent keyword's location but on a different Z plane
-      const x = node.x ?? 0;
-      const y = node.y ?? 0;
+      // Only render content nodes with at least one visible parent keyword
+      const hasVisibleParent = node.parentIds.some((parentId: string) => primaryKeywordIds.has(parentId));
+      if (!hasVisibleParent) {
+        // Hide node by setting scale to 0
+        positionRef.current.set(0, 0, 0);
+        scaleRef.current.setScalar(0);
+        matrixRef.current.compose(positionRef.current, quaternionRef.current, scaleRef.current);
+        meshRef.current.setMatrixAt(i, matrixRef.current);
+        continue;
+      }
+
+      // Check if this node is pulled to viewport edge
+      const pulledData = pulledContentMap.get(node.id);
+      const isPulled = !!pulledData;
+
+      if (pulledContentPositionsRef && pulledData) {
+        const connectedPrimaryIds = node.parentIds.filter((parentId: string) =>
+          primaryKeywordIds.has(parentId)
+        );
+        pulledContentPositionsRef.current.set(node.id, {
+          x: pulledData.x,
+          y: pulledData.y,
+          connectedPrimaryIds,
+        });
+      }
+
+      // Use clamped position if pulled, otherwise real position
+      const x = isPulled ? pulledData.x : (node.x ?? 0);
+      const y = isPulled ? pulledData.y : (node.y ?? 0);
       const z = contentZDepth;
 
       // Calculate scale - incorporate search opacity so non-matching content nodes stay small
       // Use max opacity across all parent keywords (show if ANY parent matches)
       let nodeScale = contentScale;
+
+      // Reduce scale for pulled nodes (dimmer and smaller)
+      if (isPulled) {
+        nodeScale *= 0.6;
+      }
+
       if (searchOpacities && searchOpacities.size > 0) {
         let maxSearchOpacity = 0;
         for (const parentId of node.parentIds) {
@@ -167,11 +232,14 @@ export function ContentNodes({
       }
 
       // Apply proximity-based scaling (nodes near cursor or screen center are larger)
+      // Note: Use real position for proximity calculation, not clamped position
       if (focusRadius > 0) {
         const center = cursorWorldPosRef?.current;
         const cx = center?.x ?? camera.position.x;
         const cy = center?.y ?? camera.position.y;
-        nodeScale *= computeProximityScale(x, y, cx, cy, focusRadius);
+        const realX = isPulled ? pulledData.realX : x;
+        const realY = isPulled ? pulledData.realY : y;
+        nodeScale *= computeProximityScale(realX, realY, cx, cy, focusRadius);
       }
 
       // Compose matrix with position and scale
@@ -203,6 +271,11 @@ export function ContentNodes({
       colorRef.current.set(
         adjustContrast(colorRef.current.getHexString(), contentTextContrast, isDarkMode())
       );
+
+      // Reduce opacity for pulled nodes (dimmer appearance)
+      if (isPulled) {
+        colorRef.current.multiplyScalar(0.4);
+      }
 
       // Apply search opacity from parent keywords (use max across all parents)
       if (searchOpacities && searchOpacities.size > 0) {
