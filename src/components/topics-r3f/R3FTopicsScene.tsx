@@ -294,7 +294,8 @@ export function R3FTopicsScene({
     const colors = computeClusterColors(grouped, pcaTransform ?? undefined);
     labelRefs.clusterColorsRef.current = colors;
     setClusterColors(new Map(colors));
-  }, [simNodes, edges, pcaTransform, labelRefs, nodeToCluster]);
+  // labelRefs excluded: it's a memoized bag of stable useRef values
+  }, [simNodes, edges, pcaTransform, nodeToCluster]);
 
   // Build adjacency map for viewport edge magnets (node ID -> neighbors)
   const adjacencyMap = useMemo(() => {

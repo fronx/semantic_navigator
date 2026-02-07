@@ -261,16 +261,21 @@ export default function TopicsPage() {
     setKeywordChunksDebug(debugLines.join('\n'));
   }, [hoveredKeywordId, contentsByKeyword, data?.nodes]);
 
-  // Handle keyword hover callback
+  // Ref for contentsByKeyword so handleKeywordHover stays stable
+  const contentsByKeywordRef = useRef(contentsByKeyword);
+  contentsByKeywordRef.current = contentsByKeyword;
+
+  // Handle keyword hover callback (stable — reads contentsByKeyword via ref)
   const handleKeywordHover = useCallback((keywordId: string | null) => {
     console.log('[page] handleKeywordHover called with:', keywordId);
-    console.log('[page] contentsByKeyword has', contentsByKeyword.size, 'keywords');
+    const cbk = contentsByKeywordRef.current;
+    console.log('[page] contentsByKeyword has', cbk.size, 'keywords');
     if (keywordId) {
-      const chunks = contentsByKeyword.get(keywordId);
+      const chunks = cbk.get(keywordId);
       console.log('[page] Chunks for', keywordId, ':', chunks?.length ?? 0, chunks);
     }
     setHoveredKeywordId(keywordId);
-  }, [contentsByKeyword]);
+  }, []);
 
   // Update project via API
   const handleUpdateProject = useCallback(async (id: string, updates: { title?: string; content?: string }) => {

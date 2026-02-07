@@ -187,7 +187,9 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     const keywordClickHandler = onKeywordClick ?? onKeywordLabelClick;
     void _onChunkHover;
 
-    const labelRefs: LabelRefs = {
+    // Memoize with [] — every value is a stable useRef
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const labelRefs: LabelRefs = useMemo(() => ({
       cameraStateRef,
       containerRef,
       simNodesRef,
@@ -200,7 +202,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
       hoveredKeywordIdRef,
       pulledPositionsRef,
       pulledContentPositionsRef,
-    };
+    }), []);
 
     // Forward wheel events from DOM overlays to canvas
     useWheelEventForwarding(containerRef);
