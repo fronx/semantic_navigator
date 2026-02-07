@@ -17,16 +17,13 @@
 
 - [Graph Layout Lab](../lab/graph-layout/README.md) - UMAP layout investigations: centrality balance, repulsion tuning, bipartite community detection
 
-## Designs
-
-- [Viewport Edge Magnets](designs/viewport-edge-magnets.md) - Pull off-screen keyword neighbors to viewport edges as navigational ghosts with visible connections
-
 ## Architecture
 
 ### Features
 
 - [Filtered Map View](architecture/filtered-map-view.md) - Exploring articles by filtering out query-related keywords to reveal hidden connections
 - [Cluster Labels](cluster-labels.md) - Semantic labels for keyword clusters via Leiden algorithm and LLM generation
+- [Viewport Edge Magnets](architecture/viewport-edge-magnets.md) - Pull off-screen keyword neighbors to viewport edges as navigational ghosts with visible connections
 
 ### Investigations
 
