@@ -38,8 +38,8 @@ export interface EdgeRendererProps {
   nodeMap: Map<string, SimNode>;
   /** Z depth for all edges */
   zDepth: number;
-  /** Static opacity (0-1) or "chunk" to use zoom-based chunk opacity */
-  opacity: number | "chunk";
+  /** Static opacity (0-1), "chunk" for zoom-based content opacity, or "keyword" for inverse cross-fade */
+  opacity: number | "chunk" | "keyword";
   /** Render order (-1 for keywords, -2 for chunks) */
   renderOrder: number;
   /** Curve intensity for arcs */
@@ -119,6 +119,9 @@ export function EdgeRenderer({
     if (opacity === "chunk") {
       const scales = calculateScales(camera.position.z);
       actualOpacity = scales.contentEdgeOpacity;
+    } else if (opacity === "keyword") {
+      const scales = calculateScales(camera.position.z);
+      actualOpacity = scales.keywordEdgeOpacity;
     } else {
       actualOpacity = opacity;
     }

@@ -81,6 +81,22 @@ describe('calculateScales', () => {
       expect(scales.contentLabelOpacity).toBe(scales.contentScale);
     });
 
+    it('should cross-fade keyword and content edge opacity', () => {
+      const scalesClose = calculateScales(CONTENT_Z_TRANSITION_MIN);
+      const scalesFar = calculateScales(CONTENT_Z_TRANSITION_MAX);
+      const midZ = (CONTENT_Z_TRANSITION_MIN + CONTENT_Z_TRANSITION_MAX) / 2;
+      const scalesMid = calculateScales(midZ);
+
+      // Keyword edges visible when far, hidden when close
+      expect(scalesFar.keywordEdgeOpacity).toBeCloseTo(0.4);
+      expect(scalesClose.keywordEdgeOpacity).toBeCloseTo(0);
+
+      // Inverse relationship: keywordEdgeOpacity = 0.4 * (1 - contentEdgeOpacity)
+      for (const scales of [scalesClose, scalesMid, scalesFar]) {
+        expect(scales.keywordEdgeOpacity).toBeCloseTo(0.4 * (1 - scales.contentEdgeOpacity));
+      }
+    });
+
     it('should fade keyword label opacity based on zoom', () => {
       // keywordLabelOpacity goes from 0 (close) to 1 (far), independently of keywordScale
       const scalesClose = calculateScales(CONTENT_Z_TRANSITION_MIN);

@@ -67,7 +67,7 @@ export function KeywordEdges({
       edges={visibleEdges}
       nodeMap={nodeMap}
       zDepth={0}
-      opacity={0.4}
+      opacity="keyword"
       renderOrder={-1}
       curveIntensity={curveIntensity}
       curveDirections={curveDirections}

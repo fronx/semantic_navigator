@@ -39,6 +39,8 @@ export interface ScaleValues {
   contentScale: number;
   /** Opacity for content node edges */
   contentEdgeOpacity: number;
+  /** Opacity for keyword similarity edges (fades out as content edges fade in) */
+  keywordEdgeOpacity: number;
   /** Opacity for keyword labels */
   keywordLabelOpacity: number;
   /** Opacity for content node labels */
@@ -66,6 +68,7 @@ export function calculateScales(cameraZ: number, range: ZoomRange = DEFAULT_RANG
     keywordScale: MIN_KEYWORD_SCALE + t * (1 - MIN_KEYWORD_SCALE), // Scale from MIN to 1.0, never fully disappears
     contentScale: invT ** 2,              // Exponential: appear as we zoom in
     contentEdgeOpacity: invT ** 2,        // Fade in with content nodes
+    keywordEdgeOpacity: 0.4 * (1 - invT ** 2), // Cross-fade: visible far, hidden close
     keywordLabelOpacity: 0.0 + t * 1.0, // Partial fade: 0.0 (zoomed in) to 1.0 (zoomed out)
     contentLabelOpacity: invT ** 2,       // Fade in with content nodes
   };
