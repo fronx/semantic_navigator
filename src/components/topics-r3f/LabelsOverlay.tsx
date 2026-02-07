@@ -12,6 +12,7 @@ import ReactMarkdown from "react-markdown";
 import { createLabelOverlayManager } from "@/lib/label-overlays";
 import { CAMERA_FOV_DEGREES } from "@/lib/three/zoom-to-cursor";
 import { getNodeRadius, DOT_SCALE_FACTOR } from "@/lib/three/node-renderer";
+import { useStableCallback } from "@/hooks/useStableRef";
 import type { LabelRefs, LabelsOverlayHandle } from "./R3FLabelContext";
 import type { SimNode } from "@/lib/map-renderer";
 import type { ContentNode } from "@/lib/content-loader";
@@ -47,6 +48,9 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
       labelManagerRef,
       cursorWorldPosRef,
     } = labelRefs;
+
+    // Stabilize callbacks to prevent label manager recreation on parent re-renders
+    const stableOnKeywordHover = useStableCallback(onKeywordHover);
 
     // Ref for search opacities (so label manager closure always reads latest value)
     const searchOpacitiesRef = useRef(searchOpacities);
@@ -188,7 +192,7 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
         onKeywordLabelClick,
         onClusterLabelClick,
         onChunkLabelContainer: handleChunkLabelContainer,
-        onKeywordHover,
+        onKeywordHover: stableOnKeywordHover,
         getSearchOpacities: () => searchOpacitiesRef.current,
       });
 
@@ -198,7 +202,7 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
         labelManager.destroy();
         labelManagerRef.current = null;
       };
-    }, [containerRef, cameraStateRef, clusterColorsRef, labelManagerRef, keywordLabelRange, cursorWorldPosRef, handleChunkLabelContainer, onKeywordHover]);
+    }, [containerRef, cameraStateRef, clusterColorsRef, labelManagerRef, keywordLabelRange, cursorWorldPosRef, handleChunkLabelContainer, stableOnKeywordHover]);
 
     // Expose imperative handle for TopicsView to call
     useImperativeHandle(ref, () => ({
