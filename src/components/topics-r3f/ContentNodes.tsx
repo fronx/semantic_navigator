@@ -17,6 +17,8 @@ import { calculateScales } from "@/lib/content-scale";
 import { getNodeColor, BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/three/node-renderer";
 import { useInstancedMeshMaterial } from "@/hooks/useInstancedMeshMaterial";
 import { useStableInstanceCount } from "@/hooks/useStableInstanceCount";
+import { adjustContrast } from "@/lib/colors";
+import { isDarkMode } from "@/lib/theme";
 
 const VISIBILITY_THRESHOLD = 0.01;
 
@@ -41,6 +43,8 @@ export interface ContentNodesProps {
   contentTextDepthScale?: number;
   /** Size multiplier for content nodes (default 1.5) */
   contentSizeMultiplier?: number;
+  /** Text contrast for adjusting background brightness: 0 = low contrast, 1 = high contrast */
+  contentTextContrast?: number;
   /** Ref to share content screen rects with label system (data sharing, not duplication) */
   contentScreenRectsRef?: React.MutableRefObject<Map<string, ContentScreenRect>>;
   /** Search opacity map (node id -> opacity) for semantic search highlighting */
@@ -59,6 +63,7 @@ export function ContentNodes({
   panelThickness = 0,
   contentTextDepthScale = -15.0,
   contentSizeMultiplier = 1.5,
+  contentTextContrast = 0.7,
   contentScreenRectsRef,
   searchOpacities,
 }: ContentNodesProps) {
@@ -173,6 +178,11 @@ export function ContentNodes({
         // Fallback gray if parent not found
         colorRef.current.set("#e0e0e0");
       }
+
+      // Adjust background brightness for text readability
+      colorRef.current.set(
+        adjustContrast(colorRef.current.getHexString(), contentTextContrast, isDarkMode())
+      );
 
       // Apply search opacity from parent keyword
       if (searchOpacities && searchOpacities.size > 0) {

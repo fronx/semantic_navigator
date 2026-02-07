@@ -27,6 +27,7 @@ export interface TopicsSettings {
   chunkZOffset: number;
   contentTextDepthScale: number;
   contentSizeMultiplier: number;
+  contentTextContrast: number;
   dynamicClustering: boolean;
 
   // UI state
@@ -52,6 +53,7 @@ const DEFAULT_SETTINGS: TopicsSettings = {
   chunkZOffset: 0.5,
   contentTextDepthScale: -15.0,
   contentSizeMultiplier: 1.5,
+  contentTextContrast: 0.7,
   dynamicClustering: true,
   sidebarCollapsed: false,
   sectionStates: {

@@ -323,6 +323,15 @@ export function ControlSidebar({
               step={0.05}
               format={(v) => `${(v * 100).toFixed(0)}%`}
             />
+            <Slider
+              label="Text contrast"
+              value={settings.contentTextContrast}
+              onChange={(v) => update("contentTextContrast", v)}
+              min={0}
+              max={1}
+              step={0.05}
+              format={(v) => `${(v * 100).toFixed(0)}%`}
+            />
           </Section>
 
           {/* Graph */}

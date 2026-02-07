@@ -40,6 +40,7 @@ export interface R3FTopicsCanvasProps {
   contentZDepth?: number;
   contentTextDepthScale?: number;
   contentSizeMultiplier?: number;
+  contentTextContrast?: number;
   keywordTiers?: KeywordTierMap | null;
   /** Runtime cluster IDs from useClusterLabels (for label rendering) */
   nodeToCluster?: Map<string, number>;
@@ -79,6 +80,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     contentZDepth,
     contentTextDepthScale,
     contentSizeMultiplier,
+    contentTextContrast,
     keywordTiers,
     nodeToCluster,
     searchOpacities,
@@ -207,6 +209,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
             contentZDepth={contentZDepth}
             contentTextDepthScale={contentTextDepthScale}
             contentSizeMultiplier={contentSizeMultiplier}
+            contentTextContrast={contentTextContrast}
             keywordTiers={keywordTiers}
             searchOpacities={searchOpacities}
             cameraZ={cameraZ}

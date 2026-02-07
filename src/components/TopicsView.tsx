@@ -81,6 +81,8 @@ export interface TopicsViewProps {
   contentTextDepthScale?: number;
   /** Size multiplier for chunk/article nodes (default 1.5) */
   contentSizeMultiplier?: number;
+  /** Text contrast for content labels: 0 = low contrast, 1 = high contrast */
+  contentTextContrast?: number;
   /** Callback when cluster count changes */
   onClusterCountChange?: (count: number) => void;
   /** Callback when semantic filter state changes (for breadcrumb UI) */
@@ -130,6 +132,7 @@ export function TopicsView({
   contentZDepth = -150,
   contentTextDepthScale = -15.0,
   contentSizeMultiplier = 1.5,
+  contentTextContrast = 0.7,
   onClusterCountChange,
   onSemanticFilterChange,
   onChunkHover,
@@ -496,6 +499,7 @@ export function TopicsView({
           contentZDepth={contentZDepth}
           contentTextDepthScale={contentTextDepthScale}
           contentSizeMultiplier={contentSizeMultiplier}
+          contentTextContrast={contentTextContrast}
           keywordTiers={keywordTiers}
           nodeToCluster={nodeToCluster}
           searchOpacities={nodeOpacities}

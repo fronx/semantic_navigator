@@ -27,6 +27,20 @@ export function dimColor(color: string, amount: number, background = "#ffffff"):
   return chroma.mix(color, background, amount, "lab").hex();
 }
 
+/**
+ * Adjust a color's lightness toward a target for text readability.
+ * Dark theme: pushes toward brighter (for black text on colored background).
+ * Light theme: pushes toward darker (for white text on colored background).
+ * @param hex Source hex color
+ * @param amount 0 = no change, 1 = full shift to target lightness
+ * @param isDark Whether dark theme is active
+ */
+export function adjustContrast(hex: string, amount: number, isDark: boolean): string {
+  const [h, s, l] = chroma(hex).hsl();
+  const target = isDark ? 0.7 : 0.3;
+  return chroma.hsl(h, s, l + (target - l) * amount).hex();
+}
+
 export const colors = {
   // Page backgrounds (for theme-aware dimming)
   background: {

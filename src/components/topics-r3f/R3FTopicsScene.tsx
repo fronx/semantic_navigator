@@ -70,6 +70,8 @@ export interface R3FTopicsSceneProps {
   contentTextDepthScale?: number;
   /** Size multiplier for content nodes (default 1.5) */
   contentSizeMultiplier?: number;
+  /** Text contrast for adjusting content node background brightness: 0 = low contrast, 1 = high contrast */
+  contentTextContrast?: number;
   keywordTiers?: KeywordTierMap | null;
   /** Search opacity map (node id -> opacity) for semantic search highlighting */
   searchOpacities?: Map<string, number>;
@@ -103,6 +105,7 @@ export function R3FTopicsScene({
   contentZDepth = -150,
   contentTextDepthScale = -15.0,
   contentSizeMultiplier = 1.5,
+  contentTextContrast = 0.7,
   keywordTiers,
   searchOpacities,
   cameraZ,
@@ -231,6 +234,7 @@ export function R3FTopicsScene({
           panelThickness={panelThickness}
           contentTextDepthScale={contentTextDepthScale}
           contentSizeMultiplier={contentSizeMultiplier}
+          contentTextContrast={contentTextContrast}
           contentScreenRectsRef={labelRefs.contentScreenRectsRef}
           searchOpacities={searchOpacities}
         />

@@ -555,6 +555,7 @@ export default function TopicsPage() {
             contentZDepth={contentZDepth}
             contentTextDepthScale={settings.contentTextDepthScale}
             contentSizeMultiplier={settings.contentSizeMultiplier}
+            contentTextContrast={settings.contentTextContrast}
             onSemanticFilterChange={setSemanticFilterData}
             onChunkHover={handleContentHover}
             onKeywordHover={handleKeywordHover}

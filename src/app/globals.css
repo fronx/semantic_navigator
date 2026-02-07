@@ -123,11 +123,11 @@ body {
   overflow: hidden;
   text-overflow: clip;
 
-  /* Transparent background with black text */
+  /* Transparent background with theme-aware text */
   padding: 4px 6px;
   border-radius: 6px;
   background: transparent !important;
-  color: #000 !important;
+  color: #fff; /* White text for light theme */
 
   /* Smooth transitions */
   transition: opacity 0.15s ease-out;
@@ -139,7 +139,7 @@ body {
 
 @media (prefers-color-scheme: dark) {
   .content-preview-label {
-    color: #000;
+    color: #000; /* Black text for dark theme */
   }
 }
 
