@@ -30,6 +30,8 @@ export interface TopicsSettings {
   keywordSizeMultiplier: number;
   contentSizeMultiplier: number;
   contentTextContrast: number;
+  /** Global color contrast: push colors away from background (0 = no change, 1 = max contrast) */
+  globalContrast: number;
   /** Focus radius in world units (0 = disabled). Nodes within this distance from screen center scale to full size; beyond it they shrink. */
   focusRadius: number;
   /** Spring force strength for content node tethering to keywords (0.01-100, default 0.1, logarithmic scale) */
@@ -73,6 +75,7 @@ const DEFAULT_SETTINGS: TopicsSettings = {
   keywordSizeMultiplier: 1.0,
   contentSizeMultiplier: 1.5,
   contentTextContrast: 0.7,
+  globalContrast: 0.5,
   focusRadius: 0,
   contentSpringStrength: 0.1,
   chargeStrength: -200,

@@ -36,9 +36,13 @@ export function dimColor(color: string, amount: number, background = "#ffffff"):
  * @param isDark Whether dark theme is active
  */
 export function adjustContrast(hex: string, amount: number, isDark: boolean): string {
-  const [h, s, l] = chroma(hex).hsl();
-  const target = isDark ? 0.7 : 0.3;
-  return chroma.hsl(h, s, l + (target - l) * amount).hex();
+  const color = chroma(hex);
+  const l = color.get("lch.l");
+  const c = color.get("lch.c");
+  const h = color.get("lch.h") || 0;
+  // LCH lightness 0-100; push toward bright in dark mode, dark in light mode
+  const target = isDark ? 75 : 25;
+  return chroma.lch(l + (target - l) * amount, c, h).hex();
 }
 
 export const colors = {

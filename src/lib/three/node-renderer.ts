@@ -5,7 +5,7 @@
 
 import * as THREE from "three";
 import { communityColorScale, groupNodesByCommunity } from "@/lib/hull-renderer";
-import { dimColor } from "@/lib/colors";
+import { dimColor, adjustContrast } from "@/lib/colors";
 import { getBackgroundColor } from "@/lib/theme";
 import type { SimNode, ImmediateParams } from "@/lib/map-renderer";
 import {
@@ -53,6 +53,24 @@ export function getRenderOrder(layer: RenderLayer, offset = 0): number {
 }
 
 // ============================================================================
+// Global contrast state (set once from React, read per-node per-frame)
+// ============================================================================
+
+let _globalContrast = 0;
+let _globalContrastIsDark = false;
+
+/** Set global contrast params. Called from React component when settings change. */
+export function setGlobalContrast(amount: number, isDark: boolean) {
+  _globalContrast = amount;
+  _globalContrastIsDark = isDark;
+}
+
+/** Read current global contrast params (for components that call color functions directly). */
+export function getGlobalContrastParams(): { amount: number; isDark: boolean } {
+  return { amount: _globalContrast, isDark: _globalContrastIsDark };
+}
+
+// ============================================================================
 // Color helpers
 // ============================================================================
 
@@ -64,42 +82,50 @@ export function getNodeColor(
   getParentNode?: (nodeId: string) => SimNode | undefined,
   desaturation: number = 0
 ): string {
+  let color: string;
+
   // Projects have a distinct purple color
   if (node.type === "project") {
-    return PROJECT_COLOR;
+    color = PROJECT_COLOR;
   }
-
   // Chunks inherit parent keyword color (no dimming)
-  if (node.type === "chunk" && getParentNode) {
+  else if (node.type === "chunk" && getParentNode) {
     const chunkNode = node as SimNode & { parentId?: string };
-    if (chunkNode.parentId) {
-      const parent = getParentNode(chunkNode.parentId);
-      if (parent) {
-        // Recursively get parent's color (pass desaturation through)
-        return getNodeColor(parent, pcaTransform, clusterColors, colorMixRatio, undefined, desaturation);
-      }
+    const parent = chunkNode.parentId ? getParentNode(chunkNode.parentId) : undefined;
+    if (parent) {
+      color = getNodeColor(parent, pcaTransform, clusterColors, colorMixRatio, undefined, desaturation);
+    } else {
+      color = "#9ca3af";
     }
   }
-
   // Use embedding-based colors if available (PCA projection or cluster-based)
-  if (pcaTransform && node.embedding && node.embedding.length > 0) {
-    // Try cluster-based color if communityId exists
+  else if (pcaTransform && node.embedding && node.embedding.length > 0) {
     if (node.communityId !== undefined && clusterColors) {
       const clusterInfo = clusterColors.get(node.communityId);
       if (clusterInfo) {
-        return nodeColorFromCluster(node.embedding, clusterInfo, pcaTransform, colorMixRatio, desaturation);
+        color = nodeColorFromCluster(node.embedding, clusterInfo, pcaTransform, colorMixRatio, desaturation);
+      } else {
+        const [x, y] = pcaProject(node.embedding, pcaTransform);
+        color = coordinatesToHSL(x, y, desaturation);
       }
+    } else {
+      const [x, y] = pcaProject(node.embedding, pcaTransform);
+      color = coordinatesToHSL(x, y, desaturation);
     }
-    // Fallback: PCA-based semantic color from embedding
-    const [x, y] = pcaProject(node.embedding, pcaTransform);
-    return coordinatesToHSL(x, y, desaturation);
+  }
+  // Fall back to community-based coloring
+  else if (node.communityId !== undefined) {
+    color = communityColorScale(String(node.communityId));
+  } else {
+    color = "#9ca3af"; // grey-400 for unclustered
   }
 
-  // Fall back to community-based coloring
-  if (node.communityId !== undefined) {
-    return communityColorScale(String(node.communityId));
+  // Apply global contrast: push colors away from background
+  if (_globalContrast > 0) {
+    color = adjustContrast(color, _globalContrast, _globalContrastIsDark);
   }
-  return "#9ca3af"; // grey-400 for unclustered
+
+  return color;
 }
 
 export function getNodeRadius(node: SimNode, dotScale: number, scale: number = 1.0): number {

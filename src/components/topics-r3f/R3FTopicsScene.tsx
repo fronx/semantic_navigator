@@ -23,7 +23,7 @@ import { groupNodesByCommunity } from "@/lib/hull-renderer";
 import { computeClusterColors, type ClusterColorInfo } from "@/lib/semantic-colors";
 import { calculateBoundingBox, calculateCameraZForBounds } from "@/lib/dynamic-zoom-bounds";
 import { CAMERA_Z_MAX } from "@/lib/content-zoom-config";
-import { BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/three/node-renderer";
+import { BASE_DOT_RADIUS, DOT_SCALE_FACTOR, getGlobalContrastParams } from "@/lib/three/node-renderer";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 import type { PCATransform } from "@/lib/semantic-colors";
 import type { SimNode, SimLink } from "@/lib/map-renderer";
@@ -488,6 +488,7 @@ export function R3FTopicsScene({
           onClusterLabelClick={onClusterLabelClick}
           labelZ={0}
           colorDesaturation={colorDesaturation}
+          globalContrast={getGlobalContrastParams().amount}
           labelFadeT={labelFadeT}
           focusState={focusState}
         />

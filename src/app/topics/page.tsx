@@ -17,6 +17,8 @@ import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queri
 import type { SemanticFilter } from "@/lib/topics-filter";
 import { CAMERA_Z_SCALE_BASE } from "@/lib/three/camera-controller";
 import { BASE_CAMERA_Z } from "@/lib/content-zoom-config";
+import { setGlobalContrast } from "@/lib/three/node-renderer";
+import { isDarkMode, watchThemeChanges } from "@/lib/theme";
 import { searchResultsToKeywordIds, extractMatchedKeywords } from "@/lib/search-filter";
 import { StartOverlay } from "@/components/StartOverlay";
 
@@ -46,6 +48,15 @@ export default function TopicsPage() {
 
   // Consolidated settings
   const { settings, isReady: settingsReady, update, updateZoomPhaseConfig, toggleSection } = useTopicsSettings();
+
+  // Sync global contrast to module-level state (synchronous so children read it during same render)
+  if (typeof window !== "undefined") {
+    setGlobalContrast(settings.globalContrast, isDarkMode());
+  }
+  // Also listen for theme changes (dark/light toggle)
+  useEffect(() => {
+    return watchThemeChanges((d) => setGlobalContrast(settings.globalContrast, d));
+  }, [settings.globalContrast]);
 
   // Zoom scale (not persisted - derived from camera position)
   const [zoomScale, setZoomScale] = useState(1);

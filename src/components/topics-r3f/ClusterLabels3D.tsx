@@ -4,6 +4,7 @@ import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 import { computeClusterLabels } from "@/lib/cluster-labels";
 import { clusterColorToCSS, type ClusterColorInfo } from "@/lib/semantic-colors";
+import { getGlobalContrastParams } from "@/lib/three/node-renderer";
 import type { SimNode } from "@/lib/map-renderer";
 import type { FocusState } from "@/lib/focus-mode";
 import { useThreeTextGeometry } from "@/hooks/useThreeTextGeometry";
@@ -38,6 +39,8 @@ export interface ClusterLabels3DProps {
   minScreenPx?: number;
   baseFontSize?: number;
   colorDesaturation?: number;
+  /** Global color contrast (0-1). Used as useMemo dependency to trigger recomputation. */
+  globalContrast?: number;
   /** Cross-fade value from label fade coordinator (0 = clusters visible, 1 = keywords visible) */
   labelFadeT?: number;
   /** Focus state — when active, only show cluster labels for clusters with focused nodes */
@@ -72,6 +75,7 @@ export function ClusterLabels3D({
   minScreenPx = DEFAULT_MIN_SCREEN_PX,
   baseFontSize = DEFAULT_BASE_FONT_SIZE,
   colorDesaturation = 0,
+  globalContrast = 0,
   labelFadeT = 0,
   focusState,
 }: ClusterLabels3DProps) {
@@ -133,12 +137,13 @@ export function ClusterLabels3D({
     const all = computeClusterLabels({
       nodes,
       getColor: (communityId) => {
+        const { amount: contrast, isDark } = getGlobalContrastParams();
         if (clusterColors?.has(communityId)) {
-          return clusterColorToCSS(clusterColors.get(communityId)!, colorDesaturation);
+          return clusterColorToCSS(clusterColors.get(communityId)!, colorDesaturation, contrast, isDark);
         }
         return clusterColorToCSS(
           { h: 220, s: 10, l: 60, pcaCentroid: [0, 0] },
-          colorDesaturation
+          colorDesaturation, contrast, isDark
         );
       },
       nodeToCluster,
@@ -154,7 +159,9 @@ export function ClusterLabels3D({
     }
 
     return all;
-  }, [visible, nodes, clusterColors, nodeToCluster, colorDesaturation, focusState]);
+  // globalContrast is read from module-level state inside getColor, but listed as dep to trigger recomputation
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, nodes, clusterColors, nodeToCluster, colorDesaturation, globalContrast, focusState]);
 
   const clusterSearchOpacity = useMemo(
     () => buildClusterSearchOpacity(nodeToCluster, searchOpacities),

@@ -7,6 +7,7 @@
 
 import chroma from "chroma-js";
 import { normalize } from "./math-utils";
+import { adjustContrast } from "./colors";
 
 /** PCA transformation matrix: 2 rows × embedding_dim columns */
 export type PCATransform = number[][];
@@ -239,19 +240,32 @@ export function nodeColorFromCluster(
  * Convert ClusterColorInfo to CSS HSL string.
  * Used by both D3 and Three.js renderers for consistent label coloring.
  */
-export function clusterColorToCSS(info: ClusterColorInfo, desaturation: number = 0): string {
+export function clusterColorToCSS(
+  info: ClusterColorInfo,
+  desaturation: number = 0,
+  contrast: number = 0,
+  isDark: boolean = false
+): string {
   const base = chroma.hsl(info.h, info.s / 100, info.l / 100);
+  let result: string;
+
   if (desaturation <= 0) {
     const [h, s, l] = base.hsl();
-    return `hsl(${h.toFixed(0)}, ${(s * 100).toFixed(0)}%, ${(l * 100).toFixed(0)}%)`;
+    result = `hsl(${h.toFixed(0)}, ${(s * 100).toFixed(0)}%, ${(l * 100).toFixed(0)}%)`;
+  } else {
+    const l = base.get("lch.l");
+    const c = base.get("lch.c");
+    const h = base.get("lch.h") || 0;
+    const reduced = chroma.lch(l, c * (1 - desaturation), h);
+    const [h2, s2, l2] = reduced.hsl();
+    result = `hsl(${h2.toFixed(0)}, ${(s2 * 100).toFixed(0)}%, ${(l2 * 100).toFixed(0)}%)`;
   }
 
-  const l = base.get("lch.l");
-  const c = base.get("lch.c");
-  const h = base.get("lch.h") || 0;
-  const reduced = chroma.lch(l, c * (1 - desaturation), h);
-  const [h2, s2, l2] = reduced.hsl();
-  return `hsl(${h2.toFixed(0)}, ${(s2 * 100).toFixed(0)}%, ${(l2 * 100).toFixed(0)}%)`;
+  if (contrast > 0) {
+    result = adjustContrast(result, contrast, isDark);
+  }
+
+  return result;
 }
 
 /** Node with embedding */
