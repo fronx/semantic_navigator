@@ -175,6 +175,7 @@ export function TopicsView({
 
   // Focus mode state (click-to-focus pushes non-neighbors to margins)
   const [focusState, setFocusState] = useState<FocusState | null>(null);
+  const focusEntryZRef = useRef<number | null>(null);
 
   // Calculate panel distance ratio automatically based on camera zoom level
   // This creates a fade effect: keywords blur out at medium distance, clear up when close
@@ -270,9 +271,16 @@ export function TopicsView({
       const newCameraZ = CAMERA_Z_SCALE_BASE / zoomScale;
       setCameraZ(newCameraZ);
 
-      // Implicitly clear focus when zooming out past keyword label range (back to cluster level)
-      if (focusState && newCameraZ > (zoomPhaseConfig ?? DEFAULT_ZOOM_PHASE_CONFIG).keywordLabels.start) {
-        setFocusState(null);
+      // Exit focus when both rules agree:
+      // 1) Absolute: past where keyword labels are fully faded (with margin)
+      // 2) Relative: zoomed out >5% beyond where focus was entered
+      if (focusState) {
+        const absoluteLimit = (zoomPhaseConfig ?? DEFAULT_ZOOM_PHASE_CONFIG).keywordLabels.start * 1.3;
+        const relativeLimit = (focusEntryZRef.current ?? 0) * 1.05;
+        if (newCameraZ > absoluteLimit && newCameraZ > relativeLimit) {
+          setFocusState(null);
+          focusEntryZRef.current = null;
+        }
       }
     }
     onZoomChange?.(zoomScale);
@@ -326,6 +334,7 @@ export function TopicsView({
     // Toggle: clicking the already-focused keyword clears focus
     if (focusState?.focusedKeywordId === keywordId) {
       setFocusState(null);
+      focusEntryZRef.current = null;
       return;
     }
 
@@ -335,6 +344,7 @@ export function TopicsView({
       activeEdges,
     );
     setFocusState(newState);
+    focusEntryZRef.current = cameraZ ?? null;
 
     // Also call external handler with keyword label
     const node = activeNodes.find(n => n.id === keywordId);
@@ -347,6 +357,7 @@ export function TopicsView({
   const handleBackgroundClick = useStableCallback(() => {
     if (focusState) {
       setFocusState(null);
+      focusEntryZRef.current = null;
     }
   });
 

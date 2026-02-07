@@ -459,6 +459,7 @@ export function R3FTopicsScene({
           colorMixRatio={colorMixRatio}
           colorDesaturation={colorDesaturation}
           pcaTransform={pcaTransform}
+          clusterColors={clusterColors}
           zoomRange={zoomPhaseConfig.chunkCrossfade}
           keywordSizeMultiplier={keywordSizeMultiplier}
           keywordTiers={keywordTiers}
@@ -466,10 +467,11 @@ export function R3FTopicsScene({
           focusPositionsRef={focusPositionsRef}
           searchOpacities={searchOpacities}
           onKeywordClick={onKeywordClick}
+          onKeywordHover={onKeywordHover}
+          hoveredKeywordIdRef={labelRefs.hoveredKeywordIdRef}
           adjacencyMap={adjacencyMap}
           pulledPositionsRef={labelRefs.pulledPositionsRef}
           flyToRef={flyToRef}
-          labelFadeT={labelFadeT}
         />
       )}
 
@@ -483,6 +485,7 @@ export function R3FTopicsScene({
           labelZ={0}
           colorDesaturation={colorDesaturation}
           labelFadeT={labelFadeT}
+          focusState={focusState}
         />
       )}
 
@@ -500,6 +503,7 @@ export function R3FTopicsScene({
           hoveredKeywordIdRef={labelRefs.hoveredKeywordIdRef}
           cursorWorldPosRef={labelRefs.cursorWorldPosRef}
           labelFadeT={labelFadeT}
+          zoomRange={zoomPhaseConfig.chunkCrossfade}
           onKeywordHover={onKeywordHover}
           onKeywordClick={onKeywordClick}
         />

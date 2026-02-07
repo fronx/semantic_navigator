@@ -181,11 +181,12 @@ export function EdgeRenderer({
       const sourceIsMargin = focusPositions.has(sourceId);
       const targetIsMargin = focusPositions.has(targetId);
       if (sourceIsMargin || targetIsMargin) {
-        // Keep only if the non-margin endpoint is neighbor-2 (focus boundary)
-        // If both are margin, this correctly hides (neither is neighbor-2)
-        const keep = sourceIsMargin
-          ? keywordTiers?.get(targetId) === "neighbor-2"
-          : keywordTiers?.get(sourceId) === "neighbor-2";
+        // Keep only if the non-margin endpoint is neighbor-3 (focus boundary)
+        // If both are margin, this correctly hides (neither is neighbor-3)
+        const nonMarginTier = sourceIsMargin
+          ? keywordTiers?.get(targetId)
+          : keywordTiers?.get(sourceId);
+        const keep = nonMarginTier === "neighbor-3";
         if (!keep) {
           for (let i = 0; i < VERTICES_PER_EDGE * 3; i++) posArray[baseOffset + i] = NaN;
           continue;

@@ -7,7 +7,7 @@ import { useRef, useMemo, useEffect } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import type { SimNode } from "@/lib/map-renderer";
-import type { PCATransform } from "@/lib/semantic-colors";
+import type { PCATransform, ClusterColorInfo } from "@/lib/semantic-colors";
 import type { ZoomRange } from "@/lib/zoom-phase-config";
 import type { KeywordTierMap } from "@/lib/topics-filter";
 import type { FocusState } from "@/lib/focus-mode";
@@ -16,6 +16,7 @@ import { getNodeColor, BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/three/nod
 import { KEYWORD_TIER_SCALES } from "@/lib/semantic-filter-config";
 import { useInstancedMeshMaterial } from "@/hooks/useInstancedMeshMaterial";
 import { useStableInstanceCount } from "@/hooks/useStableInstanceCount";
+import { isDarkMode } from "@/lib/theme";
 import {
   computeViewportZones,
   clampToBounds,
@@ -53,18 +54,22 @@ export interface KeywordNodesProps {
   focusState?: FocusState | null;
   /** Shared ref for focus-animated positions (written here, read by edges + labels) */
   focusPositionsRef?: React.MutableRefObject<Map<string, { x: number; y: number }>>;
+  /** Cluster colors for consistent coloring with labels */
+  clusterColors?: Map<number, ClusterColorInfo>;
   /** Search opacity map (node id -> opacity) for semantic search highlighting */
   searchOpacities?: Map<string, number>;
   /** Handler for keyword node click */
   onKeywordClick?: (keywordId: string) => void;
+  /** Handler for keyword node hover */
+  onKeywordHover?: (keywordId: string | null) => void;
+  /** Currently hovered keyword ID (shared with labels for synchronized glow) */
+  hoveredKeywordIdRef?: React.MutableRefObject<string | null>;
   /** Adjacency map for viewport edge magnets (node ID -> neighbors) */
   adjacencyMap?: Map<string, Array<{ id: string; similarity: number }>>;
   /** Shared ref for pulled node positions (written here, read by edges + labels) */
   pulledPositionsRef?: React.MutableRefObject<Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>>;
   /** Ref for flyTo animation (clicking pulled node navigates to real position) */
   flyToRef?: React.MutableRefObject<((x: number, y: number) => void) | null>;
-  /** Cross-fade value from label fade coordinator (0 = nodes full size, 1 = nodes shrunk) */
-  labelFadeT?: number;
 }
 
 export function KeywordNodes({
@@ -78,12 +83,14 @@ export function KeywordNodes({
   keywordTiers,
   focusState,
   focusPositionsRef,
+  clusterColors,
   searchOpacities,
   onKeywordClick,
+  onKeywordHover,
+  hoveredKeywordIdRef,
   adjacencyMap,
   pulledPositionsRef,
   flyToRef,
-  labelFadeT = 0,
 }: KeywordNodesProps) {
   const { camera, size } = useThree();
 
@@ -101,6 +108,7 @@ export function KeywordNodes({
   const quaternionRef = useRef(new THREE.Quaternion());
   const scaleRef = useRef(new THREE.Vector3(1, 1, 1));
   const colorRef = useRef(new THREE.Color());
+  const glowTarget = useMemo(() => new THREE.Color(), []);
 
   // Focus animation state (ref-driven, no React re-renders)
   const focusAnimRef = useRef<FocusAnimationState | null>(null);
@@ -263,14 +271,14 @@ export function KeywordNodes({
         }
       }
 
-      // Reduce scale for margin nodes (focus mode) or pulled nodes (edge magnets)
+      // Hide margin dots entirely in focus mode; reduce pulled nodes
       if (isFocusMargin) {
-        scaleMultiplier *= 0.6;
+        scaleMultiplier = 0;
       } else if (isPulled) {
         scaleMultiplier *= 0.6;
       }
 
-      const finalScale = keywordScale * scaleMultiplier * keywordSizeMultiplier * (1 - labelFadeT);
+      const finalScale = keywordScale * scaleMultiplier * keywordSizeMultiplier;
 
       // Compose matrix with position and scale
       positionRef.current.set(x, y, 0);
@@ -282,7 +290,7 @@ export function KeywordNodes({
       const color = getNodeColor(
         node,
         pcaTransform ?? undefined,
-        undefined, // clusterColors not yet implemented
+        clusterColors,
         colorMixRatio,
         undefined, // getParentNode not needed for keywords
         colorDesaturation
@@ -296,11 +304,13 @@ export function KeywordNodes({
         colorRef.current.multiplyScalar(0.4);
       }
 
-      // Apply opacity for 2-hop keywords (dimmed for navigation)
+      // Apply opacity for distant keywords (dimmed for navigation)
       if (keywordTiers) {
         const tier = keywordTiers.get(node.id);
         if (tier === "neighbor-2") {
           colorRef.current.multiplyScalar(0.6);
+        } else if (tier === "neighbor-3") {
+          colorRef.current.multiplyScalar(0.35);
         }
       }
 
@@ -308,6 +318,12 @@ export function KeywordNodes({
       if (searchOpacities && searchOpacities.size > 0) {
         const searchOpacity = searchOpacities.get(node.id) ?? 1.0;
         colorRef.current.multiplyScalar(searchOpacity);
+      }
+
+      // Soft glow when hovered (matches label glow behavior)
+      if (hoveredKeywordIdRef?.current === node.id) {
+        glowTarget.set(isDarkMode() ? 0xffffff : 0x000000);
+        colorRef.current.lerp(glowTarget, 0.35);
       }
 
       meshRef.current.setColorAt(i, colorRef.current);
@@ -330,6 +346,18 @@ export function KeywordNodes({
     // Reset it each frame so it recomputes from current instance matrices.
     meshRef.current.boundingSphere = null;
   });
+
+  const handlePointerOver = (event: any) => {
+    event.stopPropagation();
+    const instanceId = event.instanceId;
+    if (instanceId === undefined || instanceId < 0 || instanceId >= simNodes.length) return;
+    onKeywordHover?.(simNodes[instanceId].id);
+  };
+
+  const handlePointerOut = (event: any) => {
+    event.stopPropagation();
+    onKeywordHover?.(null);
+  };
 
   // Handle click on keyword node
   const handleClick = (event: any) => {
@@ -370,8 +398,8 @@ export function KeywordNodes({
       args={[geometry, undefined, stableCount]}
       frustumCulled={false}
       onClick={handleClick}
-      onPointerDown={(e: any) => console.log('[KeywordNodes] onPointerDown', e.instanceId)}
-      onPointerUp={(e: any) => console.log('[KeywordNodes] onPointerUp', e.instanceId)}
+      onPointerOver={handlePointerOver}
+      onPointerOut={handlePointerOut}
     >
       {/* Important: do not reactivate the following line that is commented out. Doing so causes the dots to be black. */}
       {/* <meshBasicMaterial vertexColors transparent depthTest={false} /> */}

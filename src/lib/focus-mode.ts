@@ -42,6 +42,7 @@ export function createFocusState(
   focusedNodeIds.add(selectedKeywordId);
   for (const id of semanticFilter.oneHopIds) focusedNodeIds.add(id);
   for (const id of semanticFilter.twoHopIds) focusedNodeIds.add(id);
+  for (const id of semanticFilter.threeHopIds) focusedNodeIds.add(id);
 
   const marginNodeIds = new Set<string>();
   for (const id of allNodeIds) {

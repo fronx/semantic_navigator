@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
-import type { MutableRefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, type MutableRefObject } from "react";
 import { Billboard } from "@react-three/drei";
 import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
@@ -7,9 +6,11 @@ import type { SimNode } from "@/lib/map-renderer";
 import type { PCATransform, ClusterColorInfo } from "@/lib/semantic-colors";
 import type { KeywordTierMap } from "@/lib/topics-filter";
 import type { ViewportSize } from "@/lib/three-text-utils";
+import type { ZoomRange } from "@/lib/zoom-phase-config";
 import { computeUnitsPerPixel, smoothstep } from "@/lib/three-text-utils";
+import { calculateScales } from "@/lib/content-scale";
 import { useThreeTextGeometry } from "@/hooks/useThreeTextGeometry";
-import { getNodeColor } from "@/lib/three/node-renderer";
+import { getNodeColor, BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/three/node-renderer";
 import { isDarkMode } from "@/lib/theme";
 import type { LabelRefs } from "./R3FLabelContext";
 
@@ -62,6 +63,8 @@ export interface KeywordLabels3DProps {
   cursorWorldPosRef?: MutableRefObject<{ x: number; y: number } | null>;
   /** Cross-fade value from label fade coordinator (0 = hidden, 1 = fully visible) */
   labelFadeT?: number;
+  /** Zoom range for computing keyword dot size (needed for label offset) */
+  zoomRange?: ZoomRange;
   onKeywordHover?: (keywordId: string | null) => void;
   onKeywordClick?: (keywordId: string) => void;
 }
@@ -82,6 +85,7 @@ export function KeywordLabels3D({
   hoveredKeywordIdRef,
   cursorWorldPosRef,
   labelFadeT = 0,
+  zoomRange,
   onKeywordHover,
   onKeywordClick,
 }: KeywordLabels3DProps) {
@@ -109,7 +113,9 @@ export function KeywordLabels3D({
         );
         const tier = keywordTiers?.get(node.id);
         let baseOpacity = 1;
-        if (tier === "neighbor-2") {
+        if (tier === "neighbor-3") {
+          baseOpacity = 0.4;
+        } else if (tier === "neighbor-2") {
           baseOpacity = 0.65;
         } else if (tier === "neighbor-1") {
           baseOpacity = 0.85;
@@ -183,7 +189,12 @@ export function KeywordLabels3D({
       const isFocusMargin = !!focusPos;
       const x = focusPos?.x ?? pulledPosition?.x ?? node.x ?? 0;
       const y = focusPos?.y ?? pulledPosition?.y ?? node.y ?? 0;
-      billboard.position.set(x, y, entry.labelZ);
+
+      // Offset label below the keyword dot circle
+      const dotWorldRadius = zoomRange
+        ? BASE_DOT_RADIUS * DOT_SCALE_FACTOR * calculateScales(camera.position.z, zoomRange).keywordScale
+        : 0;
+      billboard.position.set(x, y - dotWorldRadius * 2.2, entry.labelZ);
 
       const worldPosition = billboard.getWorldPosition(tempVec);
       const unitsPerPixel = computeUnitsPerPixel(
@@ -317,7 +328,8 @@ function KeywordLabelSprite({
   const anchorOffset = useMemo<[number, number]>(() => {
     if (!geometryEntry) return [0, 0];
     const { min, max } = geometryEntry.planeBounds;
-    return [(min.x + max.x) / 2, (min.y + max.y) / 2];
+    // Anchor at horizontal center, top-aligned so label hangs below the dot
+    return [(min.x + max.x) / 2, max.y];
   }, [geometryEntry]);
 
   // Invisible hit area covering the full bounding box of the label text
@@ -429,7 +441,7 @@ function KeywordLabelSprite({
           geometry={geometryEntry.geometry}
           material={material}
           frustumCulled={false}
-          raycast={() => {}} // text glyphs don't need raycasting; hit area handles it
+          raycast={() => { }} // text glyphs don't need raycasting; hit area handles it
         />
         {hitAreaGeo && (
           <mesh

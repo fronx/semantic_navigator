@@ -58,13 +58,15 @@ export interface SemanticFilter {
   oneHopIds: Set<string>;
   /** Second-degree neighbors (2-hop) of the selected keyword */
   twoHopIds: Set<string>;
+  /** Third-degree neighbors (3-hop) of the selected keyword */
+  threeHopIds: Set<string>;
 }
 
 /**
  * Visual tier for a keyword in semantic filter view.
  * Determines size scaling and visual prominence.
  */
-export type KeywordTier = "selected" | "neighbor-1" | "neighbor-2";
+export type KeywordTier = "selected" | "neighbor-1" | "neighbor-2" | "neighbor-3";
 
 /**
  * Map of keyword ID to its tier in the current semantic filter.
@@ -77,16 +79,16 @@ export type KeywordTierMap = Map<string, KeywordTier>;
 export function computeSemanticNeighborhoods(
   selectedId: string,
   adjacency: Map<string, Set<string>>
-): { oneHopIds: Set<string>; twoHopIds: Set<string> } {
+): { oneHopIds: Set<string>; twoHopIds: Set<string>; threeHopIds: Set<string> } {
   const oneHopIds = adjacency.get(selectedId) ?? new Set();
   const twoHopIds = new Set<string>();
+  const threeHopIds = new Set<string>();
 
   // Collect 2-hop neighbors (neighbors of neighbors)
   for (const neighborId of oneHopIds) {
     const neighborsOfNeighbor = adjacency.get(neighborId);
     if (neighborsOfNeighbor) {
       for (const secondHopId of neighborsOfNeighbor) {
-        // Exclude selected and 1-hop nodes from 2-hop set
         if (secondHopId !== selectedId && !oneHopIds.has(secondHopId)) {
           twoHopIds.add(secondHopId);
         }
@@ -94,7 +96,19 @@ export function computeSemanticNeighborhoods(
     }
   }
 
-  return { oneHopIds, twoHopIds };
+  // Collect 3-hop neighbors (neighbors of 2-hop)
+  for (const twoHopId of twoHopIds) {
+    const neighborsOf2Hop = adjacency.get(twoHopId);
+    if (neighborsOf2Hop) {
+      for (const thirdHopId of neighborsOf2Hop) {
+        if (thirdHopId !== selectedId && !oneHopIds.has(thirdHopId) && !twoHopIds.has(thirdHopId)) {
+          threeHopIds.add(thirdHopId);
+        }
+      }
+    }
+  }
+
+  return { oneHopIds, twoHopIds, threeHopIds };
 }
 
 /**
@@ -113,12 +127,13 @@ export function createSemanticFilter(
     adjacency.get(edge.target)!.add(edge.source);
   }
 
-  const { oneHopIds, twoHopIds } = computeSemanticNeighborhoods(selectedId, adjacency);
+  const { oneHopIds, twoHopIds, threeHopIds } = computeSemanticNeighborhoods(selectedId, adjacency);
 
   return {
     selectedKeywordId: selectedId,
     oneHopIds,
     twoHopIds,
+    threeHopIds,
   };
 }
 
@@ -139,6 +154,10 @@ export function computeKeywordTiers(filter: SemanticFilter): KeywordTierMap {
     tierMap.set(id, "neighbor-2");
   }
 
+  for (const id of filter.threeHopIds) {
+    tierMap.set(id, "neighbor-3");
+  }
+
   return tierMap;
 }
 
@@ -151,6 +170,7 @@ export function getSemanticFilterKeywordIds(filter: SemanticFilter): Set<string>
   allIds.add(filter.selectedKeywordId);
   for (const id of filter.oneHopIds) allIds.add(id);
   for (const id of filter.twoHopIds) allIds.add(id);
+  for (const id of filter.threeHopIds) allIds.add(id);
   return allIds;
 }
 
@@ -174,5 +194,5 @@ export function shouldPivotFilter(
   currentFilter: SemanticFilter | null
 ): boolean {
   if (!currentFilter) return false;
-  return currentFilter.twoHopIds.has(clickedKeywordId);
+  return currentFilter.twoHopIds.has(clickedKeywordId) || currentFilter.threeHopIds.has(clickedKeywordId);
 }

@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { computeClusterLabels } from "@/lib/cluster-labels";
 import { clusterColorToCSS, type ClusterColorInfo } from "@/lib/semantic-colors";
 import type { SimNode } from "@/lib/map-renderer";
+import type { FocusState } from "@/lib/focus-mode";
 import { useThreeTextGeometry } from "@/hooks/useThreeTextGeometry";
 import { computeUnitsPerPixel, smoothstep } from "@/lib/three-text-utils";
 
@@ -39,6 +40,8 @@ export interface ClusterLabels3DProps {
   colorDesaturation?: number;
   /** Cross-fade value from label fade coordinator (0 = clusters visible, 1 = keywords visible) */
   labelFadeT?: number;
+  /** Focus state — when active, only show cluster labels for clusters with focused nodes */
+  focusState?: FocusState | null;
 }
 
 const DEFAULT_MIN_SCREEN_PX = 18;
@@ -70,6 +73,7 @@ export function ClusterLabels3D({
   baseFontSize = DEFAULT_BASE_FONT_SIZE,
   colorDesaturation = 0,
   labelFadeT = 0,
+  focusState,
 }: ClusterLabels3DProps) {
   const { camera, size } = useThree();
   const labelRegistry = useRef(new Map<number, LabelRegistration>());
@@ -126,7 +130,7 @@ export function ClusterLabels3D({
     if (!visible || nodes.length === 0) {
       return [];
     }
-    return computeClusterLabels({
+    const all = computeClusterLabels({
       nodes,
       getColor: (communityId) => {
         if (clusterColors?.has(communityId)) {
@@ -139,7 +143,18 @@ export function ClusterLabels3D({
       },
       nodeToCluster,
     });
-  }, [visible, nodes, clusterColors, nodeToCluster, colorDesaturation]);
+
+    // In focus mode, only show clusters that contain at least one focused node
+    if (focusState && nodeToCluster) {
+      return all.filter((data) => {
+        return nodes.some(
+          (n) => nodeToCluster.get(n.id) === data.communityId && focusState.focusedNodeIds.has(n.id)
+        );
+      });
+    }
+
+    return all;
+  }, [visible, nodes, clusterColors, nodeToCluster, colorDesaturation, focusState]);
 
   const clusterSearchOpacity = useMemo(
     () => buildClusterSearchOpacity(nodeToCluster, searchOpacities),
