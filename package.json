@@ -49,7 +49,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
     "jsdom": "^28.0.0",
-    "supabase": "^2.70.5",
+    "supabase": "^2.76.4",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
     "typescript": "^5",
