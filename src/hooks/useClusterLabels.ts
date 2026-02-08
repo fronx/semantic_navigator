@@ -74,12 +74,20 @@ function computeClustering(
   return { nodeToCluster, clusters: clustersWithoutPeriphery };
 }
 
+/** Serializable precomputed cluster data (JSON-safe for passing through props) */
+export interface PrecomputedClusterData {
+  nodeToCluster: [string, number][];
+  clusters: [number, Cluster][];
+}
+
 export interface UseClusterLabelsOptions {
   onError?: (message: string) => void;
   /** Use precomputed clusters instead of computing fresh (default: true) */
   usePrecomputed?: boolean;
   /** Node type for precomputed cluster lookup (default: 'article') */
   nodeType?: 'article' | 'chunk';
+  /** Pre-fetched cluster data for the initial resolution (avoids async fetch on first render) */
+  initialPrecomputedData?: PrecomputedClusterData | null;
 }
 
 /**
@@ -97,11 +105,27 @@ export function useClusterLabels(
   resolution: number,
   options?: UseClusterLabelsOptions
 ): ClusterLabelsResult {
-  // State for precomputed data
+  // Convert initial data to Map format (only on first call)
+  const initialMaps = useMemo(() => {
+    const init = options?.initialPrecomputedData;
+    if (!init) return null;
+    return {
+      nodeToCluster: new Map(init.nodeToCluster),
+      clusters: new Map(init.clusters.map(([id, cluster]) => [id, cluster])),
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Intentionally empty - only use initial data once
+
+  // State for precomputed data (seeded from initial data if provided)
   const [precomputedData, setPrecomputedData] = useState<{
     nodeToCluster: Map<string, number>;
     clusters: Map<number, Cluster>;
-  } | null>(null);
+  } | null>(initialMaps);
+
+  // Track which resolution we have precomputed data for
+  const precomputedResolutionRef = useRef<number | null>(
+    initialMaps ? resolution : null
+  );
 
   // Track semantic labels from Haiku
   const [semanticLabels, setSemanticLabels] = useState<Record<number, string>>({});
@@ -110,9 +134,10 @@ export function useClusterLabels(
   const usePrecomputed = options?.usePrecomputed !== false; // Default true
   const nodeType = options?.nodeType ?? 'article';
 
-  // Fetch precomputed data when enabled
+  // Fetch precomputed data when resolution changes (skip if we already have it)
   useEffect(() => {
     if (!usePrecomputed) return;
+    if (precomputedResolutionRef.current === resolution && precomputedData) return;
 
     let cancelled = false;
 
@@ -121,22 +146,19 @@ export function useClusterLabels(
         const response = await fetch("/api/precomputed-clusters", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            resolution,
-            nodeIds: nodes.map(n => n.id),
-            nodeType,
-          }),
+          body: JSON.stringify({ resolution, nodeType }),
         });
 
         if (!response.ok) {
           console.warn("[precomputed-clusters] Failed, falling back to client-side");
-          setPrecomputedData(null);
+          if (!cancelled) setPrecomputedData(null);
           return;
         }
 
         const data = await response.json();
 
         if (!cancelled && data.nodeToCluster && data.clusters) {
+          precomputedResolutionRef.current = resolution;
           setPrecomputedData({
             nodeToCluster: new Map(data.nodeToCluster),
             clusters: new Map(
@@ -146,7 +168,7 @@ export function useClusterLabels(
         }
       } catch (err) {
         console.error("[precomputed-clusters] Error:", err);
-        setPrecomputedData(null);
+        if (!cancelled) setPrecomputedData(null);
       }
     }
 
@@ -155,7 +177,7 @@ export function useClusterLabels(
     return () => {
       cancelled = true;
     };
-  }, [nodes, resolution, usePrecomputed, nodeType]);
+  }, [resolution, usePrecomputed, nodeType, precomputedData]);
 
   // Compute clustering (use precomputed when available)
   const clustering = useMemo(() => {

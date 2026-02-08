@@ -14,6 +14,7 @@ import { InlineTitleInput } from "@/components/InlineTitleInput";
 import { ControlSidebar } from "@/components/ControlSidebar";
 import { GranularityToggle } from "@/components/GranularityToggle";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
+import type { PrecomputedClusterData } from "@/hooks/useClusterLabels";
 import type { SemanticFilter } from "@/lib/topics-filter";
 import { CAMERA_Z_SCALE_BASE } from "@/lib/three/camera-controller";
 import { BASE_CAMERA_Z } from "@/lib/content-zoom-config";
@@ -41,6 +42,7 @@ interface TopicsData {
 
 export default function TopicsPage() {
   const [data, setData] = useState<TopicsData | null>(null);
+  const [initialClusters, setInitialClusters] = useState<PrecomputedClusterData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isStale, setIsStale] = useState(false);
@@ -383,13 +385,22 @@ export default function TopicsPage() {
       setIsStale(false);
 
       try {
-        const [topicsRes, projectsRes] = await Promise.all([
+        const [topicsRes, projectsRes, clustersRes] = await Promise.all([
           fetch(`/api/topics?nodeType=${settings.nodeType}`),
           fetch("/api/projects"),
+          fetch("/api/precomputed-clusters", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              resolution: debouncedClusterResolution,
+              nodeType: settings.nodeType,
+            }),
+          }),
         ]);
 
         const topicsData = await topicsRes.json();
         const projectsData = await projectsRes.json();
+        const clustersData = clustersRes.ok ? await clustersRes.json() : null;
 
         if (topicsData.error) {
           throw new Error(topicsData.error);
@@ -397,6 +408,7 @@ export default function TopicsPage() {
 
         localStorage.setItem(CACHE_KEY, JSON.stringify(topicsData));
         setData(topicsData);
+        setInitialClusters(clustersData);
 
         if (Array.isArray(projectsData)) {
           setGraphProjects(
@@ -428,7 +440,8 @@ export default function TopicsPage() {
     }
 
     fetchData();
-  }, [settings.nodeType]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.nodeType]); // debouncedClusterResolution intentionally excluded - only need initial value
 
   if (loading || !settingsReady) {
     return (
@@ -598,6 +611,7 @@ export default function TopicsPage() {
             panelAnisotropicBlur={settings.panelAnisotropicBlur}
             panelThicknessMultiplier={settings.panelThicknessMultiplier}
             onSemanticFilterChange={setSemanticFilterData}
+            initialPrecomputedData={initialClusters}
             onChunkHover={handleContentHover}
             onKeywordHover={handleKeywordHover}
             searchQuery={searchQuery}

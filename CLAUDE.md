@@ -186,6 +186,8 @@ Uses Supabase with pgvector extension. Migrations in `supabase/migrations/`. App
 
 The `search_similar` RPC function performs cosine similarity search and returns matched keywords.
 
+**Supabase JS client gotcha — default 1000-row limit:** `supabase.from('table').select()` returns at most 1000 rows by default. For tables with more rows, either use `.range(from, to)` for pagination or use an RPC function. This limit is silent — no error is returned, you just get truncated data.
+
 ### Database Migrations
 
 **Applying migrations:**
