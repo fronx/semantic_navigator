@@ -46,6 +46,8 @@ npx supabase db push # Apply database migrations
 
 Run scripts with: `npm run script scripts/<script>.ts` (auto-loads .env.local)
 
+**Worktrees**: Use `./scripts/create-worktree.sh <branch-name>` to create a git worktree for isolated feature development. It creates the worktree, symlinks `.env.local`, and runs `npm install`.
+
 **Note**: Let the user run `npm run dev` in their own terminal rather than running it from Claude. This keeps the dev server visible and controllable by the user.
 
 ## Testing
