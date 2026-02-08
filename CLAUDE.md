@@ -156,6 +156,11 @@ When debugging rendering issues in Three.js/R3F:
 4. Frustum culling can hide instanced meshes — set `frustumCulled=false` when needed
 5. **Critical: Never let `args` change on `<instancedMesh>`** — R3F destroys/recreates the Three.js object without re-registering event handlers (onClick, onPointerOver, etc.). Use a monotonically increasing ref for the instance count, hide unused instances with scale=0, and reset `mesh.boundingSphere = null` each frame so raycasting stays accurate. See [investigation](docs/investigations/keyword-node-clicks-broken-2026-02-06.md) for full details.
 
+### Keyword Interaction Handlers
+
+**Click and hover events for keyword dots and labels must be identical.** Use the shared handler from `src/lib/keyword-interaction-handlers.ts` to ensure consistent behavior.
+- Prevent code duplication and ensure clicking a dot vs. label behaves identically
+
 ### API Routes
 
 - `POST /api/search` - Vector similarity search

@@ -25,6 +25,7 @@ import {
   isInCliffZone,
 } from "@/lib/viewport-edge-magnets";
 import { computeKeywordPullState } from "@/lib/keyword-pull-state";
+import { handleKeywordClick, handleKeywordHover } from "@/lib/keyword-interaction-handlers";
 
 const VISIBILITY_THRESHOLD = 0.01;
 /** Max screen-pixel diameter for a keyword dot (prevents dots from dominating at close zoom) */
@@ -229,6 +230,19 @@ export function KeywordNodes({
     // After push animation completes, continuously track viewport for margin nodes
     // (handles camera pan/zoom while focus is active)
     if (focusState && !focusAnimRef.current && focusPositionsRef) {
+      // Clean up: remove keywords no longer in margin set (e.g., clicked margin keyword became focus center)
+      // INVARIANT: focusPositionsRef must only contain keywords in marginNodeIds.
+      // When a margin keyword is clicked, it moves from marginNodeIds to focusedNodeIds.
+      // Without this cleanup, the keyword would remain at its margin position (viewport edge)
+      // instead of its natural position, preventing the camera from centering on it properly.
+      // See: src/lib/__tests__/focus-mode.test.ts → "clicking a margin keyword"
+      for (const nodeId of Array.from(focusPositionsRef.current.keys())) {
+        if (!focusState.marginNodeIds.has(nodeId)) {
+          focusPositionsRef.current.delete(nodeId);
+        }
+      }
+
+      // Update positions for current margin nodes
       for (let i = 0; i < simNodes.length; i++) {
         const node = simNodes[i];
         if (!focusState.marginNodeIds.has(node.id)) continue;
@@ -363,12 +377,22 @@ export function KeywordNodes({
     event.stopPropagation();
     const instanceId = event.instanceId;
     if (instanceId === undefined || instanceId < 0 || instanceId >= simNodes.length) return;
-    onKeywordHover?.(simNodes[instanceId].id);
+
+    // Use shared handler for consistent behavior with labels
+    handleKeywordHover({
+      node: simNodes[instanceId],
+      onKeywordHover,
+    });
   };
 
   const handlePointerOut = (event: any) => {
     event.stopPropagation();
-    onKeywordHover?.(null);
+
+    // Use shared handler for consistent behavior with labels
+    handleKeywordHover({
+      node: null,
+      onKeywordHover,
+    });
   };
 
   // Handle click on keyword node
@@ -385,22 +409,14 @@ export function KeywordNodes({
 
     const clickedNode = simNodes[instanceId];
 
-    // Pulled nodes (edge magnets): fly to real position instead of click
-    const isPulled = pulledPositionsRef?.current.has(clickedNode.id);
-    if (isPulled && flyToRef?.current) {
-      flyToRef.current(clickedNode.x ?? 0, clickedNode.y ?? 0);
-      return;
-    }
-
-    // Focus margin nodes: fly to real position
-    const isFocusMargin = focusPositionsRef?.current.has(clickedNode.id);
-    if (isFocusMargin && flyToRef?.current) {
-      flyToRef.current(clickedNode.x ?? 0, clickedNode.y ?? 0);
-      return;
-    }
-
-    // Normal node: fire click handler (triggers focus mode)
-    onKeywordClick?.(clickedNode.id);
+    // Use shared handler for consistent behavior with labels
+    handleKeywordClick({
+      node: clickedNode,
+      focusPositionsRef,
+      pulledPositionsRef,
+      flyToRef,
+      onKeywordClick,
+    });
   };
 
   return (

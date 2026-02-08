@@ -14,6 +14,7 @@ import { useThreeTextGeometry } from "@/hooks/useThreeTextGeometry";
 import { getNodeColor, BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/three/node-renderer";
 import { isDarkMode } from "@/lib/theme";
 import type { LabelRefs } from "./R3FLabelContext";
+import { handleKeywordClick, handleKeywordHover } from "@/lib/keyword-interaction-handlers";
 
 const FONT_DEFAULT = "/fonts/source-code-pro-regular.woff2";
 const LABEL_LINE_HEIGHT = 1.05;
@@ -68,6 +69,8 @@ export interface KeywordLabels3DProps {
   zoomRange?: ZoomRange;
   /** Shared ref: written each frame with keyword IDs that have visible labels (read by ContentNodes) */
   visibleLabelIdsRef?: MutableRefObject<Set<string>>;
+  /** Ref for flyTo animation (clicking pulled/margin node navigates to real position) */
+  flyToRef?: MutableRefObject<((x: number, y: number) => void) | null>;
   onKeywordHover?: (keywordId: string | null) => void;
   onKeywordClick?: (keywordId: string) => void;
 }
@@ -91,6 +94,7 @@ export function KeywordLabels3D({
   labelFadeT = 0,
   zoomRange,
   visibleLabelIdsRef,
+  flyToRef,
   onKeywordHover,
   onKeywordClick,
 }: KeywordLabels3DProps) {
@@ -307,6 +311,9 @@ export function KeywordLabels3D({
           baseFontSize={baseFontSize}
           labelZ={labelZ}
           registerLabel={registerLabel}
+          focusPositionsRef={focusPositionsRef}
+          pulledPositionsRef={pulledPositionsRef}
+          flyToRef={flyToRef}
           onKeywordHover={onKeywordHover}
           onKeywordClick={onKeywordClick}
         />
@@ -323,6 +330,9 @@ interface KeywordLabelSpriteProps {
   baseFontSize: number;
   labelZ: number;
   registerLabel: (id: string, registration: LabelRegistration | null) => void;
+  focusPositionsRef?: MutableRefObject<Map<string, { x: number; y: number }>>;
+  pulledPositionsRef?: MutableRefObject<Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>>;
+  flyToRef?: MutableRefObject<((x: number, y: number) => void) | null>;
   onKeywordHover?: (keywordId: string | null) => void;
   onKeywordClick?: (keywordId: string) => void;
 }
@@ -335,6 +345,9 @@ function KeywordLabelSprite({
   baseFontSize,
   labelZ,
   registerLabel,
+  focusPositionsRef,
+  pulledPositionsRef,
+  flyToRef,
   onKeywordHover,
   onKeywordClick,
 }: KeywordLabelSpriteProps) {
@@ -431,17 +444,30 @@ function KeywordLabelSprite({
   }, [baseOpacity]);
 
   const handlePointerOver = onKeywordHover
-    ? () => { onKeywordHover(node.id); }
+    ? () => {
+      // Use shared handler for consistent behavior with dots
+      handleKeywordHover({ node, onKeywordHover });
+    }
     : undefined;
 
   const handlePointerOut = onKeywordHover
-    ? () => { onKeywordHover(null); }
+    ? () => {
+      // Use shared handler for consistent behavior with dots
+      handleKeywordHover({ node: null, onKeywordHover });
+    }
     : undefined;
 
   const handleClick = onKeywordClick
     ? (event: ThreeEvent<MouseEvent>) => {
       event.stopPropagation();
-      onKeywordClick(node.id);
+      // Use shared handler for consistent behavior with dots
+      handleKeywordClick({
+        node,
+        focusPositionsRef,
+        pulledPositionsRef,
+        flyToRef,
+        onKeywordClick,
+      });
     }
     : undefined;
 

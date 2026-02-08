@@ -532,6 +532,7 @@ export function R3FTopicsScene({
           labelFadeT={labelFadeT}
           zoomRange={zoomPhaseConfig.chunkCrossfade}
           visibleLabelIdsRef={visibleLabelIdsRef}
+          flyToRef={flyToRef}
           onKeywordHover={onKeywordHover}
           onKeywordClick={onKeywordClick}
         />
