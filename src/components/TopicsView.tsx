@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type HoverHighlightConfig } from "@/hooks/useGraphHoverHighlight";
-import { useClusterLabels } from "@/hooks/useClusterLabels";
+import { useClusterLabels, type PrecomputedClusterData } from "@/hooks/useClusterLabels";
 import { useStableCallback } from "@/hooks/useStableRef";
 import { useTopicsFilter } from "@/hooks/useTopicsFilter";
 import { useProjectCreation } from "@/hooks/useProjectCreation";
@@ -115,6 +115,8 @@ export interface TopicsViewProps {
   onChunkHover?: (chunkId: string | null, content: string | null) => void;
   /** Handler for keyword hover (passes keyword ID for debug display) */
   onKeywordHover?: (keywordId: string | null) => void;
+  /** Pre-fetched precomputed cluster data (avoids async fetch on first render) */
+  initialPrecomputedData?: PrecomputedClusterData | null;
   /** Search query for semantic search highlighting */
   searchQuery?: string;
 }
@@ -162,6 +164,7 @@ export function TopicsView({
   onSemanticFilterChange,
   onChunkHover,
   onKeywordHover,
+  initialPrecomputedData,
   searchQuery = "",
 }: TopicsViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -187,7 +190,7 @@ export function TopicsView({
     keywordNodes,
     edges,
     clusterResolution,
-    { onError, nodeType }
+    { onError, nodeType, initialPrecomputedData }
   );
 
   // Report cluster count changes
