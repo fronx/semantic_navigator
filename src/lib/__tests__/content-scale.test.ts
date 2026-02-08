@@ -10,10 +10,10 @@ describe('calculateScales', () => {
       expect(scales.contentScale).toBe(0);
     });
 
-    it('should return full content scale when very close', () => {
+    it('should return capped content scale when very close', () => {
       const scales = calculateScales(CONTENT_Z_TRANSITION_MIN);
       expect(scales.keywordScale).toBe(0.3); // MIN_KEYWORD_SCALE
-      expect(scales.contentScale).toBeCloseTo(1);
+      expect(scales.contentScale).toBeCloseTo(0.3); // capped at 0.3 (perspective handles the rest)
     });
 
     it('should interpolate scales at midpoint', () => {
@@ -35,12 +35,12 @@ describe('calculateScales', () => {
     it('should clamp scales when camera is beyond min range', () => {
       const scales = calculateScales(CONTENT_Z_TRANSITION_MIN - 100);
       expect(scales.keywordScale).toBe(0.3); // MIN_KEYWORD_SCALE
-      expect(scales.contentScale).toBeCloseTo(1);
+      expect(scales.contentScale).toBeCloseTo(0.3); // capped at 0.3
     });
   });
 
   describe('exponential easing', () => {
-    it('should use exponential easing for content scale', () => {
+    it('should use exponential easing for content scale (capped at 0.3)', () => {
       // Test that content scale increases faster near the end (exponential)
       const z75 = CONTENT_Z_TRANSITION_MIN + (CONTENT_Z_TRANSITION_MAX - CONTENT_Z_TRANSITION_MIN) * 0.25;
       const z25 = CONTENT_Z_TRANSITION_MIN + (CONTENT_Z_TRANSITION_MAX - CONTENT_Z_TRANSITION_MIN) * 0.75;
@@ -48,13 +48,13 @@ describe('calculateScales', () => {
       const scales75 = calculateScales(z75); // t=0.25, invT=0.75
       const scales25 = calculateScales(z25); // t=0.75, invT=0.25
 
-      // At t=0.75, contentScale = (0.25)^2 = 0.0625
-      // At t=0.25, contentScale = (0.75)^2 = 0.5625
+      // At t=0.75, contentScale = (0.25)^2 = 0.0625 (below cap)
+      // At t=0.25, contentScale = min((0.75)^2, 0.3) = 0.3 (capped)
       expect(scales25.contentScale).toBeCloseTo(0.0625);
-      expect(scales75.contentScale).toBeCloseTo(0.5625);
+      expect(scales75.contentScale).toBeCloseTo(0.3);
 
       // Verify exponential behavior: content nodes grow faster as you get closer
-      expect(scales75.contentScale).toBeGreaterThan(scales25.contentScale * 5);
+      expect(scales75.contentScale).toBeGreaterThan(scales25.contentScale * 4);
     });
 
     it('should keep keyword scale linear', () => {

@@ -1,11 +1,12 @@
 import { useCallback, useMemo, useState } from "react";
-import { Text as ThreeText, type ThreeTextGeometryInfo } from "three-text/three/react";
+import { Text as ThreeText } from "three-text/three/react";
+import type { ThreeTextGeometryInfo } from "three-text/three";
 import type { BufferGeometry } from "three";
 import type { ThreeTextProps } from "three-text/three/react";
 import { ensureThreeTextInitialized } from "@/lib/three-text-config";
 
 const DEFAULT_FONT_URL = "/fonts/source-code-pro-regular.woff2";
-const DEFAULT_ALIGNMENT: ThreeTextProps["layout"]["align"] = "center";
+const DEFAULT_ALIGNMENT: NonNullable<ThreeTextProps["layout"]>["align"] = "center";
 
 interface ColorRange {
   start: number;
@@ -54,7 +55,7 @@ export interface ThreeTextLabelProps {
   colorRanges?: ColorRange[];
   lineHeight?: number;
   maxWidth?: number;
-  align?: ThreeTextProps["layout"]["align"];
+  align?: NonNullable<ThreeTextProps["layout"]>["align"];
   position?: [number, number, number];
   rotation?: [number, number, number];
   scale?: [number, number, number];

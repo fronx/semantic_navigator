@@ -104,8 +104,8 @@ export function ClusterLabels3D({
         let sumX = 0;
         let sumY = 0;
         for (const node of clusterNodes) {
-          sumX += node.x;
-          sumY += node.y;
+          sumX += node.x ?? 0;
+          sumY += node.y ?? 0;
         }
         billboard.position.set(sumX / clusterNodes.length, sumY / clusterNodes.length, labelZ);
       }

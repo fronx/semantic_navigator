@@ -11,7 +11,7 @@ describe("renderMarkdownToSegments", () => {
     expect(segments).toHaveLength(2); // text + newline
     const heading = segments[0];
     expect(heading.text).toBe("Title");
-    expect(heading.fontSize).toBeGreaterThan(heading.baseFontSize ?? 0);
+    expect(heading.fontSize).toBeGreaterThan(28); // larger than paragraph font size
     expect(heading.fontWeight).toBe("700");
   });
 

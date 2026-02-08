@@ -7,7 +7,7 @@ import { useCallback, useMemo, useState } from "react";
 import { Billboard } from "@react-three/drei";
 import { ThreeTextLabel } from "./ThreeTextLabel";
 import { renderMarkdownToSegments, type MarkdownSegment } from "@/lib/r3f-markdown";
-import type { ThreeTextGeometryInfo } from "three-text/three/react";
+import type { ThreeTextGeometryInfo } from "three-text/three";
 
 const FONT_DEFAULT = "/fonts/source-code-pro-regular.woff2";
 const FONT_BOLD = "/fonts/source-code-pro-bold.woff2";

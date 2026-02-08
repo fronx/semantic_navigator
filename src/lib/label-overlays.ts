@@ -769,7 +769,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     if (chunkOverlay && chunkOverlay.parentNode === container) {
       container.removeChild(chunkOverlay);
     }
-    chunkPreview.remove();
+    chunkPreview?.remove();
 
     // Remove hover label
     hoveredKeyword = null;

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Text } from "three-text/three";
 import type { ThreeTextGeometryInfo } from "three-text/three";
-import type { ColorOptions } from "three-text/dist/core/types";
+import type { ColorOptions } from "three-text/core";
 import * as THREE from "three";
 import { ensureThreeTextInitialized } from "@/lib/three-text-config";
 import { loadThreeTextFont } from "@/lib/three-text-fonts";

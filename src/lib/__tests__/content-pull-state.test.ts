@@ -10,10 +10,10 @@ const mockZones = (): ViewportZones => ({
   worldPerPx: 1 / 100,
 });
 
-const content = (id: string, x: number, y: number, parents: string[]): SimNode => ({
+const content = (id: string, x: number, y: number, parents: string[]) => ({
   id,
   label: id,
-  type: "chunk",
+  type: "chunk" as const,
   x,
   y,
   parentIds: parents,

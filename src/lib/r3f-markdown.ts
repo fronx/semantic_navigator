@@ -139,13 +139,13 @@ function renderBlock(node: Content, segments: MarkdownSegment[], colors: Content
     }
     default:
       if ("children" in node && Array.isArray((node as any).children)) {
-        pushSegments(segments, renderInlineSegments(node as Paragraph, {}, colors));
+        pushSegments(segments, renderInlineSegments(node as unknown as Paragraph, {}, colors));
       }
       break;
   }
 }
 
-interface InlineStyle extends MarkdownSegment {}
+type InlineStyle = Omit<MarkdownSegment, "text">;
 
 function renderInlineSegments(
   node: Paragraph | Heading | ListItem | Blockquote,
