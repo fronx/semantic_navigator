@@ -35,8 +35,8 @@ export const DEFAULT_ZOOM_PHASE_CONFIG: ZoomPhaseConfig = {
     full: 1200,
   },
   chunkCrossfade: {
-    near: 50,
-    far: 10347,
+    near: 2052,
+    far: 3736,
   },
   blur: {
     near: 50,
