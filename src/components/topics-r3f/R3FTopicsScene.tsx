@@ -398,7 +398,6 @@ export function R3FTopicsScene({
           searchOpacities={searchOpacities}
           pulledContentPositionsRef={labelRefs.pulledContentPositionsRef}
           focusPositionsRef={focusPositionsRef}
-          visibleLabelIdsRef={visibleLabelIdsRef}
           visibleContentIdsRef={visibleContentIdsRef}
         />
       )}
