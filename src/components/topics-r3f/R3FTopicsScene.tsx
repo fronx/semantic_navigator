@@ -178,6 +178,7 @@ export function R3FTopicsScene({
   const visibleLabelIdsRef = useRef<Set<string>>(new Set());
   const visibleContentIdsRef = useRef<Set<string>>(new Set());
   const primaryKeywordIdsRef = useRef<Set<string>>(new Set());
+  const contentDrivenKeywordIdsRef = useRef<Set<string>>(new Set());
 
 
   // Calculate stable max content node count (available immediately from contentsByKeyword)
@@ -404,6 +405,7 @@ export function R3FTopicsScene({
           focusPositionsRef={focusPositionsRef}
           visibleContentIdsRef={visibleContentIdsRef}
           primaryKeywordIdsRef={primaryKeywordIdsRef}
+          contentDrivenKeywordIdsRef={contentDrivenKeywordIdsRef}
         />
       )}
 
@@ -495,6 +497,7 @@ export function R3FTopicsScene({
           adjacencyMap={adjacencyMap}
           pulledPositionsRef={labelRefs.pulledPositionsRef}
           flyToRef={flyToRef}
+          contentDrivenKeywordIdsRef={contentDrivenKeywordIdsRef}
         />
       )}
 

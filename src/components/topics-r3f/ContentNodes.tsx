@@ -67,6 +67,8 @@ export interface ContentNodesProps {
   visibleContentIdsRef?: React.MutableRefObject<Set<string>>;
   /** Set of primary keyword IDs (written here, read by content edges) */
   primaryKeywordIdsRef?: React.MutableRefObject<Set<string>>;
+  /** Keywords to pull because their content cards are in-viewport (written here, read by KeywordNodes next frame) */
+  contentDrivenKeywordIdsRef?: React.MutableRefObject<Set<string>>;
 }
 
 export function ContentNodes({
@@ -88,6 +90,7 @@ export function ContentNodes({
   focusPositionsRef,
   visibleContentIdsRef,
   primaryKeywordIdsRef,
+  contentDrivenKeywordIdsRef,
 }: ContentNodesProps) {
   const { camera, size, viewport } = useThree();
 
@@ -172,6 +175,32 @@ export function ContentNodes({
       primaryKeywordIdsRef.current = primaryKeywordIds;
     }
 
+    // Content-driven keyword pulling: when zoomed past crossfade "Full" threshold,
+    // content cards in the viewport keep their off-screen parent keywords visible
+    const contentDrivenActive = cameraZ <= zoomRange.near;
+    const contentDrivenNodeIds = new Set<string>();
+    if (contentDrivenKeywordIdsRef) {
+      const nextKwIds = new Set<string>();
+      if (contentDrivenActive) {
+        for (const node of contentNodes) {
+          const cx = node.x ?? 0;
+          const cy = node.y ?? 0;
+          if (!isInViewport(cx, cy, zones.viewport)) continue;
+
+          const cNode = node as ContentSimNode;
+          const hasVisibleParent = cNode.parentIds.some((pid: string) => primaryKeywordIds.has(pid));
+          if (hasVisibleParent) continue; // Already handled by normal flow
+
+          // Content card is in viewport but all parents are off-screen → pull parents
+          for (const parentId of cNode.parentIds) {
+            nextKwIds.add(parentId);
+          }
+          contentDrivenNodeIds.add(node.id);
+        }
+      }
+      contentDrivenKeywordIdsRef.current = nextKwIds;
+    }
+
     const pulledContentMap = computeContentPullState({
       contentNodes,
       primaryKeywordIds,
@@ -209,15 +238,17 @@ export function ContentNodes({
     for (let i = 0; i < contentNodes.length; i++) {
       const node = contentNodes[i] as ContentSimNode;
 
-      // Only render content nodes with at least one visible parent keyword
+      // Visible if parent keyword is primary OR content-driven mode keeps it on-screen
       const hasVisibleParent = node.parentIds.some((parentId: string) => primaryKeywordIds.has(parentId));
-      if (hasVisibleParent) {
+      const isContentDriven = contentDrivenNodeIds.has(node.id);
+      const isVisible = hasVisibleParent || isContentDriven;
+      if (isVisible) {
         visibleContentIdsRef?.current.add(node.id);
       }
 
       // Animated fade: nodes that just left visibility continue rendering at decreasing scale
       const fadeOpacity = contentFade.get(node.id) ?? 0;
-      if (!hasVisibleParent && fadeOpacity < 0.005) {
+      if (!isVisible && fadeOpacity < 0.005) {
         // Fully faded out — hide
         positionRef.current.set(0, 0, 0);
         scaleRef.current.setScalar(0);

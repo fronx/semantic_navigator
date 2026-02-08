@@ -25,6 +25,9 @@ interface KeywordPullParams {
   adjacencyMap?: Map<string, Array<{ id: string; similarity: number }>>;
   zones: ViewportZones;
   maxPulled?: number;
+  /** Keywords that should be pulled because their content cards are visible in the viewport.
+   *  These get priority over adjacency-based candidates and skip anchor validation. */
+  contentDrivenKeywordIds?: Set<string>;
 }
 
 /**
@@ -36,6 +39,7 @@ export function computeKeywordPullState({
   adjacencyMap,
   zones,
   maxPulled = MAX_PULLED_NODES,
+  contentDrivenKeywordIds,
 }: KeywordPullParams): KeywordPullStateResult {
   const pulledMap = new Map<string, KeywordPulledNode>();
   const primarySet = new Set<string>();
@@ -103,7 +107,12 @@ export function computeKeywordPullState({
     }
 
     const sorted = Array.from(candidates.values()).sort((a, b) => b.bestSimilarity - a.bestSimilarity);
-    const pulledNeighbors = sorted.slice(0, maxPulled);
+    // Reserve slots for content-driven candidates (they get priority)
+    const contentDrivenCount = contentDrivenKeywordIds
+      ? [...contentDrivenKeywordIds].filter((id) => !primarySet.has(id) && !pulledMap.has(id) && nodeById.has(id)).length
+      : 0;
+    const adjacencySlots = Math.max(0, maxPulled - contentDrivenCount);
+    const pulledNeighbors = sorted.slice(0, adjacencySlots);
     for (const { node, connectedPrimaryIds } of pulledNeighbors) {
       const realX = node.x ?? 0;
       const realY = node.y ?? 0;
@@ -127,6 +136,42 @@ export function computeKeywordPullState({
     }
   }
 
+  // Mark content-driven keywords that are already in pulledMap (e.g. cliff zone)
+  // so they skip anchor validation. Also add any that aren't in the map yet.
+  const contentDrivenPulledIds = new Set<string>();
+  if (contentDrivenKeywordIds && contentDrivenKeywordIds.size > 0) {
+    for (const kwId of contentDrivenKeywordIds) {
+      if (primarySet.has(kwId)) continue;
+      const node = nodeById.get(kwId);
+      if (!node) continue;
+      // Already in pulledMap (from cliff zone) — just mark it as content-driven
+      if (pulledMap.has(kwId)) {
+        contentDrivenPulledIds.add(kwId);
+        continue;
+      }
+      const realX = node.x ?? 0;
+      const realY = node.y ?? 0;
+      const clamped = clampToBounds(
+        realX,
+        realY,
+        zones.viewport.camX,
+        zones.viewport.camY,
+        zones.pullBounds.left,
+        zones.pullBounds.right,
+        zones.pullBounds.bottom,
+        zones.pullBounds.top
+      );
+      pulledMap.set(kwId, {
+        x: clamped.x,
+        y: clamped.y,
+        realX,
+        realY,
+        connectedPrimaryIds: [], // Anchored by content, not keywords
+      });
+      contentDrivenPulledIds.add(kwId);
+    }
+  }
+
   const getAnchorsForNode = (nodeId: string): string[] => {
     if (!adjacencyMap || adjacencyMap.size === 0) return [];
     const neighbors = adjacencyMap.get(nodeId);
@@ -137,6 +182,7 @@ export function computeKeywordPullState({
   };
 
   for (const [nodeId, pulled] of pulledMap) {
+    if (contentDrivenPulledIds.has(nodeId)) continue; // Anchored by content cards
     if (pulled.connectedPrimaryIds.length === 0) {
       const anchorIds = getAnchorsForNode(nodeId);
       if (anchorIds.length === 0) {

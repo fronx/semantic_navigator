@@ -73,6 +73,8 @@ export interface KeywordNodesProps {
   pulledPositionsRef?: React.MutableRefObject<Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>>;
   /** Ref for flyTo animation (clicking pulled node navigates to real position) */
   flyToRef?: React.MutableRefObject<((x: number, y: number) => void) | null>;
+  /** Keywords to pull because their content cards are in-viewport (written by ContentNodes, read here) */
+  contentDrivenKeywordIdsRef?: React.RefObject<Set<string>>;
 }
 
 export function KeywordNodes({
@@ -94,6 +96,7 @@ export function KeywordNodes({
   adjacencyMap,
   pulledPositionsRef,
   flyToRef,
+  contentDrivenKeywordIdsRef,
 }: KeywordNodesProps) {
   const { camera, size } = useThree();
 
@@ -145,6 +148,7 @@ export function KeywordNodes({
       simNodes,
       adjacencyMap,
       zones,
+      contentDrivenKeywordIds: contentDrivenKeywordIdsRef?.current,
     });
 
     // Write pulled positions to shared ref (for edges and labels)
