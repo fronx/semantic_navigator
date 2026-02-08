@@ -351,16 +351,20 @@ function KeywordLabelSprite({
   }, [geometryEntry]);
 
   // Invisible hit area covering the full bounding box of the label text
-  const hitAreaGeo = useMemo(() => {
+  // Returns { geo, center } so the mesh can be positioned at the text center
+  const hitArea = useMemo(() => {
     if (!geometryEntry) return null;
     const { min, max } = geometryEntry.planeBounds;
     const w = max.x - min.x;
     const h = max.y - min.y;
-    const pad = h * 0.15; // small padding around text
-    return new THREE.PlaneGeometry(w + pad * 2, h + pad * 2);
+    const pad = h * 0.4; // generous padding for easier clicking
+    return {
+      geo: new THREE.PlaneGeometry(w + pad * 2, h + pad * 2),
+      center: [(min.x + max.x) / 2, (min.y + max.y) / 2, 0] as [number, number, number],
+    };
   }, [geometryEntry]);
 
-  useEffect(() => () => { hitAreaGeo?.dispose(); }, [hitAreaGeo]);
+  useEffect(() => () => { hitArea?.geo.dispose(); }, [hitArea]);
 
   const material = useMemo(
     () =>
@@ -461,10 +465,11 @@ function KeywordLabelSprite({
           frustumCulled={false}
           raycast={() => { }} // text glyphs don't need raycasting; hit area handles it
         />
-        {hitAreaGeo && (
+        {hitArea && (
           <mesh
-            geometry={hitAreaGeo}
+            geometry={hitArea.geo}
             material={HIT_AREA_MAT}
+            position={hitArea.center}
             frustumCulled={false}
             onPointerOver={handlePointerOver}
             onPointerOut={handlePointerOut}
