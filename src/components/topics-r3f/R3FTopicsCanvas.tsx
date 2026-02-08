@@ -3,12 +3,11 @@
  * Uses React Three Fiber's declarative component model.
  */
 
-import { useState, useEffect, useRef, useMemo, forwardRef } from "react";
+import { useState, useEffect, useRef, useMemo, forwardRef, useImperativeHandle } from "react";
 import { Canvas } from "@react-three/fiber";
 import { Environment } from "@react-three/drei";
 
 import { R3FTopicsScene } from "./R3FTopicsScene";
-import { LabelsOverlay } from "./LabelsOverlay";
 import { getBackgroundColor, watchThemeChanges } from "@/lib/theme";
 import { useStableCallback } from "@/hooks/useStableRef";
 import { CAMERA_FOV_DEGREES } from "@/lib/three/zoom-to-cursor";
@@ -50,8 +49,6 @@ export interface R3FTopicsCanvasProps {
   chargeStrength?: number;
   /** Use unified simulation (keywords + content in single simulation) instead of separate simulations */
   unifiedSimulation?: boolean;
-  /** Focus radius in world units (0 = disabled). Proximity-based node scaling. */
-  focusRadius?: number;
   /** Transmission panel roughness */
   panelRoughness?: number;
   /** Transmission panel transparency */
@@ -106,7 +103,6 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     contentSpringStrength,
     chargeStrength,
     unifiedSimulation,
-    focusRadius,
     panelRoughness,
     panelTransmission,
     panelAnisotropicBlur,
@@ -221,6 +217,15 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
       onKeywordHover(id);
     });
 
+    useImperativeHandle(ref, () => ({
+      updateClusterLabels: () => {
+        // Cluster labels are now fully 3D; no DOM updates required.
+      },
+      updateKeywordLabels: () => {},
+      updateContentLabels: () => {},
+      getNodes: () => labelRefs.simNodesRef.current,
+    }), []);
+
     return (
       <div
         ref={containerRef}
@@ -235,7 +240,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
             near: 0.1,
             far: 100000, // Need large far plane since camera starts far away
           }}
-          gl={{ antialias: true, alpha: false }}
+          gl={{ antialias: true, alpha: false, stencil: true }}
           style={{ width: "100%", height: "100%" }}
           onPointerMissed={() => { onBackgroundClick?.(); }}
         >
@@ -265,7 +270,6 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
             contentSpringStrength={contentSpringStrength}
             chargeStrength={chargeStrength}
             unifiedSimulation={unifiedSimulation}
-            focusRadius={focusRadius}
             panelRoughness={panelRoughness}
             panelTransmission={panelTransmission}
             panelAnisotropicBlur={panelAnisotropicBlur}
@@ -287,19 +291,6 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
         />
         </Canvas>
 
-        {/* DOM-based label overlay (sibling to Canvas) */}
-        <LabelsOverlay
-          ref={ref}
-          labelRefs={labelRefs}
-          keywordLabelRange={zoomPhaseConfig.keywordLabels}
-          contentsByKeyword={contentsByKeyword}
-          searchOpacities={searchOpacities}
-          onKeywordLabelClick={onKeywordLabelClick}
-          onClusterLabelClick={onClusterLabelClick}
-          onKeywordHover={stableOnKeywordHover}
-          disableClusterLabels
-          disableKeywordLabels
-        />
       </div>
     );
   }

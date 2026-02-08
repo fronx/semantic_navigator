@@ -13,7 +13,7 @@ import type { PCATransform } from "@/lib/semantic-colors";
 import type { ZoomRange } from "@/lib/zoom-phase-config";
 import type { ContentScreenRect } from "./R3FLabelContext";
 import { CONTENT_Z_DEPTH } from "@/lib/content-zoom-config";
-import { calculateScales, computeProximityScale } from "@/lib/content-scale";
+import { calculateScales } from "@/lib/content-scale";
 import { getNodeColor, BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/three/node-renderer";
 import { useInstancedMeshMaterial } from "@/hooks/useInstancedMeshMaterial";
 import { useStableInstanceCount } from "@/hooks/useStableInstanceCount";
@@ -27,6 +27,9 @@ import {
 import { computeContentPullState } from "@/lib/content-pull-state";
 
 const VISIBILITY_THRESHOLD = 0.01;
+const CARD_HEIGHT_SCALE = 4;
+const GOLDEN_RATIO = (1 + Math.sqrt(5)) / 2;
+const CARD_CORNER_RATIO = 0.08;
 
 export interface ContentNodesProps {
   /** Total node count for stable instancedMesh allocation (from contentsByKeyword at parent) */
@@ -55,16 +58,14 @@ export interface ContentNodesProps {
   contentScreenRectsRef?: React.MutableRefObject<Map<string, ContentScreenRect>>;
   /** Search opacity map (node id -> opacity) for semantic search highlighting */
   searchOpacities?: Map<string, number>;
-  /** Focus radius in world units (0 = disabled). Proximity-based node scaling. */
-  focusRadius?: number;
-  /** World-space cursor position for focus center (null = use camera center) */
-  cursorWorldPosRef?: React.RefObject<{ x: number; y: number } | null>;
   /** Shared ref for pulled content positions (written here, read by content edges) */
   pulledContentPositionsRef?: React.MutableRefObject<Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>>;
   /** Focus-animated positions — keywords in this map are margin-pushed, exclude from primary set */
   focusPositionsRef?: React.RefObject<Map<string, { x: number; y: number }>>;
   /** Keyword IDs with visible labels (written by KeywordLabels3D, overrides internal primaryKeywordIds) */
   visibleLabelIdsRef?: React.RefObject<Set<string>>;
+  /** Set of content node IDs currently visible (written here, read by 3D text labels) */
+  visibleContentIdsRef?: React.MutableRefObject<Set<string>>;
 }
 
 export function ContentNodes({
@@ -82,11 +83,10 @@ export function ContentNodes({
   contentTextContrast = 0.7,
   contentScreenRectsRef,
   searchOpacities,
-  focusRadius = 0,
-  cursorWorldPosRef,
   pulledContentPositionsRef,
   focusPositionsRef,
   visibleLabelIdsRef,
+  visibleContentIdsRef,
 }: ContentNodesProps) {
   const { camera, size, viewport } = useThree();
 
@@ -107,29 +107,32 @@ export function ContentNodes({
 
   // Content nodes are larger than keywords
   const contentRadius = BASE_DOT_RADIUS * DOT_SCALE_FACTOR * contentSizeMultiplier;
+  const cardHeight = contentRadius * CARD_HEIGHT_SCALE;
+  const cardWidth = cardHeight * GOLDEN_RATIO;
+  const halfWidth = cardWidth / 2;
+  const halfHeight = cardHeight / 2;
 
-  // Create rounded square geometry
+  // Create rounded rectangle geometry
   const geometry = useMemo(() => {
-    const size = contentRadius * 2; // Square size (side length)
-    const radius = contentRadius * 0.2; // Corner radius (20% of content radius)
-
-    // Create rounded rectangle shape
+    const radius = Math.min(cardWidth, cardHeight) * CARD_CORNER_RATIO;
     const shape = new THREE.Shape();
-    const x = -size / 2;
-    const y = -size / 2;
+    const localHalfWidth = cardWidth / 2;
+    const localHalfHeight = cardHeight / 2;
+    const x = -localHalfWidth;
+    const y = -localHalfHeight;
 
     shape.moveTo(x + radius, y);
-    shape.lineTo(x + size - radius, y);
-    shape.quadraticCurveTo(x + size, y, x + size, y + radius);
-    shape.lineTo(x + size, y + size - radius);
-    shape.quadraticCurveTo(x + size, y + size, x + size - radius, y + size);
-    shape.lineTo(x + radius, y + size);
-    shape.quadraticCurveTo(x, y + size, x, y + size - radius);
+    shape.lineTo(x + cardWidth - radius, y);
+    shape.quadraticCurveTo(x + cardWidth, y, x + cardWidth, y + radius);
+    shape.lineTo(x + cardWidth, y + cardHeight - radius);
+    shape.quadraticCurveTo(x + cardWidth, y + cardHeight, x + cardWidth - radius, y + cardHeight);
+    shape.lineTo(x + radius, y + cardHeight);
+    shape.quadraticCurveTo(x, y + cardHeight, x, y + cardHeight - radius);
     shape.lineTo(x, y + radius);
     shape.quadraticCurveTo(x, y, x + radius, y);
 
     return new THREE.ShapeGeometry(shape);
-  }, [contentRadius]);
+  }, [cardWidth, cardHeight]);
 
   // Update positions, scales, and colors every frame
   useFrame(() => {
@@ -172,6 +175,10 @@ export function ContentNodes({
       zones,
     });
 
+    if (visibleContentIdsRef) {
+      visibleContentIdsRef.current.clear();
+    }
+
     // Write pulled content positions to shared ref (for content edges)
     if (pulledContentPositionsRef) {
       pulledContentPositionsRef.current.clear();
@@ -207,6 +214,7 @@ export function ContentNodes({
         meshRef.current.setMatrixAt(i, matrixRef.current);
         continue;
       }
+      visibleContentIdsRef?.current.add(node.id);
 
       // Check if this node is pulled to viewport edge
       const pulledData = pulledContentMap.get(node.id);
@@ -228,8 +236,7 @@ export function ContentNodes({
       const y = isPulled ? pulledData.y : (node.y ?? 0);
       const z = contentZDepth;
 
-      // Calculate scale - incorporate search opacity so non-matching content nodes stay small
-      // Use max opacity across all parent keywords (show if ANY parent matches)
+      // Scale with zoom — grows from 0 (far) to 1 (close) via contentScale
       let nodeScale = contentScale;
 
       // Reduce scale for pulled nodes (dimmer and smaller)
@@ -244,17 +251,6 @@ export function ContentNodes({
           maxSearchOpacity = Math.max(maxSearchOpacity, opacity);
         }
         nodeScale *= maxSearchOpacity;
-      }
-
-      // Apply proximity-based scaling (nodes near cursor or screen center are larger)
-      // Note: Use real position for proximity calculation, not clamped position
-      if (focusRadius > 0) {
-        const center = cursorWorldPosRef?.current;
-        const cx = center?.x ?? camera.position.x;
-        const cy = center?.y ?? camera.position.y;
-        const realX = isPulled ? pulledData.realX : x;
-        const realY = isPulled ? pulledData.realY : y;
-        nodeScale *= computeProximityScale(realX, realY, cx, cy, focusRadius);
       }
 
       // Compose matrix with position and scale
@@ -314,8 +310,10 @@ export function ContentNodes({
         // Project edge point to get accurate screen size (accounts for perspective)
         // Use same Z as center for consistent text positioning
         // Note: use nodeScale (includes search opacity) not contentScale
-        const edgeWorld = new THREE.Vector3(x + contentRadius * nodeScale, y, textFrontZ);
-        edgeWorld.project(camera);
+        const edgeWorldX = new THREE.Vector3(x + halfWidth * nodeScale, y, textFrontZ);
+        const edgeWorldY = new THREE.Vector3(x, y + halfHeight * nodeScale, textFrontZ);
+        edgeWorldX.project(camera);
+        edgeWorldY.project(camera);
 
         // Convert NDC to CSS pixels (not drawing buffer pixels)
         // Note: size from R3F is in rendering pixels, may include DPR
@@ -323,18 +321,21 @@ export function ContentNodes({
         const screenCenterX = ((centerWorld.x + 1) / 2) * size.width;
         const screenCenterY = ((1 - centerWorld.y) / 2) * size.height;
 
-        const screenEdgeX = ((edgeWorld.x + 1) / 2) * size.width;
+        const screenEdgeX = ((edgeWorldX.x + 1) / 2) * size.width;
+        const screenEdgeY = ((1 - edgeWorldY.y) / 2) * size.height;
 
         // Calculate half-width from center to edge, then full width
         const screenHalfWidth = Math.abs(screenEdgeX - screenCenterX);
+        const screenHalfHeight = Math.abs(screenEdgeY - screenCenterY);
         const screenWidth = screenHalfWidth * 2;
+        const screenHeight = screenHalfHeight * 2;
 
         // Each content node appears only once (no duplicates), so use node.id directly
         contentScreenRectsRef.current.set(node.id, {
           x: screenCenterX,
           y: screenCenterY,
           width: screenWidth,
-          height: screenWidth, // Square
+          height: screenHeight,
           z: textFrontZ, // Front Z for text alignment
         });
       }

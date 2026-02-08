@@ -593,7 +593,6 @@ export default function TopicsPage() {
             contentSpringStrength={settings.contentSpringStrength}
             chargeStrength={settings.chargeStrength}
             unifiedSimulation={settings.unifiedSimulation}
-            focusRadius={settings.focusRadius}
             panelRoughness={settings.panelRoughness}
             panelTransmission={settings.panelTransmission}
             panelAnisotropicBlur={settings.panelAnisotropicBlur}

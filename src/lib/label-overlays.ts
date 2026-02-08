@@ -81,6 +81,8 @@ export interface LabelOverlayOptions {
   disableClusterLabels?: boolean;
   /** Disable DOM keyword labels (for 3D label experiments) */
   disableKeywordLabels?: boolean;
+  /** Disable DOM content labels (allow renderer to provide its own) */
+  disableContentLabels?: boolean;
 }
 
 // ============================================================================
@@ -106,6 +108,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     getSearchOpacities,
     disableClusterLabels = false,
     disableKeywordLabels = false,
+    disableContentLabels = false,
   } = options;
 
   // Create overlay for cluster labels (optional)
@@ -124,16 +127,20 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
   }
 
   // Create overlay for chunk labels (z-index above keyword labels)
-  const chunkOverlay = document.createElement("div");
-  chunkOverlay.className = "graph-label-overlay";
-  chunkOverlay.style.zIndex = "2";
-  container.appendChild(chunkOverlay);
+  const chunkOverlay = disableContentLabels ? null : document.createElement("div");
+  if (chunkOverlay) {
+    chunkOverlay.className = "graph-label-overlay";
+    chunkOverlay.style.zIndex = "2";
+    container.appendChild(chunkOverlay);
+  }
 
-  const chunkPreview = document.createElement("div");
-  chunkPreview.className = "content-preview";
-  chunkPreview.style.zIndex = "3";
-  chunkPreview.style.display = "none";
-  container.appendChild(chunkPreview);
+  const chunkPreview = disableContentLabels ? null : document.createElement("div");
+  if (chunkPreview) {
+    chunkPreview.className = "content-preview";
+    chunkPreview.style.zIndex = "3";
+    chunkPreview.style.display = "none";
+    container.appendChild(chunkPreview);
+  }
 
   // Create overlay for keyword hover labels (z-index above chunk preview)
   const hoverLabelOverlay = document.createElement("div");
@@ -410,6 +417,9 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
   }
 
   function updateContentLabels(nodes: SimNode[], parentColors: Map<string, string>) {
+    if (disableContentLabels || !chunkOverlay) {
+      return;
+    }
     void parentColors; // Placeholder until chunk label colors are driven by parent colors
     const rect = container.getBoundingClientRect();
 
@@ -587,12 +597,14 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
   }
 
   function hideChunkPreview(): void {
+    if (!chunkPreview) return;
     chunkPreview.style.display = "none";
     chunkPreview.classList.remove("is-visible");
     chunkPreview.classList.remove("is-expanded");
   }
 
   function updateChunkPreview(): void {
+    if (disableContentLabels || !chunkPreview) return;
     const target = hoveredChunk ?? pinnedChunk;
     if (!isChunkNode(target)) {
       hideChunkPreview();
@@ -638,11 +650,13 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
   }
 
   function setHoveredChunk(node: SimNode | null): void {
+    if (disableContentLabels) return;
     hoveredChunk = isChunkNode(node) ? node : null;
     updateChunkPreview();
   }
 
   function togglePinnedChunk(node: SimNode): void {
+    if (disableContentLabels) return;
     if (!isChunkNode(node)) return;
     if (pinnedChunk && pinnedChunk.id === node.id) {
       pinnedChunk = null;
@@ -653,6 +667,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
   }
 
   function syncContentPreview(): void {
+    if (!chunkPreview || disableContentLabels) return;
     if (chunkPreview.style.display !== "none") {
       updateChunkPreview();
     }
@@ -751,7 +766,7 @@ export function createLabelOverlayManager(options: LabelOverlayOptions): LabelOv
     }
     chunkLabelCache.clear();
     reportedVisibleChunks.clear();
-    if (chunkOverlay.parentNode === container) {
+    if (chunkOverlay && chunkOverlay.parentNode === container) {
       container.removeChild(chunkOverlay);
     }
     chunkPreview.remove();

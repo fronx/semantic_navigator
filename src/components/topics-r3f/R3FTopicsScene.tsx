@@ -10,6 +10,7 @@ import { ForceSimulation } from "./ForceSimulation";
 import { UnifiedSimulation } from "./UnifiedSimulation";
 import { KeywordNodes } from "./KeywordNodes";
 import { ContentNodes } from "./ContentNodes";
+import { ContentTextLabels3D } from "./ContentTextLabels3D";
 import { TransmissionPanel } from "./TransmissionPanel";
 import { KeywordEdges } from "./KeywordEdges";
 import { ContentEdges } from "./ContentEdges";
@@ -89,8 +90,6 @@ export interface R3FTopicsSceneProps {
   chargeStrength?: number;
   /** Use unified simulation (keywords + content in single simulation) instead of separate simulations */
   unifiedSimulation?: boolean;
-  /** Focus radius in world units (0 = disabled). Proximity-based node scaling. */
-  focusRadius?: number;
   /** Transmission panel roughness */
   panelRoughness?: number;
   /** Transmission panel transparency */
@@ -147,7 +146,6 @@ export function R3FTopicsScene({
   contentSpringStrength = 0.1,
   chargeStrength = -200,
   unifiedSimulation = false,
-  focusRadius = 0,
   panelRoughness,
   panelTransmission,
   panelAnisotropicBlur,
@@ -179,6 +177,7 @@ export function R3FTopicsScene({
 
   // Visible keyword label IDs (written by KeywordLabels3D, read by ContentNodes)
   const visibleLabelIdsRef = useRef<Set<string>>(new Set());
+  const visibleContentIdsRef = useRef<Set<string>>(new Set());
 
 
   // Calculate stable max content node count (available immediately from contentsByKeyword)
@@ -307,7 +306,7 @@ export function R3FTopicsScene({
     const colors = computeClusterColors(grouped, pcaTransform ?? undefined);
     labelRefs.clusterColorsRef.current = colors;
     setClusterColors(new Map(colors));
-  // labelRefs excluded: it's a memoized bag of stable useRef values
+    // labelRefs excluded: it's a memoized bag of stable useRef values
   }, [simNodes, edges, pcaTransform, nodeToCluster]);
 
   // Build adjacency map for viewport edge magnets (node ID -> neighbors)
@@ -397,11 +396,25 @@ export function R3FTopicsScene({
           contentTextContrast={contentTextContrast}
           contentScreenRectsRef={labelRefs.contentScreenRectsRef}
           searchOpacities={searchOpacities}
-          focusRadius={focusRadius}
-          cursorWorldPosRef={labelRefs.cursorWorldPosRef}
           pulledContentPositionsRef={labelRefs.pulledContentPositionsRef}
           focusPositionsRef={focusPositionsRef}
           visibleLabelIdsRef={visibleLabelIdsRef}
+          visibleContentIdsRef={visibleContentIdsRef}
+        />
+      )}
+
+      {renderContentNodes.length > 0 && (
+        <ContentTextLabels3D
+          nodes={renderContentNodes}
+          visibleContentIdsRef={visibleContentIdsRef}
+          pulledContentPositionsRef={labelRefs.pulledContentPositionsRef}
+          searchOpacities={searchOpacities}
+          zoomRange={zoomPhaseConfig.chunkCrossfade}
+          contentZDepth={contentZDepth}
+          panelThickness={panelThickness}
+          contentTextDepthScale={contentTextDepthScale}
+          contentSizeMultiplier={contentSizeMultiplier}
+          contentScreenRectsRef={labelRefs.contentScreenRectsRef}
         />
       )}
 

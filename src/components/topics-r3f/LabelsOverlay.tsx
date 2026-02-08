@@ -39,10 +39,12 @@ export interface LabelsOverlayProps {
   disableClusterLabels?: boolean;
   /** Disable DOM-based keyword labels (for three-text replacements) */
   disableKeywordLabels?: boolean;
+  /** Disable DOM-based content text labels/previews */
+  disableContentLabels?: boolean;
 }
 
 export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>(
-  function LabelsOverlay({ labelRefs, keywordLabelRange, contentsByKeyword, searchOpacities, onKeywordLabelClick, onClusterLabelClick, onKeywordHover, disableClusterLabels = false, disableKeywordLabels = false }, ref) {
+  function LabelsOverlay({ labelRefs, keywordLabelRange, contentsByKeyword, searchOpacities, onKeywordLabelClick, onClusterLabelClick, onKeywordHover, disableClusterLabels = false, disableKeywordLabels = false, disableContentLabels = false }, ref) {
     const {
       cameraStateRef,
       containerRef,
@@ -174,6 +176,7 @@ export const LabelsOverlay = forwardRef<LabelsOverlayHandle, LabelsOverlayProps>
         getSearchOpacities: () => searchOpacitiesRef.current,
         disableClusterLabels,
         disableKeywordLabels,
+        disableContentLabels,
       });
 
       labelManagerRef.current = labelManager;

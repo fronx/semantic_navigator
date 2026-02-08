@@ -92,8 +92,6 @@ export interface TopicsViewProps {
   chargeStrength?: number;
   /** Use unified simulation (keywords + content in single simulation) instead of separate simulations */
   unifiedSimulation?: boolean;
-  /** Focus radius in world units (0 = disabled). Proximity-based node scaling. */
-  focusRadius?: number;
   /** Transmission panel roughness (0 = smooth, 1 = frosted) */
   panelRoughness?: number;
   /** Transmission panel transparency (0 = opaque, 1 = transparent) */
@@ -156,7 +154,6 @@ export function TopicsView({
   contentSpringStrength = 0.1,
   chargeStrength = -200,
   unifiedSimulation = false,
-  focusRadius = 0,
   panelRoughness = 1.0,
   panelTransmission = 0.97,
   panelAnisotropicBlur = 5.0,
@@ -581,7 +578,6 @@ export function TopicsView({
           contentSpringStrength={contentSpringStrength}
           chargeStrength={chargeStrength}
           unifiedSimulation={unifiedSimulation}
-          focusRadius={focusRadius}
           panelRoughness={panelRoughness}
           panelTransmission={panelTransmission}
           panelAnisotropicBlur={panelAnisotropicBlur}

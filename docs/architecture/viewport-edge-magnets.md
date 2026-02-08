@@ -40,21 +40,21 @@ Clicking any pulled node (cliff or off-screen) pans the camera to its real posit
 
 ## Design Decisions
 
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| Positioning | Viewport edge clamping via ray-AABB | Simple, predictable, preserves direction to real position |
-| Trigger | Continuous for all visible nodes | Persistent context, not just on hover |
-| Cliff behavior | Visible nodes in margin zone snap to pull line and leave the primary set | Clean inner zone boundary; pulled nodes only persist when anchored to interior primaries |
-| Overscan | Margin detection extends 80px past visible edge | Prevents nodes from popping back to full size right at the window edge |
-| Visual treatment (off-screen) | 0.4 opacity, 0.6 scale, reduced labels | Clearly secondary, doesn't compete with primary nodes |
-| Visual treatment (cliff) | 0.4 opacity, 0.6 scale (same as off-screen) | Seamless transition — cliff nodes become pulled immediately |
-| Edge rendering | Hide edges only when **both** endpoints are non-primary pulled nodes | Ensures every pulled ghost shows at least one inward connection while preventing off-screen-only lines |
-| Click behavior | Animated camera pan to real position | Navigation aid for both cliff and off-screen nodes |
-| Edge type scope | Keyword-to-keyword similarity edges | Content edges are spatially local; keyword edges span distances |
-| Recursion guard | Pulled nodes don't attract neighbors | Prevents cascading/infinite expansion |
-| Cap | ~20 off-screen pulled nodes max | Avoids clutter; cliff nodes are uncapped (they're already visible) |
-| Margin units | Screen pixels (not world units) | Consistent feel at all zoom levels |
-| UI proximity | Extra 20px margin on sidebar (left) and header (top) sides | Keeps pulled nodes away from UI chrome boundaries |
+| Decision                      | Choice                                                                   | Rationale                                                                                              |
+| ----------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| Positioning                   | Viewport edge clamping via ray-AABB                                      | Simple, predictable, preserves direction to real position                                              |
+| Trigger                       | Continuous for all visible nodes                                         | Persistent context, not just on hover                                                                  |
+| Cliff behavior                | Visible nodes in margin zone snap to pull line and leave the primary set | Clean inner zone boundary; pulled nodes only persist when anchored to interior primaries               |
+| Overscan                      | Margin detection extends 80px past visible edge                          | Prevents nodes from popping back to full size right at the window edge                                 |
+| Visual treatment (off-screen) | 0.4 opacity, 0.6 scale, reduced labels                                   | Clearly secondary, doesn't compete with primary nodes                                                  |
+| Visual treatment (cliff)      | 0.4 opacity, 0.6 scale (same as off-screen)                              | Seamless transition — cliff nodes become pulled immediately                                            |
+| Edge rendering                | Hide edges only when **both** endpoints are non-primary pulled nodes     | Ensures every pulled ghost shows at least one inward connection while preventing off-screen-only lines |
+| Click behavior                | Animated camera pan to real position                                     | Navigation aid for both cliff and off-screen nodes                                                     |
+| Edge type scope               | Keyword-to-keyword similarity edges                                      | Content edges are spatially local; keyword edges span distances                                        |
+| Recursion guard               | Pulled nodes don't attract neighbors                                     | Prevents cascading/infinite expansion                                                                  |
+| Cap                           | ~20 off-screen pulled nodes max                                          | Avoids clutter; cliff nodes are uncapped (they're already visible)                                     |
+| Margin units                  | Screen pixels (not world units)                                          | Consistent feel at all zoom levels                                                                     |
+| UI proximity                  | Extra 20px margin on sidebar (left) and header (top) sides               | Keeps pulled nodes away from UI chrome boundaries                                                      |
 
 ## Algorithm
 
@@ -152,13 +152,13 @@ R3FTopicsScene
 
 ## Constants
 
-| Constant | Value | Unit | Purpose |
-|----------|-------|------|---------|
-| `PULL_LINE_PX` | 50 | screen px | Distance from viewport edge where pulled nodes are placed |
-| `UI_PROXIMITY_PX` | 20 | screen px | Extra margin on UI-adjacent sides (left sidebar, top header) |
-| `VIEWPORT_OVERSCAN_PX` | 80 | screen px | Extends the "visible" test beyond the window so margin nodes never pop at the edge |
-| `MAX_PULLED_NODES` | 20 | count | Cap on off-screen pulled keyword neighbors (cliff nodes uncapped) |
-| `MAX_PULLED_CONTENT_NODES` | 20 | count | Cap on off-screen pulled content nodes |
+| Constant                   | Value | Unit      | Purpose                                                                            |
+| -------------------------- | ----- | --------- | ---------------------------------------------------------------------------------- |
+| `PULL_LINE_PX`             | 50    | screen px | Distance from viewport edge where pulled nodes are placed                          |
+| `UI_PROXIMITY_PX`          | 20    | screen px | Extra margin on UI-adjacent sides (left sidebar, top header)                       |
+| `VIEWPORT_OVERSCAN_PX`     | 80    | screen px | Extends the "visible" test beyond the window so margin nodes never pop at the edge |
+| `MAX_PULLED_NODES`         | 20    | count     | Cap on off-screen pulled keyword neighbors (cliff nodes uncapped)                  |
+| `MAX_PULLED_CONTENT_NODES` | 20    | count     | Cap on off-screen pulled content nodes                                             |
 
 ## Open Questions
 
@@ -170,20 +170,20 @@ R3FTopicsScene
 
 ## Files Modified
 
-| File | Changes |
-|------|---------|
-| `src/lib/viewport-edge-magnets.ts` | **Shared utilities**: `computeViewportZones`, `clampToBounds`, `isInViewport`, `isInCliffZone`, constants (2026-02-07) |
-| `src/components/topics-r3f/KeywordNodes.tsx` | Viewport zones, cliff detection, asymmetric pull bounds, nodeById optimization, click handler fix. Uses shared utilities. |
-| `src/components/topics-r3f/ContentNodes.tsx` | Viewport zones, parent-based visibility filtering, off-screen content pulling, writes to `pulledContentPositionsRef`. Uses shared utilities. (2026-02-07) |
-| `src/components/topics-r3f/ContentEdges.tsx` | Merge keyword and content pulled positions, pass combined map to EdgeRenderer for correct edge endpoints (2026-02-07) |
-| `src/components/topics-r3f/R3FTopicsScene.tsx` | Adjacency `useMemo`, forward props to KeywordNodes, CameraController, KeywordEdges, pass pulled refs to ContentNodes/ContentEdges (2026-02-07) |
-| `src/components/topics-r3f/EdgeRenderer.tsx` | Read `pulledPositionsRef` for position overrides |
-| `src/components/topics-r3f/KeywordEdges.tsx` | Pass `pulledPositionsRef` to EdgeRenderer |
-| `src/components/topics-r3f/CameraController.tsx` | `flyToRef` prop with animated pan (ease-out cubic, 400ms) |
-| `src/components/topics-r3f/R3FTopicsCanvas.tsx` | Create `flyToRef`, `pulledPositionsRef`, `pulledContentPositionsRef`, wire through to scene (2026-02-07) |
-| `src/components/topics-r3f/R3FLabelContext.tsx` | Add `pulledPositionsRef` and `pulledContentPositionsRef` to `LabelRefs` (2026-02-07) |
-| `src/lib/label-overlays.ts` | Position override for pulled nodes, cliff vs off-screen label treatment |
-| `src/components/topics-r3f/LabelsOverlay.tsx` | Pass `getPulledPositions` getter to label manager |
+| File                                             | Changes                                                                                                                                                   |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/lib/viewport-edge-magnets.ts`               | **Shared utilities**: `computeViewportZones`, `clampToBounds`, `isInViewport`, `isInCliffZone`, constants (2026-02-07)                                    |
+| `src/components/topics-r3f/KeywordNodes.tsx`     | Viewport zones, cliff detection, asymmetric pull bounds, nodeById optimization, click handler fix. Uses shared utilities.                                 |
+| `src/components/topics-r3f/ContentNodes.tsx`     | Viewport zones, parent-based visibility filtering, off-screen content pulling, writes to `pulledContentPositionsRef`. Uses shared utilities. (2026-02-07) |
+| `src/components/topics-r3f/ContentEdges.tsx`     | Merge keyword and content pulled positions, pass combined map to EdgeRenderer for correct edge endpoints (2026-02-07)                                     |
+| `src/components/topics-r3f/R3FTopicsScene.tsx`   | Adjacency `useMemo`, forward props to KeywordNodes, CameraController, KeywordEdges, pass pulled refs to ContentNodes/ContentEdges (2026-02-07)            |
+| `src/components/topics-r3f/EdgeRenderer.tsx`     | Read `pulledPositionsRef` for position overrides                                                                                                          |
+| `src/components/topics-r3f/KeywordEdges.tsx`     | Pass `pulledPositionsRef` to EdgeRenderer                                                                                                                 |
+| `src/components/topics-r3f/CameraController.tsx` | `flyToRef` prop with animated pan (ease-out cubic, 400ms)                                                                                                 |
+| `src/components/topics-r3f/R3FTopicsCanvas.tsx`  | Create `flyToRef`, `pulledPositionsRef`, `pulledContentPositionsRef`, wire through to scene (2026-02-07)                                                  |
+| `src/components/topics-r3f/R3FLabelContext.tsx`  | Add `pulledPositionsRef` and `pulledContentPositionsRef` to `LabelRefs` (2026-02-07)                                                                      |
+| `src/lib/label-overlays.ts`                      | Position override for pulled nodes, cliff vs off-screen label treatment                                                                                   |
+| `src/components/topics-r3f/LabelsOverlay.tsx`    | Pass `getPulledPositions` getter to label manager                                                                                                         |
 
 ## Implementation Notes
 

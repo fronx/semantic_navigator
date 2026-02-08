@@ -374,15 +374,6 @@ export function ControlSidebar({
               step={0.05}
               format={(v) => `${(v * 100).toFixed(0)}%`}
             />
-            <Slider
-              label="Focus radius"
-              value={settings.focusRadius}
-              onChange={(v) => update("focusRadius", v)}
-              min={0}
-              max={200}
-              step={5}
-              format={(v) => v === 0 ? "Off" : `${v}`}
-            />
           </Section>
 
           {/* Graph */}

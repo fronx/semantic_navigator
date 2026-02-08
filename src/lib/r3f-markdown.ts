@@ -25,24 +25,64 @@ export interface MarkdownSegment {
 
 const BASE_FONT_SIZE = 32;
 const PARAGRAPH_FONT_SIZE = 28;
-const INLINE_CODE_COLOR = "#fbbf24";
-const STRONG_COLOR = "#fefce8";
-const EMPHASIS_COLOR = "#c4b5fd";
 const CODE_FONT = "JetBrains Mono";
 
-export function renderMarkdownToSegments(markdown: string): MarkdownSegment[] {
+export interface ContentTextColors {
+  text: string;
+  heading: string;
+  strong: string;
+  emphasis: string;
+  code: string;
+  inlineCode: string;
+  link: string;
+  blockquote: string;
+  list: string;
+}
+
+const LIGHT_COLORS: ContentTextColors = {
+  text: "#f4f4f5",
+  heading: "#fde68a",
+  strong: "#fefce8",
+  emphasis: "#c4b5fd",
+  code: "#93c5fd",
+  inlineCode: "#fbbf24",
+  link: "#93c5fd",
+  blockquote: "#a5b4fc",
+  list: "#e4e4e7",
+};
+
+const DARK_COLORS: ContentTextColors = {
+  text: "#000000",
+  heading: "#000000",
+  strong: "#000000",
+  emphasis: "#000000",
+  code: "#000000",
+  inlineCode: "#000000",
+  link: "#000000",
+  blockquote: "#000000",
+  list: "#000000",
+};
+
+export function readContentTextColors(): ContentTextColors {
+  if (typeof document === "undefined") return LIGHT_COLORS;
+  const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  return isDark ? DARK_COLORS : LIGHT_COLORS;
+}
+
+export function renderMarkdownToSegments(markdown: string, colors?: ContentTextColors): MarkdownSegment[] {
+  const c = colors ?? readContentTextColors();
   const tree: Root = fromMarkdown(markdown ?? "");
   const segments: MarkdownSegment[] = [];
 
   for (const node of tree.children) {
-    renderBlock(node as Content, segments);
+    renderBlock(node as Content, segments, c);
     segments.push({ text: "\n", blockBoundary: true });
   }
 
   return segments;
 }
 
-function renderBlock(node: Content, segments: MarkdownSegment[]) {
+function renderBlock(node: Content, segments: MarkdownSegment[], colors: ContentTextColors) {
   switch (node.type) {
     case "heading":
       pushSegments(
@@ -50,8 +90,8 @@ function renderBlock(node: Content, segments: MarkdownSegment[]) {
         renderInlineSegments(node, {
           fontSize: headingSize(node as Heading),
           fontWeight: "700",
-          color: (node as Heading).depth && (node as Heading).depth! <= 2 ? "#fde68a" : undefined,
-        })
+          color: (node as Heading).depth && (node as Heading).depth! <= 2 ? colors.heading : undefined,
+        }, colors)
       );
       break;
     case "paragraph":
@@ -60,8 +100,8 @@ function renderBlock(node: Content, segments: MarkdownSegment[]) {
         renderInlineSegments(node as Paragraph, {
           fontSize: PARAGRAPH_FONT_SIZE,
           lineHeight: 1.4,
-          color: "#f4f4f5",
-        })
+          color: colors.text,
+        }, colors)
       );
       break;
     case "blockquote":
@@ -70,8 +110,8 @@ function renderBlock(node: Content, segments: MarkdownSegment[]) {
         renderInlineSegments(node as Blockquote, {
           fontSize: PARAGRAPH_FONT_SIZE,
           fontStyle: "italic",
-          color: "#a5b4fc",
-        })
+          color: colors.blockquote,
+        }, colors)
       );
       break;
     case "list": {
@@ -79,13 +119,13 @@ function renderBlock(node: Content, segments: MarkdownSegment[]) {
       list.children?.forEach((item, index) => {
         const listItem = item as ListItem;
         const prefix = list.ordered ? `${index + 1}. ` : "• ";
-        segments.push({ text: prefix, fontSize: PARAGRAPH_FONT_SIZE, color: "#e4e4e7" });
+        segments.push({ text: prefix, fontSize: PARAGRAPH_FONT_SIZE, color: colors.list });
         pushSegments(
           segments,
           renderInlineSegments(listItem, {
             fontSize: PARAGRAPH_FONT_SIZE,
-            color: "#e4e4e7",
-          })
+            color: colors.list,
+          }, colors)
         );
         segments.push({ text: "\n" });
       });
@@ -94,12 +134,12 @@ function renderBlock(node: Content, segments: MarkdownSegment[]) {
     case "code": {
       const block = node as Code;
       const text = (block.value ?? "").replace(/\n+$/u, "");
-      segments.push({ text, fontSize: 24, fontFamily: CODE_FONT, color: "#93c5fd" });
+      segments.push({ text, fontSize: 24, fontFamily: CODE_FONT, color: colors.code });
       break;
     }
     default:
       if ("children" in node && Array.isArray((node as any).children)) {
-        pushSegments(segments, renderInlineSegments(node as Paragraph, {}));
+        pushSegments(segments, renderInlineSegments(node as Paragraph, {}, colors));
       }
       break;
   }
@@ -109,17 +149,18 @@ interface InlineStyle extends MarkdownSegment {}
 
 function renderInlineSegments(
   node: Paragraph | Heading | ListItem | Blockquote,
-  baseStyle: InlineStyle
+  baseStyle: InlineStyle,
+  colors: ContentTextColors
 ): MarkdownSegment[] {
   const segs: MarkdownSegment[] = [];
   const children = (node.children ?? []) as Content[];
   children.forEach((child) => {
-    segs.push(...renderInline(child, baseStyle));
+    segs.push(...renderInline(child, baseStyle, colors));
   });
   return segs;
 }
 
-function renderInline(node: Content, inherited: InlineStyle): MarkdownSegment[] {
+function renderInline(node: Content, inherited: InlineStyle, colors: ContentTextColors): MarkdownSegment[] {
   switch (node.type) {
     case "text": {
       const textNode = node as Text;
@@ -129,42 +170,42 @@ function renderInline(node: Content, inherited: InlineStyle): MarkdownSegment[] 
       return flattenChildren(node, {
         ...inherited,
         fontWeight: "700",
-        color: STRONG_COLOR,
-      });
+        color: colors.strong,
+      }, colors);
     case "emphasis":
       return flattenChildren(node, {
         ...inherited,
         fontStyle: "italic",
-        color: EMPHASIS_COLOR,
-      });
+        color: colors.emphasis,
+      }, colors);
     case "inlineCode":
       return [
         {
           ...inherited,
           text: (node as InlineCode).value ?? "",
           fontFamily: CODE_FONT,
-          color: INLINE_CODE_COLOR,
+          color: colors.inlineCode,
         },
       ];
     case "break":
       return [{ ...inherited, text: "\n" }];
     case "link":
-      return flattenChildren(node, { ...inherited, color: "#93c5fd" });
+      return flattenChildren(node, { ...inherited, color: colors.link }, colors);
     case "delete":
-      return flattenChildren(node, { ...inherited });
+      return flattenChildren(node, { ...inherited }, colors);
     default:
       if ("children" in node && Array.isArray((node as any).children)) {
-        return flattenChildren(node, inherited);
+        return flattenChildren(node, inherited, colors);
       }
       return [];
   }
 }
 
-function flattenChildren(node: any, style: InlineStyle): MarkdownSegment[] {
+function flattenChildren(node: any, style: InlineStyle, colors: ContentTextColors): MarkdownSegment[] {
   const segments: MarkdownSegment[] = [];
   const children = node.children ?? [];
   for (const child of children) {
-    segments.push(...renderInline(child as Content, style));
+    segments.push(...renderInline(child as Content, style, colors));
   }
   return segments;
 }
