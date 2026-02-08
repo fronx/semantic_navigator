@@ -38,6 +38,7 @@
 - [Empty Chunk Labels Bug](investigations/empty-chunk-labels.md) - Shared chunks across keywords caused Map key collisions in screen rects, DOM label cache, and visibility tracking (resolved: composite keys + per-frame callback gating)
 - [Keyword Node Clicks Broken](investigations/keyword-node-clicks-broken-2026-02-06.md) - R3F silently drops onClick handlers when instancedMesh `args` change during data loading + React Strict Mode remount (resolved: 50% over-allocation buffer, stable ref callback)
 - [Content Node Deduplication](investigations/content-node-deduplication-2026-02-07.md) - **NEEDS REVIEW** - Eliminated duplicate content nodes (one per chunk with multiple parent keywords), added spring force slider, multi-parent force simulation (potential issues with force balance, collision performance, label system)
+- [Topics Loading Optimization](investigations/topics-loading-optimization-2026-02-08.md) - **IN PROGRESS** - Reducing `getKeywordBackbone()` from ~9s to ~2s via lean SQL, parallel queries, and fixing 1000-row PostgREST truncation
 
 ### Architecture Decision Records (ADRs)
 
