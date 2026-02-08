@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeNodeDegrees } from "@/lib/label-overlays";
+import { computeNodeDegrees } from "@/lib/graph-degrees";
 
 describe("computeNodeDegrees", () => {
   it("returns zero for all nodes when there are no links", () => {

@@ -16,6 +16,7 @@ import { getNodeColor, BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/three/nod
 import { KEYWORD_TIER_SCALES } from "@/lib/semantic-filter-config";
 import { useInstancedMeshMaterial } from "@/hooks/useInstancedMeshMaterial";
 import { useStableInstanceCount } from "@/hooks/useStableInstanceCount";
+import { perspectiveUnitsPerPixel, maxScaleForScreenSize } from "@/lib/screen-size-clamp";
 import { isDarkMode } from "@/lib/theme";
 import {
   computeViewportZones,
@@ -26,6 +27,8 @@ import {
 import { computeKeywordPullState } from "@/lib/keyword-pull-state";
 
 const VISIBILITY_THRESHOLD = 0.01;
+/** Max screen-pixel diameter for a keyword dot (prevents dots from dominating at close zoom) */
+const MAX_DOT_SCREEN_PX = 40;
 
 /** Ease-out cubic: fast start, smooth deceleration */
 function easeOutCubic(t: number): number {
@@ -129,6 +132,11 @@ export function KeywordNodes({
     // Hide mesh entirely if below visibility threshold
     meshRef.current.visible = keywordScale >= VISIBILITY_THRESHOLD;
     if (!meshRef.current.visible) return;
+
+    // Compute max scale so dots don't exceed MAX_DOT_SCREEN_PX on screen
+    const fov = THREE.MathUtils.degToRad((camera as THREE.PerspectiveCamera).fov);
+    const unitsPerPixel = perspectiveUnitsPerPixel(fov, cameraZ, size.height);
+    const maxScale = maxScaleForScreenSize(BASE_DOT_RADIUS * DOT_SCALE_FACTOR * 2, MAX_DOT_SCREEN_PX, unitsPerPixel);
 
     // Viewport edge magnets: classify nodes and pull cliff/off-screen nodes to the edge
     const zones = computeViewportZones(camera as THREE.PerspectiveCamera, size.width, size.height);
@@ -278,7 +286,7 @@ export function KeywordNodes({
         scaleMultiplier *= 0.6;
       }
 
-      const finalScale = keywordScale * scaleMultiplier * keywordSizeMultiplier;
+      const finalScale = Math.min(keywordScale * scaleMultiplier * keywordSizeMultiplier, maxScale);
 
       // Compose matrix with position and scale
       positionRef.current.set(x, y, 0);

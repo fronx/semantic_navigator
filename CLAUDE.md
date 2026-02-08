@@ -15,6 +15,8 @@ Prefer producing working code changes over extended investigation. If exploring 
 
 When fixing bugs or implementing features, always check for existing patterns/systems before building new ones. Search for existing hover handlers, event systems, shared components, etc. before creating parallel implementations.
 
+**Build reusable primitives, not local fixes.** When a behavior (fading, animation, filtering) is needed in one place, extract it as a hook or utility that works generically. Example: `useFadingMembership` animates any Set-based membership change, reused across edge rendering, content node visibility, etc. Inline solutions that solve one case are harder to reuse and tend to diverge.
+
 ## Project Tools
 
 This project has a code-simplifier agent. After implementing features or fixes, use the project's simplification tool rather than doing manual simplification. Ask the user before simplifying if unsure.

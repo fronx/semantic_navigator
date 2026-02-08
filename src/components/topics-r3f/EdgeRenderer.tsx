@@ -15,12 +15,14 @@ import { getEdgeColor } from "@/lib/edge-colors";
 import { groupNodesByCommunity } from "@/lib/hull-renderer";
 import { computeClusterColors } from "@/lib/semantic-colors";
 import { calculateScales } from "@/lib/content-scale";
+import type { ZoomRange } from "@/lib/zoom-phase-config";
 import {
   computeViewportZones,
   isInViewport,
   isInCliffZone,
 } from "@/lib/viewport-edge-magnets";
 import { shouldHideEdgeForPulledEndpoints } from "@/lib/edge-visibility";
+import { useFadingMembership } from "@/hooks/useFadingMembership";
 
 const EDGE_SEGMENTS = 16;
 const ARC_VERTEX_COUNT = EDGE_SEGMENTS + 1;
@@ -66,6 +68,10 @@ export interface EdgeRendererProps {
   keywordTiers?: KeywordTierMap | null;
   /** Hide edges whose source keyword is sitting in the viewport margin zone */
   suppressEdgesFromMarginKeywords?: boolean;
+  /** Zoom range for opacity calculation (used when opacity is "chunk" or "keyword") */
+  zoomRange?: ZoomRange;
+  /** Only show edges whose source is in this set (per-frame filtering) */
+  visibleSourceIdsRef?: React.RefObject<Set<string>>;
 }
 
 export function EdgeRenderer({
@@ -87,9 +93,12 @@ export function EdgeRenderer({
   focusPositionsRef,
   keywordTiers,
   suppressEdgesFromMarginKeywords = false,
+  zoomRange,
+  visibleSourceIdsRef,
 }: EdgeRendererProps): React.JSX.Element | null {
   const lineRef = useRef<THREE.Line>(null);
   const tempColor = useRef(new THREE.Color());
+  const sourceFadeRef = useFadingMembership(visibleSourceIdsRef);
   const { camera, size } = useThree();
 
   // Compute cluster colors if not provided
@@ -103,12 +112,13 @@ export function EdgeRenderer({
     const totalVertices = edges.length * VERTICES_PER_EDGE;
     const geom = new THREE.BufferGeometry();
     geom.setAttribute("position", new THREE.BufferAttribute(new Float32Array(totalVertices * 3), 3));
-    geom.setAttribute("color", new THREE.BufferAttribute(new Float32Array(totalVertices * 3), 3));
+    geom.setAttribute("color", new THREE.BufferAttribute(new Float32Array(totalVertices * 4), 4));
     // Set a manual bounding sphere to prevent Three.js from computing it
     // (our NaN break vertices would cause the computed radius to be NaN)
     geom.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 10000);
     return geom;
   }, [edges.length]);
+
 
   useFrame(() => {
     const line = lineRef.current;
@@ -117,10 +127,10 @@ export function EdgeRenderer({
     // Calculate actual opacity
     let actualOpacity: number;
     if (opacity === "chunk") {
-      const scales = calculateScales(camera.position.z);
+      const scales = calculateScales(camera.position.z, zoomRange);
       actualOpacity = scales.contentEdgeOpacity;
     } else if (opacity === "keyword") {
-      const scales = calculateScales(camera.position.z);
+      const scales = calculateScales(camera.position.z, zoomRange);
       actualOpacity = scales.keywordEdgeOpacity;
     } else {
       actualOpacity = opacity;
@@ -155,6 +165,9 @@ export function EdgeRenderer({
     // Hovered node ID for revealing reaching edges on hover
     const hoveredId = hoveredKeywordIdRef?.current ?? null;
 
+    // Source fade map (animated by useFadingMembership hook)
+    const sourceFade = visibleSourceIdsRef ? sourceFadeRef.current : null;
+
     // Position overrides (focus > pulled > natural)
     const focusPositions = focusPositionsRef?.current ?? new Map();
     const pulledPositions = pulledPositionsRef?.current ?? new Map();
@@ -167,6 +180,15 @@ export function EdgeRenderer({
       const targetNode = nodeMap.get(targetId);
       const baseOffset = edgeIndex * VERTICES_PER_EDGE * 3;
       if (!sourceNode || !targetNode) {
+        for (let i = 0; i < VERTICES_PER_EDGE * 3; i++) posArray[baseOffset + i] = NaN;
+        continue;
+      }
+
+      // Source filter: hide fully faded edges, track fade for partially visible ones
+      const sourceFadeOpacity = sourceFade
+        ? (sourceFade.get(sourceId) ?? 0)
+        : 1;
+      if (sourceFadeOpacity < 0.005) {
         for (let i = 0; i < VERTICES_PER_EDGE * 3; i++) posArray[baseOffset + i] = NaN;
         continue;
       }
@@ -278,16 +300,22 @@ export function EdgeRenderer({
       );
       tempColor.current.set(edgeColor);
 
-      // Apply search opacity - use minimum of source and target opacity
+      // Apply search opacity to color (dims toward black for non-matching edges)
       if (searchOpacities && searchOpacities.size > 0) {
         const sourceOpacity = searchOpacities.get(sourceId) ?? 1.0;
         const targetOpacity = searchOpacities.get(targetId) ?? 1.0;
-        tempColor.current.multiplyScalar(Math.min(sourceOpacity, targetOpacity));
+        const searchScale = Math.min(sourceOpacity, targetOpacity);
+        if (searchScale < 1) {
+          tempColor.current.multiplyScalar(searchScale);
+        }
       }
 
-      // Write color to all vertices
+      // Write RGBA color to all vertices (alpha = source fade for transparent crossfade)
+      const colBaseOffset = edgeIndex * VERTICES_PER_EDGE * 4;
       for (let i = 0; i < VERTICES_PER_EDGE; i++) {
-        tempColor.current.toArray(colArray, baseOffset + i * 3);
+        const ci = colBaseOffset + i * 4;
+        tempColor.current.toArray(colArray, ci);
+        colArray[ci + 3] = sourceFadeOpacity;
       }
     }
 

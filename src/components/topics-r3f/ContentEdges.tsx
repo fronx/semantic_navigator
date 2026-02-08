@@ -9,6 +9,7 @@ import { useMemo } from "react";
 import type { SimNode, SimLink } from "@/lib/map-renderer";
 import type { PCATransform } from "@/lib/semantic-colors";
 import type { KeywordTierMap } from "@/lib/topics-filter";
+import type { ZoomRange } from "@/lib/zoom-phase-config";
 import { EdgeRenderer } from "./EdgeRenderer";
 
 export interface ContentEdgesProps {
@@ -33,6 +34,10 @@ export interface ContentEdgesProps {
   focusPositionsRef?: React.RefObject<Map<string, { x: number; y: number }>>;
   /** Keyword tiers for focus mode edge filtering */
   keywordTiers?: KeywordTierMap | null;
+  /** Zoom range for edge opacity crossfade (should match content node crossfade) */
+  zoomRange?: ZoomRange;
+  /** Primary keyword IDs ref — only show edges from primary keywords */
+  primaryKeywordIdsRef?: React.RefObject<Set<string>>;
 }
 
 export function ContentEdges({
@@ -50,6 +55,8 @@ export function ContentEdges({
   pulledContentPositionsRef,
   focusPositionsRef,
   keywordTiers,
+  zoomRange,
+  primaryKeywordIdsRef,
 }: ContentEdgesProps): React.JSX.Element | null {
   // Create containment edges (keyword -> content node) from ContentSimNode parentIds
   // After deduplication, each content node can have multiple parents
@@ -129,6 +136,8 @@ export function ContentEdges({
     pulledPositionsRef={combinedPulledPositionsRef}
     focusPositionsRef={focusPositionsRef}
     keywordTiers={keywordTiers}
+    zoomRange={zoomRange}
+    visibleSourceIdsRef={primaryKeywordIdsRef}
   />
 );
 }

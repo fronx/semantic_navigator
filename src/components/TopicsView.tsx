@@ -539,8 +539,6 @@ export function TopicsView({
         }
       }
 
-      // Update cluster labels after setting hullLabel
-      r3fRendererResult.labelsRef.current.updateClusterLabels();
     }
   }, [nodeToCluster, baseClusters, labels, rendererType, keywordNodes, d3RendererResult.simulationNodesRef, d3RendererResult.rendererRef, threeRendererResult.threeRendererRef, r3fRendererResult.labelsRef]);
 

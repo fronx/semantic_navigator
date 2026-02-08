@@ -14,12 +14,11 @@ import { ContentTextLabels3D } from "./ContentTextLabels3D";
 import { TransmissionPanel } from "./TransmissionPanel";
 import { KeywordEdges } from "./KeywordEdges";
 import { ContentEdges } from "./ContentEdges";
-import { LabelsUpdater } from "./LabelsUpdater";
 import { MarkdownTextBillboard } from "./MarkdownTextBillboard";
 import { useEdgeCurveDirections } from "@/hooks/useEdgeCurveDirections";
 import { useContentSimulation } from "@/hooks/useContentSimulation";
 import { createContentNodes, type ContentSimNode } from "@/lib/content-layout";
-import { computeNodeDegrees } from "@/lib/label-overlays";
+import { computeNodeDegrees } from "@/lib/graph-degrees";
 import { groupNodesByCommunity } from "@/lib/hull-renderer";
 import { computeClusterColors, type ClusterColorInfo } from "@/lib/semantic-colors";
 import { calculateBoundingBox, calculateCameraZForBounds } from "@/lib/dynamic-zoom-bounds";
@@ -178,6 +177,7 @@ export function R3FTopicsScene({
   // Visible keyword label IDs (written by KeywordLabels3D, read by ContentNodes)
   const visibleLabelIdsRef = useRef<Set<string>>(new Set());
   const visibleContentIdsRef = useRef<Set<string>>(new Set());
+  const primaryKeywordIdsRef = useRef<Set<string>>(new Set());
 
 
   // Calculate stable max content node count (available immediately from contentsByKeyword)
@@ -237,6 +237,13 @@ export function R3FTopicsScene({
   // Tick simulations every frame (manual frame-sync prevents jitter)
   // Also update cursor world position from screen coords + current camera (stays accurate during panning)
   useFrame(() => {
+    // Update camera state ref (read by R3FTopicsCanvas for cursor world-position)
+    labelRefs.cameraStateRef.current = {
+      x: camera.position.x,
+      y: camera.position.y,
+      z: camera.position.z,
+    };
+
     if (unifiedSimulation) {
       // Manual tick for unified simulation (frame-synced)
       unifiedSimTickRef.current?.();
@@ -353,9 +360,6 @@ export function R3FTopicsScene({
     <>
       <CameraController onZoomChange={onZoomChange} maxDistance={maxDistance} flyToRef={flyToRef} />
 
-      {/* Labels updater - updates camera state and triggers label renders */}
-      <LabelsUpdater labelRefs={labelRefs} />
-
       {/* Simulation: unified or separate */}
       {unifiedSimulation ? (
         <UnifiedSimulation
@@ -399,6 +403,7 @@ export function R3FTopicsScene({
           pulledContentPositionsRef={labelRefs.pulledContentPositionsRef}
           focusPositionsRef={focusPositionsRef}
           visibleContentIdsRef={visibleContentIdsRef}
+          primaryKeywordIdsRef={primaryKeywordIdsRef}
         />
       )}
 
@@ -445,6 +450,8 @@ export function R3FTopicsScene({
           pulledContentPositionsRef={labelRefs.pulledContentPositionsRef}
           focusPositionsRef={focusPositionsRef}
           keywordTiers={keywordTiers}
+          zoomRange={zoomPhaseConfig.chunkCrossfade}
+          primaryKeywordIdsRef={primaryKeywordIdsRef}
         />
       )}
 

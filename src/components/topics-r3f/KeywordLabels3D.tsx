@@ -7,7 +7,8 @@ import type { PCATransform, ClusterColorInfo } from "@/lib/semantic-colors";
 import type { KeywordTierMap } from "@/lib/topics-filter";
 import type { ViewportSize } from "@/lib/three-text-utils";
 import type { ZoomRange } from "@/lib/zoom-phase-config";
-import { computeUnitsPerPixel, smoothstep } from "@/lib/three-text-utils";
+import { computeUnitsPerPixel } from "@/lib/three-text-utils";
+import { maxScaleForScreenSize } from "@/lib/screen-size-clamp";
 import { calculateScales } from "@/lib/content-scale";
 import { useThreeTextGeometry } from "@/hooks/useThreeTextGeometry";
 import { getNodeColor, BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/three/node-renderer";
@@ -17,9 +18,8 @@ import type { LabelRefs } from "./R3FLabelContext";
 const FONT_DEFAULT = "/fonts/source-code-pro-regular.woff2";
 const LABEL_LINE_HEIGHT = 1.05;
 const DEFAULT_MIN_SCREEN_PX = 12;
+const DEFAULT_MAX_SCREEN_PX = 18;
 const DEFAULT_BASE_FONT_SIZE = 12;
-const FADE_START_PX = 60;
-const FADE_END_PX = 100;
 
 /** Shared invisible material for hit area planes (no per-sprite allocation needed) */
 const HIT_AREA_MAT = new THREE.MeshBasicMaterial({ visible: false });
@@ -52,6 +52,7 @@ export interface KeywordLabels3DProps {
   colorDesaturation: number;
   searchOpacities?: Map<string, number>;
   minScreenPx?: number;
+  maxScreenPx?: number;
   baseFontSize?: number;
   labelZ?: number;
   keywordTiers?: KeywordTierMap | null;
@@ -79,6 +80,7 @@ export function KeywordLabels3D({
   colorDesaturation,
   searchOpacities,
   minScreenPx = DEFAULT_MIN_SCREEN_PX,
+  maxScreenPx = DEFAULT_MAX_SCREEN_PX,
   baseFontSize = DEFAULT_BASE_FONT_SIZE,
   labelZ = 0,
   keywordTiers,
@@ -147,6 +149,13 @@ export function KeywordLabels3D({
     const cursor = cursorWorldPosRef?.current;
     const isFocusActive = (focusPositionsRef?.current.size ?? 0) > 0;
 
+    // Content crossfade: shrink keyword label max size as content becomes visible
+    const contentT = zoomRange
+      ? calculateScales(camera.position.z, zoomRange).contentLabelOpacity
+      : 0;
+    // Interpolate maxScreenPx from full value down to minScreenPx as content fades in
+    const effectiveMaxScreenPx = maxScreenPx - contentT * (maxScreenPx - minScreenPx);
+
     // Build proximity ranking: closest MAX_VISIBLE_LABELS labels to cursor
     const visibleSet = new Set<string>();
     // Map from id -> rank-based fade (1.0 for top labels, fades for tail)
@@ -208,7 +217,8 @@ export function KeywordLabels3D({
       );
 
       const minWorldSize = minScreenPx * unitsPerPixel;
-      let desiredScale = Math.max(1, minWorldSize / fontSize);
+      const maxLabelScale = maxScaleForScreenSize(fontSize, effectiveMaxScreenPx, unitsPerPixel);
+      let desiredScale = THREE.MathUtils.clamp(1, minWorldSize / fontSize, maxLabelScale);
 
       if (isFocusMargin) {
         desiredScale *= 0.7;
@@ -245,11 +255,6 @@ export function KeywordLabels3D({
       if (searchOpacity !== undefined) {
         opacity *= searchOpacity;
       }
-
-      // Fade out when label gets too large on screen
-      const pixelSize = (fontSize * desiredScale) / unitsPerPixel;
-      const sizeFadeT = (pixelSize - FADE_START_PX) / (FADE_END_PX - FADE_START_PX);
-      opacity *= 1 - smoothstep(sizeFadeT);
 
       const clampedOpacity = THREE.MathUtils.clamp(opacity, 0, 1);
       if (Math.abs(material.opacity - clampedOpacity) > 0.01) {
@@ -352,15 +357,16 @@ function KeywordLabelSprite({
 
   // Invisible hit area covering the full bounding box of the label text
   // Returns { geo, center } so the mesh can be positioned at the text center
+  // Hit area covering label text. No top padding — prevents overlap with keyword dot above.
   const hitArea = useMemo(() => {
     if (!geometryEntry) return null;
     const { min, max } = geometryEntry.planeBounds;
     const w = max.x - min.x;
     const h = max.y - min.y;
-    const pad = h * 0.4; // generous padding for easier clicking
+    const pad = h * 0.4;
     return {
-      geo: new THREE.PlaneGeometry(w + pad * 2, h + pad * 2),
-      center: [(min.x + max.x) / 2, (min.y + max.y) / 2, 0] as [number, number, number],
+      geo: new THREE.PlaneGeometry(w + pad * 2, h + pad),
+      center: [(min.x + max.x) / 2, (min.y + max.y) / 2 - pad / 2, 0] as [number, number, number],
     };
   }, [geometryEntry]);
 
@@ -425,17 +431,11 @@ function KeywordLabelSprite({
   }, [baseOpacity]);
 
   const handlePointerOver = onKeywordHover
-    ? (event: ThreeEvent<PointerEvent>) => {
-      event.stopPropagation();
-      onKeywordHover(node.id);
-    }
+    ? () => { onKeywordHover(node.id); }
     : undefined;
 
   const handlePointerOut = onKeywordHover
-    ? (event: ThreeEvent<PointerEvent>) => {
-      event.stopPropagation();
-      onKeywordHover(null);
-    }
+    ? () => { onKeywordHover(null); }
     : undefined;
 
   const handleClick = onKeywordClick

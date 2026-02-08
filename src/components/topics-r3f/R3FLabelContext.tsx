@@ -7,7 +7,6 @@
 
 import type { SimNode } from "@/lib/map-renderer";
 import type { ClusterColorInfo } from "@/lib/semantic-colors";
-import type { LabelOverlayManager } from "@/lib/label-overlays";
 
 // ============================================================================
 // Types
@@ -57,8 +56,6 @@ export interface LabelRefs {
   clusterColorsRef: React.MutableRefObject<Map<number, ClusterColorInfo>>;
   /** Runtime cluster IDs from useClusterLabels (Leiden clustering) */
   nodeToClusterRef: React.MutableRefObject<Map<string, number>>;
-  /** Label manager (created by LabelsOverlay) */
-  labelManagerRef: React.MutableRefObject<LabelOverlayManager | null>;
   /** Content screen rects (updated by ContentNodes every frame, read by label system) */
   contentScreenRectsRef: React.MutableRefObject<Map<string, ContentScreenRect>>;
   /** Cursor position in world coordinates (from hover controller) */
@@ -72,13 +69,10 @@ export interface LabelRefs {
 }
 
 /**
- * Handle exposed by LabelsOverlay via useImperativeHandle.
- * Used by TopicsView to trigger cluster label updates.
+ * Handle exposed by R3FTopicsCanvas via useImperativeHandle.
+ * Used by TopicsView to access simulation nodes.
  */
 export interface LabelsOverlayHandle {
-  updateClusterLabels: () => void;
-  updateKeywordLabels: () => void;
-  updateContentLabels: (parentColors: Map<string, string>) => void;
   /** Get current simulation nodes (for cluster label updates) */
   getNodes: () => SimNode[];
 }

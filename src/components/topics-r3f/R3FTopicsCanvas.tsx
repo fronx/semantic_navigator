@@ -16,7 +16,6 @@ import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queri
 import type { PCATransform, ClusterColorInfo } from "@/lib/semantic-colors";
 import type { SimNode } from "@/lib/map-renderer";
 import type { ZoomPhaseConfig } from "@/lib/zoom-phase-config";
-import type { LabelOverlayManager } from "@/lib/label-overlays";
 import type { CameraState, ContentScreenRect, LabelRefs, LabelsOverlayHandle } from "./R3FLabelContext";
 import type { ContentNode } from "@/lib/content-loader";
 import type { KeywordTierMap } from "@/lib/topics-filter";
@@ -175,7 +174,6 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     const nodeDegreesRef = useRef<Map<string, number>>(new Map());
     const clusterColorsRef = useRef<Map<number, ClusterColorInfo>>(new Map());
     const nodeToClusterRef = useRef<Map<string, number>>(nodeToCluster ?? new Map());
-    const labelManagerRef = useRef<LabelOverlayManager | null>(null);
     const contentScreenRectsRef = useRef<Map<string, ContentScreenRect>>(new Map());
     const cursorWorldPosRef = useRef<{ x: number; y: number } | null>(null);
     const hoveredKeywordIdRef = useRef<string | null>(null);
@@ -200,7 +198,6 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
       nodeDegreesRef,
       clusterColorsRef,
       nodeToClusterRef,
-      labelManagerRef,
       contentScreenRectsRef,
       cursorWorldPosRef,
       hoveredKeywordIdRef,
@@ -218,11 +215,6 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     });
 
     useImperativeHandle(ref, () => ({
-      updateClusterLabels: () => {
-        // Cluster labels are now fully 3D; no DOM updates required.
-      },
-      updateKeywordLabels: () => {},
-      updateContentLabels: () => {},
       getNodes: () => labelRefs.simNodesRef.current,
     }), []);
 

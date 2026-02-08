@@ -25,6 +25,7 @@ import {
   isInCliffZone,
 } from "@/lib/viewport-edge-magnets";
 import { computeContentPullState } from "@/lib/content-pull-state";
+import { useFadingMembership } from "@/hooks/useFadingMembership";
 
 const VISIBILITY_THRESHOLD = 0.01;
 const CARD_HEIGHT_SCALE = 4;
@@ -64,6 +65,8 @@ export interface ContentNodesProps {
   focusPositionsRef?: React.RefObject<Map<string, { x: number; y: number }>>;
   /** Set of content node IDs currently visible (written here, read by 3D text labels) */
   visibleContentIdsRef?: React.MutableRefObject<Set<string>>;
+  /** Set of primary keyword IDs (written here, read by content edges) */
+  primaryKeywordIdsRef?: React.MutableRefObject<Set<string>>;
 }
 
 export function ContentNodes({
@@ -84,6 +87,7 @@ export function ContentNodes({
   pulledContentPositionsRef,
   focusPositionsRef,
   visibleContentIdsRef,
+  primaryKeywordIdsRef,
 }: ContentNodesProps) {
   const { camera, size, viewport } = useThree();
 
@@ -95,6 +99,10 @@ export function ContentNodes({
   const quaternionRef = useRef(new THREE.Quaternion());
   const scaleRef = useRef(new THREE.Vector3(1, 1, 1));
   const colorRef = useRef(new THREE.Color());
+
+  // Animated fade for content nodes entering/leaving visibility
+  // Reads visibleContentIdsRef (written below in useFrame) — one frame behind, which is fine for smooth animation
+  const contentFadeRef = useFadingMembership(visibleContentIdsRef);
 
   // Build map for O(1) parent keyword lookups
   const keywordMap = useMemo(
@@ -159,6 +167,11 @@ export function ContentNodes({
       }
     }
 
+    // Share primary keyword IDs with content edges for filtering
+    if (primaryKeywordIdsRef) {
+      primaryKeywordIdsRef.current = primaryKeywordIds;
+    }
+
     const pulledContentMap = computeContentPullState({
       contentNodes,
       primaryKeywordIds,
@@ -191,20 +204,27 @@ export function ContentNodes({
       contentScreenRectsRef.current.clear();
     }
 
+    const contentFade = contentFadeRef.current;
+
     for (let i = 0; i < contentNodes.length; i++) {
       const node = contentNodes[i] as ContentSimNode;
 
       // Only render content nodes with at least one visible parent keyword
       const hasVisibleParent = node.parentIds.some((parentId: string) => primaryKeywordIds.has(parentId));
-      if (!hasVisibleParent) {
-        // Hide node by setting scale to 0
+      if (hasVisibleParent) {
+        visibleContentIdsRef?.current.add(node.id);
+      }
+
+      // Animated fade: nodes that just left visibility continue rendering at decreasing scale
+      const fadeOpacity = contentFade.get(node.id) ?? 0;
+      if (!hasVisibleParent && fadeOpacity < 0.005) {
+        // Fully faded out — hide
         positionRef.current.set(0, 0, 0);
         scaleRef.current.setScalar(0);
         matrixRef.current.compose(positionRef.current, quaternionRef.current, scaleRef.current);
         meshRef.current.setMatrixAt(i, matrixRef.current);
         continue;
       }
-      visibleContentIdsRef?.current.add(node.id);
 
       // Check if this node is pulled to viewport edge
       const pulledData = pulledContentMap.get(node.id);
@@ -242,6 +262,9 @@ export function ContentNodes({
         }
         nodeScale *= maxSearchOpacity;
       }
+
+      // Apply fade for smooth enter/exit transitions
+      nodeScale *= fadeOpacity;
 
       // Compose matrix with position and scale
       positionRef.current.set(x, y, z);
@@ -286,6 +309,11 @@ export function ContentNodes({
           maxSearchOpacity = Math.max(maxSearchOpacity, opacity);
         }
         colorRef.current.multiplyScalar(maxSearchOpacity);
+      }
+
+      // Apply fade to color for smooth enter/exit transitions
+      if (fadeOpacity < 1) {
+        colorRef.current.multiplyScalar(fadeOpacity);
       }
 
       meshRef.current.setColorAt(i, colorRef.current);
