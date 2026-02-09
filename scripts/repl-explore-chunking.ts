@@ -33,7 +33,7 @@
 async function main() {
 
   // ============================================================================
-  // STEP 1: Import dependencies (REPL syntax - use dynamic imports)
+  // Import dependencies
   // ============================================================================
 
   // Helper to import module (handles default export)
@@ -54,7 +54,7 @@ async function main() {
   let repl = await import('repl')
 
   // ============================================================================
-  // STEP 2: Load files
+  // Load files
   // ============================================================================
 
   // Helper to collect async generator into array
@@ -78,7 +78,7 @@ async function main() {
   let files = await Promise.all(filePaths.map(p => loadFile(vaultPath, p)))
 
   // ============================================================================
-  // STEP 3: Transform functions - compose these yourself
+  // Transform functions
   // ============================================================================
 
   // Parse a file
@@ -190,7 +190,7 @@ async function main() {
   }
 
   // ============================================================================
-  // STEP 4: Domain-specific functions
+  // Domain-specific functions
   // ============================================================================
 
   let mathUtils = await use('@/lib/math-utils')
@@ -201,7 +201,7 @@ async function main() {
   let ingestionUtils = await use('@/lib/ingestion-utils')
 
   // ============================================================================
-  // STEP 4c: Prepare data for database insertion
+  // Prepare data for database insertion
   // ============================================================================
 
   // Import ingestion utilities from library
@@ -218,7 +218,7 @@ async function main() {
   let loadPreparedData = () => cacheUtils.loadPreparedKeywordData()
 
   // ============================================================================
-  // STEP 5: Example workflow
+  // Pipeline execution
   // ============================================================================
 
   // Parse file limit from command line arguments
@@ -234,7 +234,6 @@ async function main() {
   console.log(`\nProcessing ${filesToProcess.length} file(s) ${fileLimit === null ? '(no limit)' : `(limit: ${fileLimit})`}\n`)
 
   let chunksMap = await getOrGenerateChunks(filesToProcess)
-  let articleSummaries = await getOrGenerateArticleSummaries(filesToProcess)
   let allChunks = Array.from(chunksMap.values()).flat()
 
   let keywords = keywordDedup.getUniqueKeywords(chunksMap)
@@ -246,13 +245,8 @@ async function main() {
   let matrix = keywordSim.buildSimilarityMatrix(keywords, embeds)
 
   let topSimilar = keywordSim.getTopSimilar(matrix)
-  let topSimilarCustom = keywordSim.getTopSimilar(matrix, { minThreshold: 0.6, topN: 10 })
-
   await saveTopSimilar(topSimilar)
   console.log('✓ Saved topSimilar to ./data/top-similar.json')
-
-  let clusters = keywordSim.clusterByThreshold(matrix, 0.85)
-  let deduped = keywordSim.deduplicateKeywords(clusters, keywordCounts)
 
   // ============================================================================
   // Complete workflow for database preparation
@@ -313,7 +307,7 @@ async function main() {
   await cacheUtils.saveCache('./data/chunks-keywords-deduplicated.json', Object.fromEntries(dedupedChunks))
 
   // ============================================================================
-  // STEP 6: Content embeddings
+  // Helper functions for per-batch processing
   // ============================================================================
 
   // Get or generate content embeddings for articles and chunks
@@ -387,10 +381,6 @@ async function main() {
     return result
   }
 
-  // ============================================================================
-  // STEP 7: Content hashing
-  // ============================================================================
-
   // Get or generate content hashes for files
   let getOrGenerateContentHashes = async (
     files,  // Array of {path, content}
@@ -415,10 +405,6 @@ async function main() {
     )
   }
 
-  // ============================================================================
-  // STEP 8: Database payload preparation
-  // ============================================================================
-
   // Prepare complete database insertion payloads (pure transformation, no DB access)
   let prepareDatabasePayloads = async (
     articleSummaries,    // Map: filePath -> {title, type, teaser?, content?}
@@ -432,7 +418,7 @@ async function main() {
     let payload = {
       articles: [],
       chunks: [],
-      keywords: preparedData.keywordRecords,  // Already prepared in Step 4
+      keywords: preparedData.keywordRecords,
       articleKeywords: {},   // path -> [keywords]
       chunkKeywords: {},     // path -> {position -> [keywords]}
       containmentEdges: []
@@ -512,25 +498,18 @@ async function main() {
     return payload
   }
 
-  // ============================================================================
-  // STEP 9: Database insertion
-  // ============================================================================
-
   // Import Supabase client
   let supabaseLib = await use('@/lib/supabase')
   let ingestionChunks = await use('@/lib/ingestion-chunks')
-
-  // ============================================================================
-  // STEP 9: Incremental ingestion pipeline
-  // ============================================================================
 
   // Process a batch of articles (orchestrates library functions)
   // Returns: { summaries, embeddings, hashes, payloads, insertStats }
   let processArticleBatch = async (
     batch,              // Array of files to process
-    dedupMapping,       // Keyword deduplication mapping from Step 1-6
-    preparedKeywords,   // {keywordRecords, keywordOccurrences} from Step 4
+    dedupMapping,       // Keyword deduplication mapping
+    preparedKeywords,   // {keywordRecords, keywordOccurrences}
     supabase,           // Supabase client (passed explicitly)
+    keywordIdMap,       // Map<keyword, id> from upfront upsert
     options = { dryRun: false }
   ) => {
     // Step 1: Generate article summaries
@@ -560,8 +539,8 @@ async function main() {
       preparedKeywords
     )
 
-    // Step 7: Insert to database
-    let insertStats = await insertToDatabase(batchPayloads, options)
+    // Step 7: Insert to database (keywords already upserted, just articles/chunks/edges/occurrences)
+    let insertStats = await insertToDatabase(batchPayloads, keywordIdMap, options)
 
     return {
       processed: batch.length,
@@ -573,6 +552,39 @@ async function main() {
     }
   }
 
+  // Bulk upsert all keywords once, returns Map<keyword, id> for occurrence creation
+  let upsertAllKeywords = async (supabase, keywordRecords, dryRun = false) => {
+    console.log(`\nUpserting ${keywordRecords.length} keywords...`)
+    let keywordIdMap = new Map()
+
+    if (dryRun) {
+      console.log('  [DRY RUN] Skipping keyword upsert')
+      return keywordIdMap
+    }
+
+    // Supabase upsert has a row limit, batch in groups of 500
+    let batches = arrayUtils.batch(keywordRecords, 500)
+    for (let batch of batches) {
+      let { data, error } = await supabase
+        .from('keywords')
+        .upsert(
+          batch.map(kw => ({
+            keyword: kw.keyword,
+            embedding: kw.embedding,
+            embedding_256: kw.embedding_256
+          })),
+          { onConflict: 'keyword' }
+        )
+        .select('id, keyword')
+
+      if (error) throw error
+      for (let row of data) keywordIdMap.set(row.keyword, row.id)
+    }
+
+    console.log(`✓ ${keywordIdMap.size} keywords upserted\n`)
+    return keywordIdMap
+  }
+
   // Main orchestration: processes files in batches with idempotency
   // Returns structured data (no logging - use wrapper below for progress logs)
   let runIncrementalIngestion = async (
@@ -582,6 +594,9 @@ async function main() {
     preparedData,
     options = { batchSize: 5, dryRun: false }
   ) => {
+    // Upsert all keywords once upfront (not per-batch)
+    let keywordIdMap = await upsertAllKeywords(supabase, preparedData.keywordRecords, options.dryRun)
+
     // Get already processed hashes
     let processedHashes = await ingestionUtils.getAlreadyProcessedHashes(supabase)
 
@@ -620,6 +635,7 @@ async function main() {
         dedupMapping,
         preparedData,
         supabase,
+        keywordIdMap,
         options
       )
 
@@ -699,18 +715,13 @@ async function main() {
     return result
   }
 
-  // ============================================================================
-  // Legacy database insertion (kept for backward compatibility)
-  // ============================================================================
-
-  // Insert prepared payloads to database
-  let insertToDatabase = async (payload, options = { dryRun: false }) => {
+  // Insert prepared payloads to database (called per-batch by processArticleBatch)
+  let insertToDatabase = async (payload, keywordIdMap, options = { dryRun: false }) => {
     let supabase = supabaseLib.createServerClient()
 
     console.log(`${options.dryRun ? '[DRY RUN] ' : ''}Inserting to database...`)
     console.log(`  ${payload.articles.length} articles`)
     console.log(`  ${payload.chunks.length} chunks`)
-    console.log(`  ${payload.keywords.length} keywords`)
     console.log(`  ${payload.containmentEdges.length} containment edges`)
 
     if (options.dryRun) {
@@ -732,12 +743,6 @@ async function main() {
         chunksByPath.set(chunk.source_path, [])
       }
       chunksByPath.get(chunk.source_path).push(chunk)
-    }
-
-    // Build keyword map for lookup
-    let keywordMap = new Map()
-    for (let kw of payload.keywords) {
-      keywordMap.set(kw.keyword, kw)
     }
 
     // Process each article
@@ -843,71 +848,35 @@ async function main() {
         console.log(`  ✓ ${edges.length} containment edges created`)
       }
 
-      // Upsert keywords and create occurrences
+      // Create keyword occurrences (keywords already upserted upfront)
       let articleKws = payload.articleKeywords[path] || []
       let chunkKws = payload.chunkKeywords[path] || {}
+      let occurrences = []
 
-      // Collect all unique keywords for this article
-      let allKws = new Set([...articleKws])
-      for (let kws of Object.values(chunkKws)) {
-        for (let kw of kws) allKws.add(kw)
+      // Article-level keyword occurrences
+      for (let kw of articleKws) {
+        let kwId = keywordIdMap.get(kw)
+        if (!kwId) { console.warn(`  Warning: keyword "${kw}" not in ID map`); continue }
+        occurrences.push({ keyword_id: kwId, node_id: articleNode.id, node_type: 'article' })
       }
 
-      // Upsert keywords
-      for (let kw of allKws) {
-        let kwData = keywordMap.get(kw)
-        if (!kwData) {
-          console.warn(`  ⚠ Keyword not found in prepared data: ${kw}`)
-          continue
-        }
-
-        let { data: kwRow, error: kwError } = await supabase
-          .from('keywords')
-          .upsert(
-            {
-              keyword: kwData.keyword,
-              embedding: kwData.embedding,
-              embedding_256: kwData.embedding_256
-            },
-            { onConflict: 'keyword' }
-          )
-          .select()
-          .single()
-
-        if (kwError) throw kwError
-
-        // Create occurrences for article-level keywords
-        if (articleKws.includes(kw)) {
-          await supabase
-            .from('keyword_occurrences')
-            .upsert(
-              {
-                keyword_id: kwRow.id,
-                node_id: articleNode.id,
-                node_type: 'article'
-              },
-              { onConflict: 'keyword_id,node_id' }
-            )
-        }
-
-        // Create occurrences for chunk-level keywords
-        for (let chunkNode of chunkNodes) {
-          let chunkKwList = chunkKws[chunkNode.position] || []
-          if (chunkKwList.includes(kw)) {
-            await supabase
-              .from('keyword_occurrences')
-              .upsert(
-                {
-                  keyword_id: kwRow.id,
-                  node_id: chunkNode.id,
-                  node_type: 'chunk'
-                },
-                { onConflict: 'keyword_id,node_id' }
-              )
-          }
+      // Chunk-level keyword occurrences
+      for (let chunkNode of chunkNodes) {
+        let chunkKwList = chunkKws[chunkNode.position] || []
+        for (let kw of chunkKwList) {
+          let kwId = keywordIdMap.get(kw)
+          if (!kwId) continue
+          occurrences.push({ keyword_id: kwId, node_id: chunkNode.id, node_type: 'chunk' })
         }
       }
-      console.log(`  ✓ ${allKws.size} keywords upserted with occurrences`)
+
+      if (occurrences.length > 0) {
+        let { error: occError } = await supabase
+          .from('keyword_occurrences')
+          .upsert(occurrences, { onConflict: 'keyword_id,node_id' })
+        if (occError) throw occError
+      }
+      console.log(`  ✓ ${occurrences.length} keyword occurrences created`)
     }
 
     console.log(`\n✓ Database insertion complete`)
@@ -917,32 +886,15 @@ async function main() {
   }
 
   // ============================================================================
-  // NEW: Run Steps 6-9 to complete the pipeline
+  // Incremental database ingestion
   // ============================================================================
 
-  // Step 6: Generate content embeddings
-  let contentEmbeddings = await getOrGenerateContentEmbeddings(
-    articleSummaries,
-    dedupedChunks
-  )
-
-  // Step 7: Generate content hashes
-  let contentHashes = await getOrGenerateContentHashes(filesToProcess)
-
-  // Step 8: Prepare database payloads
-  let dbPayloads = await prepareDatabasePayloads(
-    articleSummaries,
-    contentEmbeddings,
-    contentHashes,
-    dedupedChunks,
-    { keywordRecords, keywordOccurrences }
-  )
-
-  // Step 9: Incremental ingestion (automatically runs with idempotency)
+  // Per-batch: generates summaries, content embeddings, hashes, payloads, inserts
+  // Keywords are upserted once upfront, then batches handle articles/chunks/edges/occurrences
   let ingestionStats = await runIncrementalIngestionWithProgress({ batchSize: 5, dryRun: false })
 
   // ============================================================================
-  // STEP 10: Precompute topic clusters (for TopicsView)
+  // Precompute topic clusters (for TopicsView)
   // ============================================================================
 
   let leidenClustering = await use('@/lib/leiden-clustering')
@@ -974,7 +926,7 @@ async function main() {
     }
 
     if (!rawPairs || rawPairs.length === 0) {
-      console.log(`No keyword graph data found for ${nodeType}. Run Step 9 (insertToDatabase) first.`)
+      console.log(`No keyword graph data found for ${nodeType}. Run ingestion first.`)
       return null
     }
 
@@ -1065,11 +1017,11 @@ async function main() {
   let convertPairsToGraph = clusteringUtils.convertPairsToGraph
   let fetchEmbeddings = clusteringUtils.fetchEmbeddings
 
-  // Step 10: Precompute clusters (dry run by default - set dryRun: false to execute)
+  // Precompute clusters (dry run by default - set dryRun: false to execute)
   // Uncomment to run: let clusterResults = await precomputeTopicClusters('chunk', undefined, { dryRun: false })
 
   // ============================================================================
-  // STEP 11: Compute PCA transform for semantic colors
+  // Compute PCA transform for semantic colors
   // ============================================================================
 
   let embeddingPca = await use('@/lib/embedding-pca')
@@ -1086,7 +1038,7 @@ async function main() {
     return output
   }
 
-  // Step 11: Compute PCA (needed for semantic colors in the UI)
+  // Compute PCA (needed for semantic colors in the UI)
   let pcaOutput = await computeAndSavePCA()
 
   // ============================================================================
@@ -1094,33 +1046,16 @@ async function main() {
   // ============================================================================
 
   console.log('\n✓ All data loaded and prepared. Available variables:')
-  console.log('  files, chunksMap, allChunks')
+  console.log('  files, filesToProcess, chunksMap, allChunks')
   console.log('  keywords, keywordCounts, top20')
-  console.log('  embeds, matrix')
-  console.log('  topSimilar, topSimilarCustom')
-  console.log('  clusters, deduped')
+  console.log('  embeds, matrix, topSimilar')
   console.log('  mapping, dedupedChunks, finalKeywords')
   console.log('  keywordRecords, keywordOccurrences')
-  console.log('  contentEmbeddings, contentHashes, dbPayloads')
-  console.log('\nPure functions (from libraries):')
-  console.log('  arrayUtils.batch(items, size) - batch array')
-  console.log('  ingestionUtils.getAlreadyProcessedHashes(supabase) - get processed hashes')
-  console.log('  runIncrementalIngestion(supabase, files, mapping, preparedData, options) - pure pipeline')
-  console.log('\nConvenience wrappers (with logging):')
-  console.log('  runIncrementalIngestionWithProgress(options) - with progress logs')
-  console.log('  insertToDatabase(payload, options) - legacy insertion with logs')
-  console.log('\nFiles saved:')
-  console.log('  ./data/chunks-keywords-deduplicated.json')
-  console.log('  ./data/keywords-prepared.json')
-  console.log('  ./data/article-summaries.json')
-  console.log('  ./data/content-embeddings.json')
-  console.log('  ./data/content-hashes.json')
-  console.log('\nPipeline steps:')
-  console.log('  Step 9 (legacy): await insertToDatabase(dbPayloads, { dryRun: false })')
-  console.log('  Step 9 (incremental): await runIncrementalIngestionWithProgress({ batchSize: 5, dryRun: false })')
-  console.log('  Step 10: await precomputeTopicClusters("chunk", undefined, { dryRun: false })')
-  console.log('  Step 10 (articles): await precomputeTopicClusters("article", undefined, { dryRun: false })')
-  console.log('  Step 11: await computeAndSavePCA() - recompute PCA transform for semantic colors')
+  console.log('\nPipeline steps (re-run from REPL):')
+  console.log('  await runIncrementalIngestionWithProgress({ batchSize: 5, dryRun: false })')
+  console.log('  await precomputeTopicClusters("chunk", undefined, { dryRun: false })')
+  console.log('  await precomputeTopicClusters("article", undefined, { dryRun: false })')
+  console.log('  await computeAndSavePCA()')
   console.log('\nStarting REPL...\n')
 
   const replServer = repl.start({ prompt: '> ' })
@@ -1135,7 +1070,7 @@ async function main() {
     getFinalKeywords, prepareKeywordRecords, prepareKeywordOccurrences,
     savePreparedData, loadPreparedData,
     getOrGenerateContentEmbeddings, getOrGenerateContentHashes, getOrGenerateDedup,
-    prepareDatabasePayloads, insertToDatabase,
+    prepareDatabasePayloads, insertToDatabase, upsertAllKeywords,
     precomputeTopicClusters, convertPairsToGraph, fetchEmbeddings,
     computeAndSavePCA,
 
@@ -1151,17 +1086,15 @@ async function main() {
     fs,
 
     // Loaded data
-    vaultPath, folderPath, filePaths, files,
-    chunksMap, articleSummaries, allChunks,
+    vaultPath, folderPath, filePaths, files, filesToProcess,
+    chunksMap, allChunks,
     keywords, keywordCounts, top20,
     embeds, matrix,
-    topSimilar, topSimilarCustom,
-    clusters, deduped,
+    topSimilar,
 
     // Final prepared data
     mapping, dedupedChunks, finalKeywords,
     keywordRecords, keywordOccurrences,
-    contentEmbeddings, contentHashes, dbPayloads,
     pcaOutput,
   })
 

@@ -1,3 +1,5 @@
+> **Note:** This is a historical plan document. See [Running Chunk Ingestion](../guides/running-chunk-ingestion.md) for current pipeline documentation.
+
 # Incremental Ingestion Pipeline
 
 **Status**: Planning

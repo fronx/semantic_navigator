@@ -1,267 +1,138 @@
-# Running the Chunk Ingestion Pipeline
+# Chunk Ingestion Pipeline
 
-Quick start guide for running the complete chunk-based ingestion pipeline (Steps 1-9).
+Reference guide for the chunk-based ingestion pipeline that processes markdown files into semantic chunks, extracts/deduplicates keywords, and stores everything in Supabase.
 
 ## Prerequisites
 
-1. **Environment variables** configured in `.env.local`:
-   - `VAULT_PATH` - Path to markdown vault
-   - `OPENAI_API_KEY` - For embeddings
-   - `ANTHROPIC_API_KEY` - For LLM calls (chunking, deduplication, summaries)
-   - Supabase credentials
+- `.env.local` configured with `VAULT_PATH`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and Supabase credentials
+- Database ready (run `npx supabase db push` if needed)
+- Markdown files in the vault directory
 
-2. **Database ready**: Supabase instance with tables created
-
-3. **Vault content**: Markdown files to process
-
-## Quick Start
-
-### 1. Test the Implementation
-
-Verify Steps 6-9 are working:
+## Usage
 
 ```bash
-npm run script scripts/test-steps-6-9.ts
+npm run script scripts/repl-explore-chunking.ts [limit]
 ```
 
-Expected output:
-```
-Testing Steps 6-9 implementation...
+- `limit` can be a number (e.g. `20`), `all`, `unlimited`, or `0` for no limit. Default: `5`.
+- The script runs all phases automatically, then drops into a REPL for manual commands.
 
-=== Testing Step 6: Content Embeddings ===
-Loaded 5 article summaries
-✓ Step 6 data structures validated
+## Pipeline Phases
 
-=== Testing Step 7: Content Hashing ===
-✓ Hash function is deterministic
-✓ Different content produces different hash
+### Phase 1: Keyword Analysis (full corpus, upfront)
 
-=== Testing Step 8: Database Payload Preparation ===
-Loaded 79 keyword records
-✓ Keyword data structure validated
+Runs on all selected files to build global keyword deduplication mapping.
 
-✓ All tests passed!
-```
+| Step | Operation | Cache File |
+|------|-----------|------------|
+| 1 | Load files, generate/cache chunks | `data/chunks-cache.json` |
+| 2 | Extract unique keywords, generate/cache keyword embeddings | `data/keyword-embeddings.json` |
+| 3 | Build similarity matrix, compute topSimilar | `data/top-similar.json` |
+| 4 | LLM-based keyword deduplication (cached by pair-set hash) | `data/keyword-dedup-mapping.json` |
+| 5 | Apply dedup, build keyword records, prepare occurrences | `data/keywords-prepared.json`, `data/chunks-keywords-deduplicated.json` |
 
-### 2. Run the Full Pipeline
+**Why full corpus**: Global synonym detection requires seeing all keywords across all articles (e.g., "ML" and "machine learning" in different files).
 
-Process files and generate all caches:
+### Phase 2: Incremental Database Ingestion
 
-```bash
-npm run script scripts/repl-explore-chunking.ts
-```
+Processes articles in batches. Skips articles already in the database (content-hash based idempotency).
 
-The script will:
-- ✅ Load 5 files from `Writing/Have a Little Think` (configurable)
-- ✅ Generate chunks (Step 1) - cached if already exists
-- ✅ Build similarity matrix (Step 2) - cached
-- ✅ Deduplicate keywords (Step 3) - cached
-- ✅ Prepare keyword records (Step 4) - cached
-- ✅ Generate article summaries (Step 5) - cached
-- ✅ **NEW**: Generate content embeddings (Step 6)
-- ✅ **NEW**: Generate content hashes (Step 7)
-- ✅ **NEW**: Prepare database payloads (Step 8)
-- ⏸️ Step 9 is commented out by default (dry-run mode)
+1. Load prepared keyword data from Phase 1 cache
+2. Bulk upsert ALL keywords once upfront (not per-batch)
+3. Query DB for already-ingested articles (by content hash)
+4. Process remaining articles in batches (default batch size: 5):
+   - Generate article summaries (cached per-file)
+   - Generate chunks (reused from Phase 1 cache)
+   - Apply keyword deduplication
+   - Generate content embeddings incrementally (only missing ones)
+   - Generate content hashes (cached per-file)
+   - Prepare database payloads (pure transformation, not cached)
+   - Insert to DB: article node, chunk nodes, containment edges, keyword occurrences
 
-### 3. Review Generated Data
+Per-batch caches:
 
-Check the cache files:
+| Data | Cache File |
+|------|------------|
+| Article summaries | `data/article-summaries.json` |
+| Content embeddings | `data/content-embeddings.json` |
+| Content hashes | `data/content-hashes.json` |
 
-```bash
-ls -lh data/
-```
+Database payloads are NOT cached (cheap computation, always recomputed).
 
-You should see:
-```
-chunks-cache.json                   # Step 1
-top-similar.json                    # Step 2
-chunks-keywords-deduplicated.json   # Step 3
-keywords-prepared.json              # Step 4
-article-summaries.json              # Step 5
-content-embeddings.json             # Step 6 (NEW)
-content-hashes.json                 # Step 7 (NEW)
-db-payloads.json                    # Step 8 (NEW)
-```
+### Phase 3: Post-Ingestion
 
-Inspect the final payload:
+PCA runs automatically after ingestion:
 
-```bash
-cat data/db-payloads.json | jq '. | keys'
-# ["articles", "articleKeywords", "chunkKeywords", "chunks", "containmentEdges", "keywords"]
+1. Compute PCA transform for semantic colors, saved to `public/data/embedding-pca-transform.json`
 
-cat data/db-payloads.json | jq '.articles | length'
-# 5 (number of files processed)
-
-cat data/db-payloads.json | jq '.chunks | length'
-# ~20-30 (number of chunks across all files)
-```
-
-### 4. Insert to Database (Dry Run)
-
-Test database insertion without writing:
-
-```bash
-npm run script scripts/repl-explore-chunking.ts
-```
-
-In the REPL:
-```javascript
-// Dry run (no database changes)
-await insertToDatabase(dbPayloads, { dryRun: true })
-```
-
-Expected output:
-```
-[DRY RUN] Inserting to database...
-  5 articles
-  22 chunks
-  79 keywords
-  22 containment edges
-
-✓ Dry run complete (no database changes)
-```
-
-### 5. Insert to Database (Live)
-
-Execute the actual database insertion:
+Cluster precomputation must be run manually from the REPL:
 
 ```javascript
-// Live insertion
-let stats = await insertToDatabase(dbPayloads, { dryRun: false })
-
-console.log(`Created: ${stats.created}, Updated: ${stats.updated}, Skipped: ${stats.skipped}`)
+await precomputeTopicClusters("chunk", undefined, { dryRun: false })
+await precomputeTopicClusters("article", undefined, { dryRun: false })
 ```
 
-Expected output:
-```
-Inserting to database...
-  5 articles
-  22 chunks
-  79 keywords
-  22 containment edges
+## Cache Strategy
 
-[1/5] Processing: file1.md
-  → Create (new)
-  ✓ Article created: 123e4567-e89b-12d3-a456-426614174000
-  ✓ 4 chunks created
-  ✓ 4 containment edges created
-  ✓ 15 keywords upserted with occurrences
+All caching uses the `getOrCompute` pattern: check cache, return if exists, otherwise compute, save, and return.
 
-[2/5] Processing: file2.md
-...
+| Pattern | Used By | Behavior |
+|---------|---------|----------|
+| Per-item incremental | Chunks, summaries, hashes | Keyed by file path. New files get computed, existing files reuse cache. |
+| Incremental merge | Content embeddings | Load partial cache, find missing items, generate only missing, merge back. |
+| Incremental | Keyword embeddings | Generate only missing keywords. |
+| Hash-based | Keyword deduplication | Cached by hash of similarity pairs. Invalidates when keyword set changes. |
+| Not cached | Database payloads | Always recomputed (cheap transformation). |
 
-✓ Database insertion complete
-  5 created, 0 updated, 0 skipped
+**To force regeneration**, delete the relevant cache file:
+
+```bash
+rm data/content-embeddings.json    # Regenerate embeddings
+rm data/article-summaries.json     # Regenerate summaries
+rm data/*.json                     # Full clean slate
 ```
 
-## Common Workflows
+Then re-run the script. Earlier phases return cached data instantly; only invalidated steps re-execute.
 
-### Process a Different Folder
+## Incremental Runs
 
-Edit `scripts/repl-explore-chunking.ts`:
+On subsequent runs, the pipeline reuses work at every level:
+
+- **Phase 1**: All keyword analysis is cached. Only re-runs if cache files are deleted or the keyword set changes (which invalidates the dedup mapping).
+- **Phase 2**: Checks the database for existing articles by content hash. Articles with matching hashes are skipped entirely. Changed files are reimported (old data deleted, new data inserted).
+- **New files**: Automatically detected and processed. Summaries, embeddings, and hashes are generated only for the new files.
+
+## REPL Commands
+
+After the automatic pipeline completes, the script drops into a REPL with these functions available:
 
 ```javascript
-// Change this line (around line 63)
-let folderPath = 'Writing/Have a Little Think'
+// Main ingestion entry point (re-run with different options)
+await runIncrementalIngestionWithProgress({ batchSize: 5, dryRun: false })
 
-// To your target folder:
-let folderPath = 'Articles/Technical'
+// Dry run (preview without DB writes)
+await runIncrementalIngestionWithProgress({ batchSize: 5, dryRun: true })
+
+// Post-ingestion: recompute clusters
+await precomputeTopicClusters("chunk", undefined, { dryRun: false })
+
+// Post-ingestion: recompute PCA transform
+await computeAndSavePCA()
 ```
-
-Then re-run:
-```bash
-npm run script scripts/repl-explore-chunking.ts
-```
-
-### Process More Files
-
-```javascript
-// Current: processes first 5 files
-let chunksMap = await getOrGenerateChunks(files.slice(0, 5))
-
-// Process all files:
-let chunksMap = await getOrGenerateChunks(files)
-
-// Process first 20:
-let chunksMap = await getOrGenerateChunks(files.slice(0, 20))
-```
-
-### Clear Cache and Re-run
-
-To regenerate from scratch:
-
-```bash
-# Clear specific steps
-rm data/content-embeddings.json
-rm data/content-hashes.json
-rm data/db-payloads.json
-
-# Clear everything
-rm data/*.json
-
-# Re-run
-npm run script scripts/repl-explore-chunking.ts
-```
-
-### Reimport Modified Files
-
-After editing a file:
-
-```bash
-# Re-run the script
-npm run script scripts/repl-explore-chunking.ts
-
-# In REPL, force reimport
-await insertToDatabase(dbPayloads, { dryRun: false, forceReimport: true })
-
-# Or just run normally - hash detection handles it
-await insertToDatabase(dbPayloads, { dryRun: false })
-```
-
-The system will:
-1. Compare content hashes
-2. Skip unchanged files
-3. Reimport changed files (delete old + create new)
 
 ## Verification
 
-After insertion, verify database state:
+After ingestion, verify database state:
 
-### Count Nodes
 ```sql
+-- Count nodes by type
 SELECT node_type, COUNT(*) FROM nodes GROUP BY node_type;
-```
 
-Expected:
-```
-node_type | count
-----------+-------
-article   |     5
-chunk     |    22
-```
-
-### Count Keywords
-```sql
+-- Count keywords and occurrences
 SELECT COUNT(*) FROM keywords;
-```
-
-Expected: ~79 unique keywords
-
-### Count Occurrences
-```sql
 SELECT node_type, COUNT(*) FROM keyword_occurrences GROUP BY node_type;
-```
 
-Expected:
-```
-node_type | count
-----------+-------
-article   |    45  (article-level keywords)
-chunk     |   106  (chunk-level keywords)
-```
-
-### Verify Hierarchy
-```sql
+-- Verify all chunks have parent articles (should return 0)
 SELECT COUNT(*) FROM nodes n
 WHERE n.node_type = 'chunk'
   AND NOT EXISTS (
@@ -269,101 +140,17 @@ WHERE n.node_type = 'chunk'
   );
 ```
 
-Expected: 0 (all chunks have parent articles)
-
-### Spot-Check Article
-```sql
-SELECT
-  n.id,
-  n.title,
-  n.summary,
-  (SELECT COUNT(*) FROM containment_edges WHERE parent_id = n.id) as chunk_count,
-  (SELECT COUNT(*) FROM keyword_occurrences WHERE node_id = n.id) as keyword_count
-FROM nodes n
-WHERE n.node_type = 'article'
-LIMIT 1;
-```
-
 ## Troubleshooting
 
-### "Module not found" errors
+**Rate limits (OpenAI/Anthropic)**: Process fewer files by passing a lower limit. Re-run after the rate limit resets -- cached steps are preserved.
 
-Make sure you're running from the project root:
-```bash
-cd /Users/fnx/code/semantic_navigator
-npm run script scripts/repl-explore-chunking.ts
-```
+**"Embedding not found" warnings**: Content embeddings cache may be incomplete. Delete `data/content-embeddings.json` and re-run.
 
-### OpenAI rate limits
+**Database connection errors**: Verify Supabase credentials in `.env.local`.
 
-If you hit rate limits:
-1. Process fewer files: `files.slice(0, 5)`
-2. Wait a few minutes and re-run (cached steps are skipped)
-3. Increase `RATE_LIMIT_DELAY_MS` in `src/lib/embeddings.ts`
+## Related
 
-### Anthropic rate limits
-
-Similar to OpenAI:
-1. Process fewer files
-2. Re-run after rate limit resets
-3. Cached steps are preserved
-
-### Database connection errors
-
-Check `.env.local`:
-```bash
-grep SUPABASE .env.local
-```
-
-Verify credentials are correct.
-
-### "Embedding not found" warnings
-
-This happens if Step 6 didn't process all chunks. Causes:
-- Cache file corrupted
-- Process interrupted mid-generation
-
-Fix:
-```bash
-rm data/content-embeddings.json
-npm run script scripts/repl-explore-chunking.ts
-```
-
-## Performance Tips
-
-### For Large Batches (100+ files)
-
-1. **Process in batches**:
-```javascript
-// Process 50 files at a time
-for (let i = 0; i < files.length; i += 50) {
-  let batch = files.slice(i, i + 50)
-  let chunksMap = await getOrGenerateChunks(batch)
-  // ... process batch
-}
-```
-
-2. **Use database transactions** (future enhancement)
-
-3. **Parallel article insertion** (future enhancement)
-
-### For Development
-
-1. **Use small test set**: `files.slice(0, 3)`
-2. **Clear only what you need**: Don't delete all caches
-3. **Use dry-run first**: Always test with `dryRun: true`
-
-## Next Steps
-
-After successful insertion:
-
-1. **Verify in UI**: Load TopicsView and check if keywords/chunks appear
-2. **Test search**: Search for keywords and verify results
-3. **Test reimport**: Modify a file and re-run to verify skip/reimport logic
-4. **Scale up**: Process larger batches once comfortable with workflow
-
-## Related Documentation
-
-- [Implementation Guide](chunk-ingestion-steps-6-9.md) - Detailed function documentation
-- [Pipeline Plan](../plans/chunk-ingestion-plan.md) - Overall design and architecture
-- [Summary](steps-6-9-summary.md) - What was implemented and why
+- Script: `scripts/repl-explore-chunking.ts`
+- Core libs: `src/lib/ingestion.ts`, `src/lib/cache-utils.ts`, `src/lib/embeddings.ts`
+- [Incremental Ingestion Pipeline plan](../plans/incremental-ingestion-pipeline.md) (historical)
+- [Chunk Ingestion Plan](../plans/chunk-ingestion-plan.md) (historical)
