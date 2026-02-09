@@ -10,6 +10,7 @@ import type { FocusState } from "@/lib/focus-mode";
 import { useThreeTextGeometry } from "@/hooks/useThreeTextGeometry";
 import { computeUnitsPerPixel, smoothstep } from "@/lib/three-text-utils";
 import { isDarkMode } from "@/lib/theme";
+import { getFontPath } from "@/lib/keyword-fonts";
 
 function buildClusterSearchOpacity(
   nodeToCluster: Map<string, number> | undefined,
@@ -55,7 +56,6 @@ const DEFAULT_BASE_FONT_SIZE = 52;
 const FADE_START_PX = 60;
 const FADE_END_PX = 100;
 const LABEL_LINE_HEIGHT = 1.05;
-const FONT_DEFAULT = "/fonts/source-code-pro-regular.woff2";
 
 interface LabelRegistration {
   communityId: number;
@@ -196,6 +196,7 @@ export function ClusterLabels3D({
             key={data.communityId}
             communityId={data.communityId}
             text={text}
+            label={data.label}
             color={data.color}
             position={[data.centroid[0], data.centroid[1], labelZ]}
             baseOpacity={baseOpacity}
@@ -215,6 +216,7 @@ export function ClusterLabels3D({
 interface ClusterLabelSpriteProps {
   communityId: number;
   text: string;
+  label: string; // Original label text for font lookup
   color: string;
   position: [number, number, number];
   baseOpacity: number;
@@ -229,6 +231,7 @@ interface ClusterLabelSpriteProps {
 function ClusterLabelSprite({
   communityId,
   text,
+  label,
   color,
   position,
   baseOpacity,
@@ -239,10 +242,13 @@ function ClusterLabelSprite({
   labelZ,
   shadowStrength,
 }: ClusterLabelSpriteProps) {
+  // Get semantic font for this label (falls back to default if no match)
+  const fontUrl = useMemo(() => getFontPath(label), [label]);
+
   const geometryEntry = useThreeTextGeometry({
     text,
     fontSize: baseFontSize,
-    fontUrl: FONT_DEFAULT,
+    fontUrl,
     lineHeight: LABEL_LINE_HEIGHT,
   });
   const billboardRef = useRef<THREE.Group>(null);

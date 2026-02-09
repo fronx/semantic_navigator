@@ -8,7 +8,9 @@
  * 4. Generate TypeScript mapping file
  *
  * Usage:
- *   npm run script scripts/prepare-keyword-fonts.ts [--force-match] [--force-download]
+ *   npm run script scripts/prepare-keyword-fonts.ts -- [--force-match] [--force-download]
+ *
+ * Note: The "--" separator is required to pass flags through npm
  *
  * Options:
  *   --force-match     Re-run font matching even if results exist
@@ -146,10 +148,10 @@ async function step2_matchKeywords(forceMatch: boolean): Promise<void> {
     console.log("Results not found. Running keyword-to-font matching...");
   }
 
-  console.log("\nRunning: npm run script scripts/match-keywords-to-fonts-agentic.ts\n");
+  console.log("\nRunning: npm run script scripts/fonts/match-keywords-to-fonts-agentic.ts\n");
 
   try {
-    execSync("npm run script scripts/match-keywords-to-fonts-agentic.ts", {
+    execSync("npm run script scripts/fonts/match-keywords-to-fonts-agentic.ts", {
       stdio: "inherit",
       cwd: process.cwd(),
     });
@@ -310,7 +312,7 @@ export function getFontPath(keyword: string): string {
 // ============================================================================
 
 async function main() {
-  const args = process.argv.slice(2);
+  const args = process.argv.slice(2).filter(arg => arg.startsWith('--'));
   const forceMatch = args.includes("--force-match");
   const forceDownload = args.includes("--force-download");
 

@@ -637,7 +637,7 @@ async function main() {
       await fs.appendFile(resultsPath, JSON.stringify(result) + "\n");
 
       // Display result
-      console.log(`[${index + 1}/${keywords.length}] ✓ "${keyword}"`);
+      console.log(`[${index + 1}/${newItems.length}] ✓ "${keyword}"`);
       console.log(`  Tags: ${selectedTags.join(", ") || "none"}`);
       console.log(`  Font: ${selectedFont || "none"} (from ${allCandidates.length} candidates)`);
       console.log();
