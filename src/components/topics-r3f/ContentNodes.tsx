@@ -26,6 +26,7 @@ import {
 } from "@/lib/viewport-edge-magnets";
 import { computeContentPullState } from "@/lib/content-pull-state";
 import { useFadingMembership } from "@/hooks/useFadingMembership";
+import { identifyAllMarginParents } from "@/lib/focus-mode-content-filter";
 
 const VISIBILITY_THRESHOLD = 0.01;
 const CARD_HEIGHT_SCALE = 4;
@@ -155,7 +156,7 @@ export function ContentNodes({
     meshRef.current.visible = contentScale >= VISIBILITY_THRESHOLD;
     if (!meshRef.current.visible) return;
 
-    // Viewport edge magnets: pull off-screen content nodes to viewport edge
+    // Edge pulling: pull off-screen content nodes to viewport edge
     const zones = computeViewportZones(camera as THREE.PerspectiveCamera, size.width, size.height);
 
     // Primary keywords: in viewport, not margin-pushed by focus mode
@@ -174,6 +175,13 @@ export function ContentNodes({
     if (primaryKeywordIdsRef) {
       primaryKeywordIdsRef.current = primaryKeywordIds;
     }
+
+    // Safety filter: exclude content whose ALL parents are focus-pushed
+    // This ensures content-driven mode only operates within the focused set
+    const allMarginParents = identifyAllMarginParents(
+      contentNodes as ContentSimNode[],
+      focusPositions ?? null
+    );
 
     // Content-driven keyword pulling: when zoomed past crossfade "Full" threshold,
     // content cards in the viewport keep their off-screen parent keywords visible
@@ -241,7 +249,8 @@ export function ContentNodes({
       // Visible if parent keyword is primary OR content-driven mode keeps it on-screen
       const hasVisibleParent = node.parentIds.some((parentId: string) => primaryKeywordIds.has(parentId));
       const isContentDriven = contentDrivenNodeIds.has(node.id);
-      const isVisible = hasVisibleParent || isContentDriven;
+      const allParentsPushed = allMarginParents.has(node.id);
+      const isVisible = (hasVisibleParent || isContentDriven) && !allParentsPushed;
       if (isVisible) {
         visibleContentIdsRef?.current.add(node.id);
       }

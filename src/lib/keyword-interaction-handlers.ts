@@ -10,7 +10,7 @@ export interface KeywordClickContext {
   node: SimNode;
   /** Positions of focus-margin-pushed nodes */
   focusPositionsRef?: React.MutableRefObject<Map<string, { x: number; y: number }>>;
-  /** Positions of pulled nodes (viewport edge magnets) */
+  /** Positions of pulled nodes (edge pulling) */
   pulledPositionsRef?: React.MutableRefObject<Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>>;
   /** Camera flyTo function for animating to a position */
   flyToRef?: React.MutableRefObject<((x: number, y: number) => void) | null>;
@@ -27,7 +27,7 @@ export interface KeywordHoverContext {
 
 /**
  * Handle keyword click with consistent logic for:
- * - Pulled nodes (edge magnets): switch focus AND fly to center on keyword
+ * - Pulled nodes (edge pulling): switch focus AND fly to center on keyword
  * - Focus margin nodes: switch focus AND fly to center on keyword
  * - Normal nodes: trigger focus mode
  *

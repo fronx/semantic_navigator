@@ -26,7 +26,7 @@
 
 - [Filtered Map View](architecture/filtered-map-view.md) - Exploring articles by filtering out query-related keywords to reveal hidden connections
 - [Cluster Labels](cluster-labels.md) - Semantic labels for keyword clusters via Leiden algorithm and LLM generation
-- [Viewport Edge Magnets](architecture/viewport-edge-magnets.md) - Pull off-screen keyword neighbors to viewport edges as navigational ghosts with visible connections
+- [Edge Pulling](architecture/edge-pulling.md) - Pull off-screen keyword neighbors to viewport edges as navigational ghosts with visible connections
 
 ### Plans
 

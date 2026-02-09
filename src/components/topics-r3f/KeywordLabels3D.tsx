@@ -199,7 +199,7 @@ export function KeywordLabels3D({
       const { id, node, billboard, material, baseFontSize: fontSize, baseOpacity } = entry;
       if (!billboard) return;
 
-      // Position priority: focus (margin push) > pulled (edge magnets) > natural
+      // Position priority: focus (margin push) > pulled (edge pulling) > natural
       const focusPos = focusPositionsRef?.current.get(id);
       const pulledPosition = !focusPos ? pulledPositionsRef?.current.get(id) : undefined;
       const isFocusMargin = !!focusPos;

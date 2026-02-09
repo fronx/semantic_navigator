@@ -1,5 +1,5 @@
 /**
- * Shared utilities for viewport edge magnets (pulling off-screen nodes to viewport boundary).
+ * Shared utilities for edge pulling (pulling off-screen nodes to viewport boundary).
  * Used by both KeywordNodes and ContentNodes.
  */
 
@@ -48,7 +48,7 @@ export interface ViewportZones {
 }
 
 /**
- * Compute viewport zones for edge magnets.
+ * Compute viewport zones for edge pulling.
  * Converts screen-pixel margins to world units based on current camera state.
  */
 export function computeViewportZones(

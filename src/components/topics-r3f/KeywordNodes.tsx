@@ -68,7 +68,7 @@ export interface KeywordNodesProps {
   onKeywordHover?: (keywordId: string | null) => void;
   /** Currently hovered keyword ID (shared with labels for synchronized glow) */
   hoveredKeywordIdRef?: React.MutableRefObject<string | null>;
-  /** Adjacency map for viewport edge magnets (node ID -> neighbors) */
+  /** Adjacency map for edge pulling (node ID -> neighbors) */
   adjacencyMap?: Map<string, Array<{ id: string; similarity: number }>>;
   /** Shared ref for pulled node positions (written here, read by edges + labels) */
   pulledPositionsRef?: React.MutableRefObject<Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>>;
@@ -142,7 +142,7 @@ export function KeywordNodes({
     const unitsPerPixel = perspectiveUnitsPerPixel(fov, cameraZ, size.height);
     const maxScale = maxScaleForScreenSize(BASE_DOT_RADIUS * DOT_SCALE_FACTOR * 2, MAX_DOT_SCREEN_PX, unitsPerPixel);
 
-    // Viewport edge magnets: classify nodes and pull cliff/off-screen nodes to the edge
+    // Edge pulling: classify nodes and pull cliff/off-screen nodes to the edge
     const zones = computeViewportZones(camera as THREE.PerspectiveCamera, size.width, size.height);
 
     const { pulledMap } = computeKeywordPullState({
@@ -262,7 +262,7 @@ export function KeywordNodes({
       const realX = node.x ?? 0;
       const realY = node.y ?? 0;
 
-      // Position priority: focus animation > pulled (edge magnets) > natural
+      // Position priority: focus animation > pulled (edge pulling) > natural
       const focusPos = focusPositionsRef?.current.get(node.id);
       const pulledData = !focusPos ? pulledMap.get(node.id) : undefined;
       const isPulled = !!pulledData;
@@ -323,7 +323,7 @@ export function KeywordNodes({
       );
       colorRef.current.set(color);
 
-      // Reduce opacity for margin nodes (focus) or pulled nodes (edge magnets)
+      // Reduce opacity for margin nodes (focus) or pulled nodes (edge pulling)
       if (isFocusMargin) {
         colorRef.current.multiplyScalar(0.4);
       } else if (isPulled) {

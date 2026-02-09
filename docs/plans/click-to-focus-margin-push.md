@@ -13,7 +13,7 @@ Replace the current click-to-filter behavior with a more fluid "focus mode" inte
 **Why this is better:**
 - Maintains spatial context (no nodes disappear)
 - More fluid, less jarring than filter on/off
-- Leverages existing viewport edge magnets infrastructure
+- Leverages existing edge pulling infrastructure
 
 ## Implementation Insights (captured during coding)
 
@@ -44,6 +44,12 @@ In focus mode, all keyword labels are unconditionally visible — no proximity-b
 
 ### Content node visibility in focus mode
 Content nodes are only shown for "primary" keywords — on-screen, not in cliff zone, and not focus-margin pushed. The `focusPositionsRef` is checked when building `primaryKeywordIds` in ContentNodes. Content edges to non-primary keywords are also hidden via the same EdgeRenderer focus filtering.
+
+**Focus mode filtering (implemented 2026-02-09):** Two-layer filter ensures content respects focus boundaries:
+1. **Loading filter**: `visibleKeywordIds` excludes margin keywords (via `computeVisibleKeywordIds` in `focus-mode-content-filter.ts`), preventing content from loading for margin keywords
+2. **Rendering filter**: Content whose ALL parents are margin-pushed is hidden even if content-driven mode is active (via `identifyAllMarginParents`)
+
+This ensures content-driven mode operates only within the focused keyword set. Content with mixed parents (some focused, some margin) remains visible if at least one parent is focused. See `src/lib/focus-mode-content-filter.ts` and tests in `src/lib/__tests__/focus-mode-content-filtering.test.ts`.
 
 ### Camera center fallback
 When the mouse isn't hovering over the canvas, `cursorWorldPosRef` falls back to camera center instead of null. This ensures proximity-based label filtering still works (labels near screen center visible).
@@ -97,7 +103,7 @@ TopicsView                      (state: focusState, zoom-out reset)
 4. Verify labels follow animated positions
 5. Click different keyword during animation → verify graceful interrupt
 6. Test with very small graph (all nodes are neighbors) → verify margin set is empty
-7. Test interaction with viewport edge magnets (zoom/pan to trigger automatic pulling)
+7. Test interaction with edge pulling (zoom/pan to trigger automatic pulling)
 8. Click same keyword twice → verify toggle (focus on, focus off)
 9. Zoom out to cluster level → verify focus auto-clears
 10. Verify only focus-set + boundary edges visible (no margin-to-margin clutter)
@@ -120,6 +126,6 @@ TopicsView                      (state: focusState, zoom-out reset)
 ## Notes
 
 - Animation is fully ref-driven (no setState in useFrame)
-- Priority system ensures focus animation overrides viewport edge magnets
+- Priority system ensures focus animation overrides edge pulling
 - Reuses existing infrastructure (clampToBounds, computeSemanticNeighborhoods)
 - Clicking pulled or margin node → flyTo real position (not focus toggle)

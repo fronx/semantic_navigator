@@ -230,7 +230,7 @@ export function EdgeRenderer({
       }
 
       // Viewport culling: hide if neither node visible, dim if only one visible
-      // Position priority: focus (margin push) > pulled (edge magnets) > natural
+      // Position priority: focus (margin push) > pulled (edge pulling) > natural
       const sourceFocus = focusPositions.get(sourceId);
       const targetFocus = focusPositions.get(targetId);
       const sx = sourceFocus?.x ?? sourcePulled?.x ?? (sourceNode.x ?? 0);

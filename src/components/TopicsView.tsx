@@ -19,6 +19,7 @@ import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queri
 import { loadPCATransform, type PCATransform } from "@/lib/semantic-colors";
 import type { SemanticFilter } from "@/lib/topics-filter";
 import { createFocusState, type FocusState } from "@/lib/focus-mode";
+import { computeVisibleKeywordIds } from "@/lib/focus-mode-content-filter";
 import type { BaseRendererOptions } from "@/lib/renderer-types";
 import type { SimNode } from "@/lib/map-renderer";
 import { CAMERA_Z_SCALE_BASE } from "@/lib/three/camera-controller";
@@ -246,13 +247,11 @@ export function TopicsView({
 
   // Chunk loading for visible keywords
   // If semantic filter active, only load chunks for selected + 1-hop
+  // If focus mode active, only load chunks for focused + neighbors
   // Stabilize the Set to prevent unnecessary refetches
   const visibleKeywordIds = useMemo(() => {
-    if (chunkKeywordIds) {
-      return chunkKeywordIds;
-    }
-    return new Set(activeNodes.map(n => n.id));
-  }, [activeNodes, chunkKeywordIds]);
+    return computeVisibleKeywordIds(activeNodes, chunkKeywordIds, focusState);
+  }, [activeNodes, chunkKeywordIds, focusState]);
 
   const { contentsByKeyword, isLoading } = useContentLoading({
     visibleKeywordIds,

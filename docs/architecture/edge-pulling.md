@@ -1,4 +1,4 @@
-# Design: Viewport Edge Magnets
+# Design: Edge Pulling
 
 **Status**: Implemented (2026-02-07)
 
@@ -8,7 +8,7 @@ When exploring the keyword graph, the viewport shows a local region. Keyword nod
 
 ## Concept
 
-Continuously render off-screen keyword neighbors at the viewport boundary. Each "pulled" node appears at the edge of the screen, in the direction of its true position — a ghost that shows what's connected just beyond the visible area. Pulled nodes are dimmer and smaller than regular nodes, with visible edges connecting them back to their primary nodes.
+Edge pulling continuously renders off-screen keyword neighbors at the viewport boundary. Each "pulled" node appears at the edge of the screen, in the direction of its true position — a ghost that shows what's connected just beyond the visible area. Pulled nodes are dimmer and smaller than regular nodes, with visible edges connecting them back to their primary nodes.
 
 Additionally, visible nodes near the viewport edge "fall off a cliff" — they snap to the pull line with pulled visual treatment. This creates a clean inner zone where nodes render normally, and a clear boundary beyond which everything is clamped to the edge.
 
@@ -90,6 +90,7 @@ Content nodes follow a simpler pulling model than keywords:
 - **No cliff behavior**: Content nodes don't snap when near the viewport edge
 - **Parent-based visibility**: Content nodes only render if at least one parent keyword is visible (primary)
 - **Off-screen pulling**: Content nodes with visible parents but off-screen positions get pulled to viewport edge
+- **Focus mode constraint** (2026-02-09): Content nodes whose ALL parents are margin-pushed (focus mode) are excluded even if content-driven mode would show them. See "Content-Driven Mode and Focus Mode Interaction" below.
 
 **Phase 1 — Compute viewport zones:** Calculate the viewport and pull bounds using the same approach as keywords, but skip computing the cliff boundary since content nodes don't have cliff behavior.
 
@@ -200,3 +201,65 @@ This centralization ensures consistent behavior, reduces duplication, and makes 
 **UI-aware asymmetric padding**: The left (sidebar) and top (header) edges get `UI_PROXIMITY_PX` extra margin. This keeps pulled nodes visually separated from UI chrome even though the canvas doesn't extend behind the sidebar (flex layout). The asymmetry applies to both the pull line and the cliff boundary.
 
 **Screen-pixel margins**: All margin constants are in screen pixels, converted to world units per frame via `worldPerPx = visibleWidth / canvasWidth`. This ensures the cliff zone and pull line feel the same size regardless of zoom level — unlike the original world-unit `PULLED_PADDING` which varied from 5% to 20% of the viewport depending on zoom.
+
+## Content-Driven Mode and Focus Mode Interaction
+
+**Added**: 2026-02-09
+
+### Problem
+
+Content-driven mode and focus mode have competing goals:
+- **Content-driven mode**: When zoomed in past "Full" threshold, content cards in the viewport can pull their parent keywords visible (even if off-screen)
+- **Focus mode**: When a keyword is focused, only that keyword + 1-3 hop neighbors should be displayable; everything else (margin keywords) is pushed to viewport edges
+
+**Bug**: Content-driven mode was pulling in margin keywords and showing their content, creating orphaned content cards with no visible parent keywords.
+
+### Solution
+
+**Two-layer filtering** ensures content-driven mode respects focus boundaries:
+
+**Layer 1: Loading Filter** ([src/components/TopicsView.tsx](src/components/TopicsView.tsx))
+```typescript
+// visibleKeywordIds excludes margin keywords when focus is active
+const visibleKeywordIds = useMemo(() => {
+  return computeVisibleKeywordIds(activeNodes, chunkKeywordIds, focusState);
+}, [activeNodes, chunkKeywordIds, focusState]);
+```
+
+Prevents content from loading for margin keywords in the first place.
+
+**Layer 2: Rendering Filter** ([src/components/topics-r3f/ContentNodes.tsx](src/components/topics-r3f/ContentNodes.tsx))
+```typescript
+// Content whose ALL parents are margin-pushed is hidden
+const allMarginParents = identifyAllMarginParents(contentNodes, focusPositions);
+const isVisible = (hasVisibleParent || isContentDriven) && !allParentsPushed;
+```
+
+Catches race conditions (content loaded before focus activated) and prevents content-driven mode from showing orphaned content.
+
+### Behavior
+
+**Without focus mode**: Content-driven mode works as designed — content in viewport can pull parent keywords visible from off-screen.
+
+**With focus mode active**:
+- Content is only loaded for focused keywords (not margin)
+- Content with at least one focused parent remains visible (multi-parent chunks)
+- Content whose ALL parents are margin-pushed is hidden, even if:
+  - The content node is in the viewport
+  - Content-driven mode is active
+  - The parent keywords would normally be pulled visible
+
+### Implementation
+
+**Utility functions** ([src/lib/focus-mode-content-filter.ts](src/lib/focus-mode-content-filter.ts)):
+- `computeVisibleKeywordIds()`: Filters keyword IDs for content loading
+- `identifyAllMarginParents()`: Identifies content to exclude from rendering
+
+**Tests**: `src/lib/__tests__/focus-mode-content-filtering.test.ts` (17 tests)
+
+### Edge Cases
+
+1. **Multi-parent chunks**: A chunk connected to keywords A (focused) and B (margin) remains visible because A is focused
+2. **Race condition**: Content loaded before focus activation is caught by rendering filter
+3. **Transition smoothness**: Loading filter stops new content immediately, rendering filter hides existing content
+4. **Focus exit**: Content gradually loads as expected when focus is cleared

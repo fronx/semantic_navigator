@@ -317,7 +317,7 @@ export function R3FTopicsScene({
     // labelRefs excluded: it's a memoized bag of stable useRef values
   }, [simNodes, edges, pcaTransform, nodeToCluster]);
 
-  // Build adjacency map for viewport edge magnets (node ID -> neighbors)
+  // Build adjacency map for edge pulling (node ID -> neighbors)
   const adjacencyMap = useMemo(() => {
     const map = new Map<string, Array<{ id: string; similarity: number }>>();
     for (const edge of edges) {
