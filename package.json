@@ -23,6 +23,7 @@
     "graphology-metrics": "^2.4.0",
     "maath": "^0.10.8",
     "mdast-util-from-markdown": "^2.0.2",
+    "ml-pca": "^4.1.1",
     "music-metadata": "^11.11.2",
     "next": "16.1.1",
     "openai": "^6.15.0",

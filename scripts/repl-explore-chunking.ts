@@ -1120,6 +1120,7 @@ async function main() {
   console.log('  Step 9 (incremental): await runIncrementalIngestionWithProgress({ batchSize: 5, dryRun: false })')
   console.log('  Step 10: await precomputeTopicClusters("chunk", undefined, { dryRun: false })')
   console.log('  Step 10 (articles): await precomputeTopicClusters("article", undefined, { dryRun: false })')
+  console.log('  Step 11: await computeAndSavePCA() - recompute PCA transform for semantic colors')
   console.log('\nStarting REPL...\n')
 
   const replServer = repl.start({ prompt: '> ' })
@@ -1136,6 +1137,7 @@ async function main() {
     getOrGenerateContentEmbeddings, getOrGenerateContentHashes, getOrGenerateDedup,
     prepareDatabasePayloads, insertToDatabase,
     precomputeTopicClusters, convertPairsToGraph, fetchEmbeddings,
+    computeAndSavePCA,
 
     // Incremental ingestion functions
     processArticleBatch, runIncrementalIngestion, runIncrementalIngestionWithProgress,
@@ -1145,7 +1147,7 @@ async function main() {
     mathUtils, llm, keywordSim, keywordDedup,
     cacheUtils, arrayUtils, cliUtils,
     supabaseLib, ingestionChunks, ingestionUtils, leidenClustering,
-    clusteringUtils,
+    clusteringUtils, embeddingPca,
     fs,
 
     // Loaded data
@@ -1160,6 +1162,7 @@ async function main() {
     mapping, dedupedChunks, finalKeywords,
     keywordRecords, keywordOccurrences,
     contentEmbeddings, contentHashes, dbPayloads,
+    pcaOutput,
   })
 
 }
