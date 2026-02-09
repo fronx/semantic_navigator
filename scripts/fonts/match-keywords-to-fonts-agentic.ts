@@ -478,23 +478,52 @@ Do not include markdown, explanations, or any other text - just the JSON object.
 async function fetchKeywordsFromDatabase(limit: number): Promise<string[]> {
   const supabase = createServerClient();
 
-  let query = supabase
+  // Fetch individual keywords
+  let keywordQuery = supabase
     .from("keywords")
     .select("keyword")
     .order("id", { ascending: true });
 
-  // limit=0 means fetch all keywords
   if (limit > 0) {
-    query = query.limit(limit);
+    keywordQuery = keywordQuery.limit(limit);
   }
 
-  const { data, error } = await query;
+  const { data: keywordData, error: keywordError } = await keywordQuery;
 
-  if (error) {
-    throw new Error(`Database error: ${error.message}`);
+  if (keywordError) {
+    throw new Error(`Keywords table error: ${keywordError.message}`);
   }
 
-  return data.map((row) => row.keyword);
+  const keywords = keywordData.map((row) => row.keyword);
+
+  // Fetch unique cluster labels from precomputed clusters
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: clusterData, error: clusterError } = await (supabase.from as any)(
+    "precomputed_topic_clusters"
+  )
+    .select("cluster_label")
+    .order("cluster_label", { ascending: true });
+
+  if (clusterError) {
+    console.warn(`Warning: Could not fetch cluster labels: ${clusterError.message}`);
+    console.warn("Continuing with keywords only...");
+    return keywords;
+  }
+
+  // Get unique cluster labels
+  const clusterLabels = [...new Set(clusterData.map((row: any) => row.cluster_label))];
+
+  // Combine and deduplicate
+  const combined = [...new Set([...keywords, ...clusterLabels])];
+
+  console.log(`Fetched ${keywords.length} keywords + ${clusterLabels.length} unique cluster labels = ${combined.length} total`);
+
+  // Apply limit to combined set if specified
+  if (limit > 0) {
+    return combined.slice(0, limit);
+  }
+
+  return combined;
 }
 
 // ============================================================================

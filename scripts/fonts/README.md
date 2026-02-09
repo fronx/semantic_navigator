@@ -35,11 +35,15 @@ Fetches ~1886 fonts with semantic tags from Google Fonts API. Tags include:
 
 Cached locally to avoid repeated API calls.
 
-### Step 2: Match Keywords
+### Step 2: Match Keywords and Cluster Labels
 
 **Script:** `match-keywords-to-fonts-agentic.ts`
 **Output:** `./data/agentic-keyword-font-results.jsonl` (incremental)
 **Output:** `./data/agentic-keyword-font-results.json` (final)
+
+Fetches both:
+- Individual keywords from `keywords` table
+- Unique cluster labels from `precomputed_topic_clusters` table
 
 Uses Claude Haiku with tool-based exploration:
 
