@@ -202,9 +202,10 @@ export function EdgeRenderer({
         continue;
       }
 
-      // Focus mode edge filtering: only keep edges within focus set + boundary→margin
+      // Focus mode edge filtering: hide margin↔margin, dim boundary→margin to 25%
       const sourceIsMargin = focusPositions.has(sourceId);
       const targetIsMargin = focusPositions.has(targetId);
+      let focusDimFactor = 1.0;
       if (sourceIsMargin || targetIsMargin) {
         // Keep only if the non-margin endpoint is neighbor-3 (focus boundary)
         // If both are margin, this correctly hides (neither is neighbor-3)
@@ -216,6 +217,8 @@ export function EdgeRenderer({
           for (let i = 0; i < VERTICES_PER_EDGE * 3; i++) posArray[baseOffset + i] = NaN;
           continue;
         }
+        // Dim boundary→margin edges to 25%
+        focusDimFactor = 0.25;
       }
 
       // Skip edges if explicitly requested when the source keyword sits in the margin zone
@@ -310,12 +313,12 @@ export function EdgeRenderer({
         }
       }
 
-      // Write RGBA color to all vertices (alpha = source fade for transparent crossfade)
+      // Write RGBA color to all vertices (alpha = source fade * focus dim for transparent crossfade)
       const colBaseOffset = edgeIndex * VERTICES_PER_EDGE * 4;
       for (let i = 0; i < VERTICES_PER_EDGE; i++) {
         const ci = colBaseOffset + i * 4;
         tempColor.current.toArray(colArray, ci);
-        colArray[ci + 3] = sourceFadeOpacity;
+        colArray[ci + 3] = sourceFadeOpacity * focusDimFactor;
       }
     }
 
