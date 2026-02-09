@@ -56,6 +56,10 @@ export interface TopicsSettings {
   unifiedSimulation: boolean;
   /** Cluster label shadow strength (0 = no shadow, 2 = extra strong) */
   clusterLabelShadowStrength: number;
+  /** Focus mode strategy: 'direct' uses keyword-keyword edges, 'content-aware' hops through content nodes */
+  focusStrategy: 'direct' | 'content-aware';
+  /** Maximum number of hops in focus mode (1-3) */
+  focusMaxHops: number;
 
   // UI state
   sidebarCollapsed: boolean;
@@ -95,6 +99,8 @@ const DEFAULT_SETTINGS: TopicsSettings = {
   dynamicClustering: true,
   unifiedSimulation: false,
   clusterLabelShadowStrength: 0.8,
+  focusStrategy: 'direct',
+  focusMaxHops: 3,
   sidebarCollapsed: false,
   sectionStates: {
     Renderer: true,

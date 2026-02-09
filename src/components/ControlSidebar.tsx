@@ -294,6 +294,28 @@ export function ControlSidebar({
               <option value="d3">D3/SVG</option>
               <option value="r3f">R3F/drei</option>
             </select>
+
+            <div className="mt-2">
+              <label className="text-[10px] text-zinc-500 block mb-1">Focus Mode Strategy</label>
+              <select
+                value={settings.focusStrategy}
+                onChange={(e) => update("focusStrategy", e.target.value as 'direct' | 'content-aware')}
+                className="w-full text-[11px] bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-2 py-1"
+              >
+                <option value="direct">Direct (keyword→keyword)</option>
+                <option value="content-aware">Content-aware (keyword→content→keyword)</option>
+              </select>
+            </div>
+
+            <Slider
+              label="Max Hops"
+              value={settings.focusMaxHops}
+              onChange={(v) => update("focusMaxHops", Math.round(v))}
+              min={1}
+              max={3}
+              step={1}
+              format={(v) => `${Math.round(v)}`}
+            />
           </Section>
 
           {/* Display */}

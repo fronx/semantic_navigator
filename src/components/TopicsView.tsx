@@ -17,7 +17,7 @@ import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queri
 import { loadPCATransform, type PCATransform } from "@/lib/semantic-colors";
 import { calculateDegreeSizeMultiplier } from "@/lib/topics-graph-nodes";
 import type { SemanticFilter } from "@/lib/topics-filter";
-import { createFocusState, type FocusState } from "@/lib/focus-mode";
+import { createFocusState, createContentAwareFocusState, type FocusState } from "@/lib/focus-mode";
 import { computeVisibleKeywordIds } from "@/lib/focus-mode-content-filter";
 import type { BaseRendererOptions } from "@/lib/renderer-types";
 import type { SimNode } from "@/lib/map-renderer";
@@ -129,6 +129,10 @@ export interface TopicsViewProps {
   initialPrecomputedData?: PrecomputedClusterData | null;
   /** Search query for semantic search highlighting */
   searchQuery?: string;
+  /** Focus mode strategy: 'direct' uses keyword-keyword edges, 'content-aware' hops through content nodes */
+  focusStrategy?: 'direct' | 'content-aware';
+  /** Maximum number of hops in focus mode (1-3) */
+  focusMaxHops?: number;
 }
 
 // ============================================================================
@@ -181,6 +185,8 @@ export function TopicsView({
   onKeywordHover,
   initialPrecomputedData,
   searchQuery = "",
+  focusStrategy = 'direct',
+  focusMaxHops = 3,
 }: TopicsViewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -373,11 +379,25 @@ export function TopicsView({
       return;
     }
 
-    const newState = createFocusState(
-      keywordId,
-      activeNodes.map(n => n.id),
-      activeEdges,
-    );
+    let newState: FocusState;
+    if (focusStrategy === 'content-aware') {
+      // Use content-aware hopping (through keyword→content→keyword paths)
+      newState = createContentAwareFocusState(
+        keywordId,
+        activeNodes.map(n => n.id),
+        contentsByKeyword,
+        focusMaxHops,
+      );
+    } else {
+      // Use direct hopping (through keyword→keyword edges)
+      newState = createFocusState(
+        keywordId,
+        activeNodes.map(n => n.id),
+        activeEdges,
+        focusMaxHops,
+      );
+    }
+
     setFocusState(newState);
     focusEntryZRef.current = cameraZ ?? null;
 
@@ -387,6 +407,33 @@ export function TopicsView({
       onKeywordClick?.(node.label);
     }
   });
+
+  // Recompute focus state when strategy or max hops changes (while focus is active)
+  // Note: focusState is intentionally not in deps to avoid infinite loop and
+  // unnecessary recomputation when clicking keywords (which updates focusState directly)
+  useEffect(() => {
+    if (!focusState) return; // Only recompute if focus mode is active
+
+    let newState: FocusState;
+    if (focusStrategy === 'content-aware') {
+      newState = createContentAwareFocusState(
+        focusState.focusedKeywordId,
+        activeNodes.map(n => n.id),
+        contentsByKeyword,
+        focusMaxHops,
+      );
+    } else {
+      newState = createFocusState(
+        focusState.focusedKeywordId,
+        activeNodes.map(n => n.id),
+        activeEdges,
+        focusMaxHops,
+      );
+    }
+
+    setFocusState(newState);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusStrategy, focusMaxHops, activeNodes, activeEdges, contentsByKeyword]);
 
   // Background click clears focus mode
   const handleBackgroundClick = useStableCallback(() => {

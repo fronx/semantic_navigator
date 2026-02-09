@@ -582,6 +582,8 @@ export default function TopicsPage() {
             onChunkHover={handleContentHover}
             onKeywordHover={handleKeywordHover}
             searchQuery={searchQuery}
+            focusStrategy={settings.focusStrategy}
+            focusMaxHops={settings.focusMaxHops}
           />
 
           {creatingAt && (

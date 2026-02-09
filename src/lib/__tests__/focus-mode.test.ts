@@ -77,4 +77,35 @@ describe("createFocusState", () => {
       // (which the camera then pans to center).
     });
   });
+
+  describe("maxHops parameter", () => {
+    it("respects maxHops=1 (only 1-hop neighbors)", () => {
+      const state = createFocusState("b", ["a", "b", "c", "d"], edges, 1);
+      // b's 1-hop neighbors: a, c
+      expect(state.focusedNodeIds.has("b")).toBe(true);
+      expect(state.focusedNodeIds.has("a")).toBe(true);
+      expect(state.focusedNodeIds.has("c")).toBe(true);
+      // d is 2-hop, should be in margin
+      expect(state.marginNodeIds.has("d")).toBe(true);
+    });
+
+    it("respects maxHops=2 (1-hop and 2-hop neighbors)", () => {
+      const state = createFocusState("a", ["a", "b", "c", "d"], edges, 2);
+      // a's neighbors: b (1-hop), c (2-hop)
+      expect(state.focusedNodeIds.has("a")).toBe(true);
+      expect(state.focusedNodeIds.has("b")).toBe(true);
+      expect(state.focusedNodeIds.has("c")).toBe(true);
+      // d is 3-hop, should be in margin with maxHops=2
+      expect(state.marginNodeIds.has("d")).toBe(true);
+    });
+
+    it("defaults to maxHops=3 when not specified", () => {
+      const stateDefault = createFocusState("a", ["a", "b", "c", "d"], edges);
+      const stateExplicit = createFocusState("a", ["a", "b", "c", "d"], edges, 3);
+
+      // Should produce identical results
+      expect(stateDefault.focusedNodeIds).toEqual(stateExplicit.focusedNodeIds);
+      expect(stateDefault.marginNodeIds).toEqual(stateExplicit.marginNodeIds);
+    });
+  });
 });
