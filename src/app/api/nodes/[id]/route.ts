@@ -42,11 +42,16 @@ export async function GET(
       .select("*")
       .in("id", childIds);
 
-    // Fetch keywords for all children
+    // Fetch keywords for all children via keyword_occurrences
     const { data: childKeywords } = await supabase
-      .from("keywords")
-      .select("node_id, keyword")
-      .in("node_id", childIds);
+      .from("keyword_occurrences")
+      .select(`
+        node_id,
+        keywords!inner (
+          keyword
+        )
+      `)
+      .in("node_id", childIds) as any;
 
     // Group keywords by node_id
     const keywordsByNode = new Map<string, string[]>();
@@ -54,7 +59,8 @@ export async function GET(
       if (!keywordsByNode.has(kw.node_id)) {
         keywordsByNode.set(kw.node_id, []);
       }
-      keywordsByNode.get(kw.node_id)!.push(kw.keyword);
+      // @ts-ignore - Supabase types not updated yet
+      keywordsByNode.get(kw.node_id)!.push(kw.keywords.keyword);
     }
 
     // Sort by position

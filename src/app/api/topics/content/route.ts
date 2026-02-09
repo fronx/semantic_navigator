@@ -24,26 +24,29 @@ export async function POST(request: Request) {
     console.log(`[Chunks API] Querying for ${keywordLabels.length} keyword labels (${nodeTypeLabel})`);
     console.log('[Chunks API] First 5 labels:', keywordLabels.slice(0, 5));
 
-    // Query keywords table to get node_id for each keyword
-    // Join with nodes table to get content/summary
-    // Filter by nodeType (article or chunk)
+    // Query keywords table, join through keyword_occurrences to get nodes
+    // Filter by nodeType (article or chunk) via keyword_occurrences.node_type
+    // Note: Using 'any' cast because Supabase types don't include the new schema yet
     const { data, error } = await supabase
       .from('keywords')
       .select(`
         id,
         keyword,
-        node_id,
-        nodes!inner (
-          id,
-          content,
-          summary,
-          source_path
+        keyword_occurrences!inner (
+          node_id,
+          node_type,
+          nodes!inner (
+            id,
+            content,
+            summary,
+            source_path,
+            node_type
+          )
         )
       `)
       .in('keyword', keywordLabels)
-      .eq('nodes.node_type', nodeType);
+      .eq('keyword_occurrences.node_type', nodeType) as any;
 
-    console.log(`[Chunks API] Query returned ${data?.length ?? 0} ${nodeTypeLabel}`);
     if (error) {
       console.error('[Chunks API] Database error:', error);
       return NextResponse.json(
@@ -52,8 +55,37 @@ export async function POST(request: Request) {
       );
     }
 
+    // Flatten keyword_occurrences array (keyword can have multiple nodes)
+    // Transform to format expected by adapter
+    interface KeywordWithOccurrences {
+      id: string;
+      keyword: string;
+      keyword_occurrences: Array<{
+        node_id: string;
+        node_type: string;
+        nodes: {
+          id: string;
+          content: string | null;
+          summary: string | null;
+          source_path: string | null;
+          node_type: string;
+        };
+      }>;
+    }
+
+    const flatRows = ((data || []) as KeywordWithOccurrences[]).flatMap(kwRow =>
+      kwRow.keyword_occurrences.map(occ => ({
+        id: kwRow.id,
+        keyword: kwRow.keyword,
+        node_id: occ.node_id,
+        nodes: occ.nodes
+      }))
+    );
+
+    console.log(`[Chunks API] Query returned ${flatRows.length} ${nodeTypeLabel}`);
+
     // Transform to ChunkNode format using adapter
-    const chunks = (data || []).map(row => adaptToContentNode(row, nodeType));
+    const chunks = flatRows.map(row => adaptToContentNode(row, nodeType));
 
     return NextResponse.json({ chunks });
   } catch (error) {

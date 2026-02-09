@@ -426,11 +426,10 @@ async function addCommunityColors(
 
   for (let i = 0; i < keywordLabels.length; i += BATCH_SIZE) {
     const batch = keywordLabels.slice(i, i + BATCH_SIZE);
-    // Join keywords with keyword_communities to get community at specified level
+    // Get keyword IDs for article-level keywords (via keyword_occurrences)
     const { data } = await supabase
       .from("keywords")
       .select("id, keyword")
-      .eq("node_type", "article")
       .in("keyword", batch);
 
     if (!data || data.length === 0) continue;
@@ -490,11 +489,10 @@ async function collapseCommunitiesToHubs(
   for (let i = 0; i < keywordLabels.length; i += BATCH_SIZE) {
     const batch = keywordLabels.slice(i, i + BATCH_SIZE);
 
-    // Get keyword IDs
+    // Get keyword IDs (canonical keywords - one row per text)
     const { data: kwData, error } = await supabase
       .from("keywords")
       .select("id, keyword")
-      .eq("node_type", "article")
       .in("keyword", batch);
 
     if (error || !kwData) {
@@ -675,23 +673,26 @@ async function getFallbackFilteredMap(
   query: string,
   level: number
 ) {
-  // Query for matching articles and their non-synonym keywords
+  // Query for article-level keywords and their articles via keyword_occurrences
   const { data: articleKeywords, error } = await supabase
     .from("keywords")
     .select(`
       id,
       keyword,
       embedding_256,
-      node_id,
-      nodes!inner (
-        id,
-        source_path,
-        summary,
-        node_type
+      keyword_occurrences!inner (
+        node_id,
+        node_type,
+        nodes!inner (
+          id,
+          source_path,
+          summary,
+          node_type
+        )
       )
     `)
-    .eq("nodes.node_type", "article")
-    .not("embedding_256", "is", null);
+    .eq("keyword_occurrences.node_type", "article")
+    .not("embedding_256", "is", null) as any;
 
   if (error) {
     console.error("[map] Error fetching fallback keywords:", error);
@@ -703,30 +704,34 @@ async function getFallbackFilteredMap(
   const keywordsByArticle = new Map<string, Array<{ keyword: string; similarity: number }>>();
 
   for (const kw of articleKeywords || []) {
-    if (!kw.embedding_256 || !kw.nodes) continue;
-    const node = kw.nodes as { id: string; source_path: string; summary: string | null };
-    const emb = typeof kw.embedding_256 === "string" ? JSON.parse(kw.embedding_256) : kw.embedding_256;
-    const sim = cosineSimilarity(embedding256, emb);
+    if (!kw.embedding_256 || !kw.keyword_occurrences || kw.keyword_occurrences.length === 0) continue;
 
-    // Track article info
-    if (!articleInfo.has(node.id)) {
-      articleInfo.set(node.id, {
-        path: node.source_path,
-        size: node.summary?.length || 0,
-        hasMatch: false,
-      });
-    }
+    // A keyword can occur in multiple articles, iterate through all occurrences
+    for (const occ of kw.keyword_occurrences) {
+      const node = occ.nodes as { id: string; source_path: string; summary: string | null };
+      const emb = typeof kw.embedding_256 === "string" ? JSON.parse(kw.embedding_256) : kw.embedding_256;
+      const sim = cosineSimilarity(embedding256, emb);
 
-    // Mark as matching if any keyword >= threshold
-    if (sim >= synonymThreshold) {
-      articleInfo.get(node.id)!.hasMatch = true;
-    }
+      // Track article info
+      if (!articleInfo.has(node.id)) {
+        articleInfo.set(node.id, {
+          path: node.source_path,
+          size: node.summary?.length || 0,
+          hasMatch: false,
+        });
+      }
 
-    // Collect all keywords per article (we'll filter later)
-    if (!keywordsByArticle.has(node.id)) {
-      keywordsByArticle.set(node.id, []);
+      // Mark as matching if any keyword >= threshold
+      if (sim >= synonymThreshold) {
+        articleInfo.get(node.id)!.hasMatch = true;
+      }
+
+      // Collect all keywords per article (we'll filter later)
+      if (!keywordsByArticle.has(node.id)) {
+        keywordsByArticle.set(node.id, []);
+      }
+      keywordsByArticle.get(node.id)!.push({ keyword: kw.keyword, similarity: sim });
     }
-    keywordsByArticle.get(node.id)!.push({ keyword: kw.keyword, similarity: sim });
   }
 
   // Build nodes and edges for matching articles
@@ -793,11 +798,10 @@ async function expandHubKeyword(
   query: string,
   level: number
 ): Promise<string[] | null> {
-  // Find keyword ID for the query
+  // Find keyword ID for the query (keywords are now canonical)
   const { data: kwData } = await supabase
     .from("keywords")
     .select("id")
-    .eq("node_type", "article")
     .eq("keyword", query)
     .single();
 
@@ -866,26 +870,33 @@ async function getHubFilteredMap(
       .from("keywords")
       .select(`
         keyword,
-        node_id,
-        nodes!inner (
-          id,
-          source_path,
-          summary,
-          node_type
+        keyword_occurrences!inner (
+          node_id,
+          node_type,
+          nodes!inner (
+            id,
+            source_path,
+            summary,
+            node_type
+          )
         )
       `)
-      .eq("nodes.node_type", "article")
-      .in("keyword", batch);
+      .eq("keyword_occurrences.node_type", "article")
+      .in("keyword", batch) as any;
 
     for (const kw of keywordsWithArticles || []) {
-      if (!kw.nodes) continue;
-      const node = kw.nodes as { id: string; source_path: string; summary: string | null };
-      articleIds.add(node.id);
-      if (!articleInfo.has(node.id)) {
-        articleInfo.set(node.id, {
-          path: node.source_path,
-          size: node.summary?.length || 0,
-        });
+      if (!kw.keyword_occurrences || kw.keyword_occurrences.length === 0) continue;
+
+      // A keyword can occur in multiple articles
+      for (const occ of kw.keyword_occurrences) {
+        const node = occ.nodes as { id: string; source_path: string; summary: string | null };
+        articleIds.add(node.id);
+        if (!articleInfo.has(node.id)) {
+          articleInfo.set(node.id, {
+            path: node.source_path,
+            size: node.summary?.length || 0,
+          });
+        }
       }
     }
   }
@@ -912,30 +923,38 @@ async function getHubFilteredMap(
     nodes.push({ id: artNodeId, type: "article", label, size: info.size });
   }
 
-  // Fetch all keywords for these articles (batch the article IDs)
+  // Fetch all keywords for these articles via keyword_occurrences (batch the article IDs)
   const articleIdArray = [...articleIds];
   for (let i = 0; i < articleIdArray.length; i += BATCH_SIZE) {
     const batch = articleIdArray.slice(i, i + BATCH_SIZE);
     const { data: articleKeywords } = await supabase
-      .from("keywords")
-      .select("keyword, node_id")
+      .from("keyword_occurrences")
+      .select(`
+        node_id,
+        node_type,
+        keywords!inner (
+          keyword
+        )
+      `)
       .eq("node_type", "article")
-      .in("node_id", batch);
+      .in("node_id", batch) as any;
 
     for (const kw of articleKeywords || []) {
-      const kwNodeId = `kw:${kw.keyword}`;
+      // @ts-ignore - Supabase types not updated yet
+      const keyword = kw.keywords.keyword;
+      const kwNodeId = `kw:${keyword}`;
       const artNodeId = `art:${kw.node_id}`;
 
       // Add keyword node if not already added
       // Mark community keywords so they can be styled differently if desired
-      if (!addedKeywords.has(kw.keyword)) {
-        addedKeywords.add(kw.keyword);
+      if (!addedKeywords.has(keyword)) {
+        addedKeywords.add(keyword);
         nodes.push({
           id: kwNodeId,
           type: "keyword",
-          label: kw.keyword,
+          label: keyword,
           // Mark as part of the filter community for potential styling
-          communityId: communitySet.has(kw.keyword) ? -1 : undefined,
+          communityId: communitySet.has(keyword) ? -1 : undefined,
         });
       }
 
