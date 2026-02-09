@@ -87,3 +87,76 @@ export async function getOrCompute<TItem, TValue>(
 export function hash(content: string): string {
   return createHash("sha256").update(content).digest("hex").slice(0, 16);
 }
+
+/**
+ * Save Map to JSON file (converts Map to object).
+ */
+export async function saveMapCache<K extends string, V>(
+  map: Map<K, V>,
+  filePath: string
+): Promise<void> {
+  const obj = Object.fromEntries(map);
+  await fs.writeFile(filePath, JSON.stringify(obj, null, 2));
+}
+
+/**
+ * Load Map from JSON file (converts object back to Map).
+ */
+export async function loadMapCache<K extends string, V>(
+  filePath: string
+): Promise<Map<K, V>> {
+  try {
+    const data = await fs.readFile(filePath, "utf-8");
+    const obj = JSON.parse(data);
+    return new Map(Object.entries(obj)) as Map<K, V>;
+  } catch {
+    return new Map();
+  }
+}
+
+/**
+ * Save prepared keyword data for database insertion.
+ */
+export async function savePreparedKeywordData(
+  keywordRecords: Array<{
+    keyword: string;
+    embedding: number[];
+    embedding_256: number[];
+  }>,
+  keywordOccurrences: Array<{
+    keyword: string;
+    file_path: string;
+    chunk_position: number;
+  }>,
+  filePath = "./data/keywords-prepared.json"
+): Promise<void> {
+  await fs.writeFile(
+    filePath,
+    JSON.stringify({ keywordRecords, keywordOccurrences }, null, 2)
+  );
+}
+
+/**
+ * Load prepared keyword data from file.
+ */
+export async function loadPreparedKeywordData(
+  filePath = "./data/keywords-prepared.json"
+): Promise<{
+  keywordRecords: Array<{
+    keyword: string;
+    embedding: number[];
+    embedding_256: number[];
+  }>;
+  keywordOccurrences: Array<{
+    keyword: string;
+    file_path: string;
+    chunk_position: number;
+  }>;
+}> {
+  try {
+    const data = await fs.readFile(filePath, "utf-8");
+    return JSON.parse(data);
+  } catch {
+    return { keywordRecords: [], keywordOccurrences: [] };
+  }
+}

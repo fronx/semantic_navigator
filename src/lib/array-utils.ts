@@ -123,3 +123,15 @@ export function pickRepresentativeBy<T>(
     scoreFn(item) > scoreFn(best) ? item : best
   );
 }
+
+/**
+ * Split array into batches of specified size.
+ * Pure function: array → batched array.
+ */
+export function batch<T>(items: T[], batchSize: number): T[][] {
+  const batches: T[][] = [];
+  for (let i = 0; i < items.length; i += batchSize) {
+    batches.push(items.slice(i, i + batchSize));
+  }
+  return batches;
+}

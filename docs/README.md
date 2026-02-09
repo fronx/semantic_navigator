@@ -32,6 +32,7 @@
 
 ### Plans
 
+- [Incremental Ingestion Pipeline](plans/incremental-ingestion-pipeline.md) - Two-phase pipeline for processing unlimited articles with batched ingestion, idempotency, and resumability
 - [Click-to-Focus with Margin Push](plans/click-to-focus-margin-push.md) - Replace click-to-filter with animated focus mode that pushes non-neighbors to viewport margins
 
 ### Investigations
