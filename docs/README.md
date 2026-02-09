@@ -50,6 +50,7 @@
 - [ADR-006: Keyword node_type Denormalization](architecture/adr/006-keyword-node-type-denormalization.md) - Partial HNSW index for 8x map query speedup
 - [ADR-008: Semantic Zoom](architecture/adr/008-semantic-zoom.md) - Zoom-based graph filtering with position persistence
 - [ADR-010: Client-Side Clustering](architecture/adr/010-client-side-clustering.md) - Move Louvain clustering to client for graph topology consistency
+- [ADR-011: Semantic Cluster Coloring](architecture/adr/011-semantic-cluster-coloring.md) - Embedding-to-color mapping via PCA projection for stable, semantically meaningful node and cluster colors
 - [ADR-012: WebGL Memory Leak Fix](architecture/adr/012-webgl-memory-leak-fix.md) - Proper WebGL context disposal to prevent browser unresponsiveness
 - [ADR-013: Leiden Clustering with Precomputation](architecture/adr/013-leiden-clustering-precomputation.md) - Leiden algorithm for better peripheral cluster detection, with precomputed labels to reduce API costs
 - [ADR-014: Content-Based Level of Detail](architecture/adr/014-content-based-level-of-detail.md) - Zoom-based progressive disclosure of paragraph chunks with 3D layering and lazy loading

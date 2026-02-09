@@ -24,11 +24,18 @@ Map keyword embeddings to colors using PCA projection to 2D, then polar coordina
 ### Color Pipeline
 
 ```
-Embeddings (256-dim) → PCA (2-dim) → Polar coords → HSL color
-                                      angle → hue (0-360)
-                                      radius → saturation (50-100%)
-                                      fixed lightness (45%)
+Keyword embeddings (256-dim)
+  → PCA projection (2-dim)
+  → Polar coordinates
+      angle → hue (0-360°)
+      radius → saturation (50-100%)
+      fixed lightness (45%)
+  → HSL color
 ```
+
+**Input data**: Only keyword `embedding_256` vectors from the `keywords` table. Article/chunk content embeddings (1536-dim, in the `nodes` table) are not used — different dimensionality and purpose.
+
+**PCA computation**: Uses `ml-pca` library (SVD-based) for numerical stability. The transform is a 2×256 matrix stored as static JSON.
 
 ### Node Coloring Strategy
 
@@ -45,38 +52,50 @@ Two approaches blended via `colorMixRatio` slider (0-100%):
 
 Default is 30% mix, balancing cluster identity with individual variation.
 
+### Neighbor-Averaged Coloring
+
+An alternative coloring mode (`computeNeighborAveragedColors`) averages each node's PCA position with its graph neighbors before mapping to color. This creates local color coherence without depending on cluster assignments.
+
+### Desaturation
+
+All color functions support a `desaturation` parameter (0-1) that reduces chroma in LCH color space while preserving perceptual lightness. Used for dimming non-highlighted nodes during hover/filter interactions.
+
 ## Implementation
 
-### New Files
+### Files
 
 | File | Purpose |
 |------|---------|
-| `scripts/maintenance/compute-embedding-pca.ts` | One-time PCA computation script |
-| `public/data/embedding-pca-transform.json` | 2×256 transformation matrix |
-| `src/lib/semantic-colors.ts` | Color mapping functions |
+| `src/lib/embedding-pca.ts` | PCA computation library (fetches embeddings, computes transform) |
+| `src/lib/semantic-colors.ts` | Color mapping functions (PCA projection → polar → HSL) |
+| `public/data/embedding-pca-transform.json` | Pre-computed 2×256 transformation matrix |
+| `scripts/maintenance/compute-embedding-pca.ts` | Standalone maintenance script (uses library) |
 
-### Modified Files
-
-| File | Changes |
-|------|---------|
-| `src/lib/hull-renderer.ts` | Use centroid-based colors for hulls |
-| `src/lib/map-renderer.ts` | Cluster-based node coloring with mix ratio |
-| `src/components/TopicsView.tsx` | Load PCA transform, pass to renderer |
-| `src/app/topics/page.tsx` | Add "Color mix" slider |
+PCA is also computed automatically as Step 11 of the REPL ingestion script (`scripts/repl-explore-chunking.ts`).
 
 ### Key Functions
 
-**`semantic-colors.ts`:**
-- `pcaProject(embedding, transform)` - Apply PCA transform to get 2D coords
-- `coordinatesToHSL(x, y)` - Polar mapping to HSL
-- `centroidToColor(embeddings, transform)` - Cluster color from member embeddings
-- `computeClusterColorInfo(embeddings, transform)` - Base HSL + PCA centroid
-- `nodeColorFromCluster(embedding, clusterInfo, transform, mixRatio)` - Blended node color
+**`embedding-pca.ts`:**
+- `computeEmbeddingPCA(supabase?)` - Fetch all keyword embeddings and compute PCA transform
+- `fetchAllKeywordEmbeddings(supabase?)` - Paginated fetch of `embedding_256` from keywords table
 
-**`map-renderer.ts`:**
-- `computeClusterColors()` - Precompute ClusterColorInfo for all communities
-- `getNodeColor()` - Uses cluster info + mix ratio for keyword coloring
-- `updateVisuals()` - Updates colors instantly when slider moves
+**`semantic-colors.ts`:**
+- `loadPCATransform()` - Load pre-computed transform from static JSON (cached)
+- `pcaProject(embedding, transform)` - Project embedding to 2D
+- `coordinatesToHSL(x, y, desaturation?)` - Polar mapping to HSL color
+- `centroidToColor(embeddings, transform)` - Cluster color from member embedding centroid
+- `computeClusterColorInfo(embeddings, transform)` - Base HSL + PCA centroid for a cluster
+- `nodeColorFromCluster(embedding, clusterInfo, transform, mixRatio, desaturation?)` - Blended node color (cluster base + individual variation)
+- `computeClusterColors(communitiesMap, pcaTransform)` - Batch compute ClusterColorInfo for all communities
+- `computeNeighborAveragedColors(nodes, edges, transform)` - Graph-neighbor-averaged coloring
+- `clusterColorToCSS(info, desaturation?, contrast?, isDark?)` - Convert ClusterColorInfo to CSS string with optional contrast adjustment
+
+**Consumers** (pass `pcaTransform` through):
+- `src/components/TopicsView.tsx` - Loads PCA transform, passes to renderers
+- `src/lib/map-renderer.ts` - D3/SVG node and edge coloring
+- `src/lib/three/node-renderer.ts` - Three.js instanced node coloring
+- `src/lib/hull-renderer.ts` / `src/lib/three/hull-renderer.ts` - Hull coloring from cluster centroids
+- `src/lib/edge-colors.ts` - Edge coloring derived from source/target node colors
 
 ## Consequences
 
@@ -89,7 +108,7 @@ Default is 30% mix, balancing cluster identity with individual variation.
 
 ### Trade-offs
 
-- **PCA computation**: One-time script run when embeddings change (~2s for ~1800 keywords)
+- **PCA must be recomputed** when keyword embeddings change (runs automatically in ingestion pipeline, ~2s)
 - **Extra file load**: PCA transform JSON loaded on mount (~5KB)
 - **Color variation limited**: At low mix ratios, nodes within a cluster look similar (by design)
 
