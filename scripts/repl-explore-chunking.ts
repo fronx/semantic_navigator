@@ -334,6 +334,466 @@ await savePreparedData(keywordRecords, keywordOccurrences)
 await cacheUtils.saveCache('./data/chunks-keywords-deduplicated.json', Object.fromEntries(dedupedChunks))
 
 // ============================================================================
+// STEP 6: Content embeddings
+// ============================================================================
+
+// Get or generate content embeddings for articles and chunks
+let getOrGenerateContentEmbeddings = async (
+  articleSummaries,  // Map: filePath -> {title, type, teaser?, content?}
+  dedupedChunks,     // Map: filePath -> chunks[]
+  cachePath = './data/content-embeddings.json'
+) => {
+  console.log('\nGenerating content embeddings...')
+
+  // Check if already cached
+  let cached = await cacheUtils.loadCache(cachePath)
+  if (Object.keys(cached).length > 0) {
+    console.log('✓ Content embeddings already cached')
+    return cached
+  }
+
+  // Batch all texts: articles, then chunks
+  let textsToEmbed = []
+  let articlePaths = []
+  let chunkRefs = []  // {path, position}
+
+  // Collect article summaries
+  for (let [path, summary] of articleSummaries) {
+    // Use content if available (two-sentence summary), otherwise fall back to teaser
+    let text = summary.content || summary.teaser || ''
+    textsToEmbed.push(text)
+    articlePaths.push(path)
+  }
+
+  // Collect chunk contents
+  for (let [path, chunks] of dedupedChunks) {
+    for (let chunk of chunks) {
+      textsToEmbed.push(chunk.content)
+      chunkRefs.push({ path, position: chunk.position })
+    }
+  }
+
+  console.log(`  Batching ${textsToEmbed.length} texts (${articlePaths.length} articles + ${chunkRefs.length} chunks)`)
+
+  // Generate embeddings
+  let embeddingsArray = await embeddings.generateEmbeddingsBatched(
+    textsToEmbed,
+    (completed, total) => {
+      if (completed % 100 === 0 || completed === total) {
+        console.log(`  [${completed}/${total}] embeddings generated`)
+      }
+    }
+  )
+
+  // Split results
+  let articleEmbeddings = embeddingsArray.slice(0, articlePaths.length)
+  let chunkEmbeddings = embeddingsArray.slice(articlePaths.length)
+
+  // Structure results
+  let result = {
+    articles: {},
+    chunks: {}
+  }
+
+  // Map article embeddings
+  for (let i = 0; i < articlePaths.length; i++) {
+    result.articles[articlePaths[i]] = articleEmbeddings[i]
+  }
+
+  // Map chunk embeddings
+  for (let i = 0; i < chunkRefs.length; i++) {
+    let {path, position} = chunkRefs[i]
+    if (!result.chunks[path]) result.chunks[path] = {}
+    result.chunks[path][position] = chunkEmbeddings[i]
+  }
+
+  await cacheUtils.saveCache(cachePath, result)
+  console.log(`✓ Saved ${articlePaths.length} article + ${chunkRefs.length} chunk embeddings\n`)
+
+  return result
+}
+
+// ============================================================================
+// STEP 7: Content hashing
+// ============================================================================
+
+// Get or generate content hashes for files
+let getOrGenerateContentHashes = async (
+  files,  // Array of {path, content}
+  cachePath = './data/content-hashes.json'
+) => {
+  console.log('\nGenerating content hashes...')
+
+  return await cacheUtils.getOrCompute(
+    files,
+    cachePath,
+    (file) => file.path,
+    async (file) => {
+      let parsed = parseFile(file)
+      // Hash the parsed content (without frontmatter) like ingestion-chunks.ts does
+      return cacheUtils.hash(parsed.parsed.content)
+    },
+    {
+      onCached: (key, i, total) => console.log(`  [${i}/${total}] ✓ Cached: ${key.split('/').pop()}`),
+      onCompute: (key, i, total) => console.log(`  [${i}/${total}] ⟳ Hashing: ${key.split('/').pop()}`),
+      onComplete: (cached, generated) => console.log(`\n✓ Finished: ${cached} cached, ${generated} generated\n`)
+    }
+  )
+}
+
+// ============================================================================
+// STEP 8: Database payload preparation
+// ============================================================================
+
+// Prepare complete database insertion payloads (pure transformation, no DB access)
+let prepareDatabasePayloads = async (
+  articleSummaries,    // Map: filePath -> {title, type, teaser?, content?}
+  contentEmbeddings,   // {articles: {path: embedding}, chunks: {path: {pos: embedding}}}
+  contentHashes,       // Map: filePath -> hash
+  dedupedChunks,       // Map: filePath -> chunks[]
+  preparedData,        // {keywordRecords, keywordOccurrences}
+  cachePath = './data/db-payloads.json'
+) => {
+  console.log('\nPreparing database payloads...')
+
+  // Check if already cached
+  let cached = await cacheUtils.loadCache(cachePath)
+  if (cached.articles && cached.articles.length > 0) {
+    console.log(`✓ Database payloads already cached (${cached.articles.length} articles)`)
+    return cached
+  }
+
+  let payload = {
+    articles: [],
+    chunks: [],
+    keywords: preparedData.keywordRecords,  // Already prepared in Step 4
+    articleKeywords: {},   // path -> [keywords]
+    chunkKeywords: {},     // path -> {position -> [keywords]}
+    containmentEdges: []
+  }
+
+  // Build articles and chunks
+  for (let [path, summary] of articleSummaries) {
+    let articleHash = contentHashes.get(path)
+    let articleEmbed = contentEmbeddings.articles[path]
+    let chunks = dedupedChunks.get(path) || []
+
+    if (!articleHash || !articleEmbed) {
+      console.warn(`  ⚠ Missing hash or embedding for ${path}, skipping`)
+      continue
+    }
+
+    // Article node
+    let article = {
+      title: summary.title,
+      summary: summary.content || summary.teaser || '',
+      embedding: articleEmbed,
+      source_path: path,
+      content_hash: articleHash,
+      node_type: 'article'
+    }
+    payload.articles.push(article)
+
+    // Article-level keywords (extract from chunks - will be reduced later by LLM)
+    // For now, collect unique keywords from all chunks for this article
+    let articleKws = new Set()
+    for (let chunk of chunks) {
+      for (let kw of chunk.keywords) {
+        articleKws.add(kw)
+      }
+    }
+    payload.articleKeywords[path] = Array.from(articleKws)
+
+    // Chunk nodes and keywords
+    if (!payload.chunkKeywords[path]) {
+      payload.chunkKeywords[path] = {}
+    }
+
+    for (let chunk of chunks) {
+      let chunkEmbed = contentEmbeddings.chunks[path]?.[chunk.position]
+      if (!chunkEmbed) {
+        console.warn(`  ⚠ Missing embedding for chunk ${path}:${chunk.position}`)
+        continue
+      }
+
+      let chunkNode = {
+        content: chunk.content,
+        embedding: chunkEmbed,
+        source_path: path,
+        content_hash: articleHash,  // Same as parent article
+        node_type: 'chunk',
+        chunk_type: chunk.chunkType || null,
+        heading_context: chunk.headingContext.length > 0 ? chunk.headingContext : null,
+        position: chunk.position
+      }
+      payload.chunks.push(chunkNode)
+
+      // Chunk keywords
+      payload.chunkKeywords[path][chunk.position] = chunk.keywords
+
+      // Containment edge
+      payload.containmentEdges.push({
+        parent_source_path: path,
+        child_position: chunk.position,
+        position: chunk.position  // Order within parent
+      })
+    }
+  }
+
+  await cacheUtils.saveCache(cachePath, payload)
+  console.log(`✓ Prepared ${payload.articles.length} articles, ${payload.chunks.length} chunks`)
+  console.log(`  ${payload.keywords.length} unique keywords, ${payload.containmentEdges.length} edges\n`)
+
+  return payload
+}
+
+// ============================================================================
+// STEP 9: Database insertion
+// ============================================================================
+
+// Import Supabase client
+let supabaseLib = await use('@/lib/supabase')
+let ingestionChunks = await use('@/lib/ingestion-chunks')
+
+// Insert prepared payloads to database
+let insertToDatabase = async (payload, options = { dryRun: false }) => {
+  let supabase = supabaseLib.createServerClient()
+
+  console.log(`\n${options.dryRun ? '[DRY RUN] ' : ''}Inserting to database...`)
+  console.log(`  ${payload.articles.length} articles`)
+  console.log(`  ${payload.chunks.length} chunks`)
+  console.log(`  ${payload.keywords.length} keywords`)
+  console.log(`  ${payload.containmentEdges.length} containment edges`)
+
+  if (options.dryRun) {
+    console.log('\n✓ Dry run complete (no database changes)\n')
+    return { skipped: 0, created: 0, updated: 0 }
+  }
+
+  let stats = { skipped: 0, created: 0, updated: 0 }
+
+  // Group data by article for batch processing
+  let articlesByPath = new Map()
+  for (let article of payload.articles) {
+    articlesByPath.set(article.source_path, article)
+  }
+
+  let chunksByPath = new Map()
+  for (let chunk of payload.chunks) {
+    if (!chunksByPath.has(chunk.source_path)) {
+      chunksByPath.set(chunk.source_path, [])
+    }
+    chunksByPath.get(chunk.source_path).push(chunk)
+  }
+
+  // Build keyword map for lookup
+  let keywordMap = new Map()
+  for (let kw of payload.keywords) {
+    keywordMap.set(kw.keyword, kw)
+  }
+
+  // Process each article
+  for (let [path, article] of articlesByPath) {
+    console.log(`\n[${stats.created + stats.updated + stats.skipped + 1}/${payload.articles.length}] Processing: ${path.split('/').pop()}`)
+
+    // Check if article exists
+    let { data: existing } = await supabase
+      .from('nodes')
+      .select('id, content_hash')
+      .eq('source_path', path)
+      .eq('node_type', 'article')
+      .maybeSingle()
+
+    // Determine action
+    let action = ingestionChunks.determineImportAction(
+      existing,
+      article.content_hash,
+      options.forceReimport
+    )
+
+    if (action === 'skip') {
+      console.log('  → Skip (no changes)')
+      stats.skipped++
+      continue
+    }
+
+    if (action === 'reimport') {
+      console.log('  → Reimport (content changed)')
+      // Delete existing article and all descendants
+      await supabase.from('nodes').delete().eq('id', existing.id)
+      stats.updated++
+    } else {
+      console.log('  → Create (new)')
+      stats.created++
+    }
+
+    // Insert article node
+    let { data: articleNode, error: articleError } = await supabase
+      .from('nodes')
+      .insert({
+        content: null,
+        summary: article.summary,
+        content_hash: article.content_hash,
+        embedding: article.embedding,
+        node_type: 'article',
+        source_path: article.source_path,
+        title: article.title,
+        header_level: null,
+        chunk_type: null,
+        heading_context: null
+      })
+      .select()
+      .single()
+
+    if (articleError) throw articleError
+    console.log(`  ✓ Article created: ${articleNode.id}`)
+
+    // Insert chunk nodes
+    let chunks = chunksByPath.get(path) || []
+    let chunkNodes = []
+
+    for (let chunk of chunks) {
+      let { data: chunkNode, error: chunkError } = await supabase
+        .from('nodes')
+        .insert({
+          content: chunk.content,
+          summary: null,
+          content_hash: chunk.content_hash,
+          embedding: chunk.embedding,
+          node_type: 'chunk',
+          source_path: chunk.source_path,
+          title: null,
+          header_level: null,
+          chunk_type: chunk.chunk_type,
+          heading_context: chunk.heading_context
+        })
+        .select()
+        .single()
+
+      if (chunkError) throw chunkError
+      chunkNodes.push({ ...chunkNode, position: chunk.position })
+    }
+    console.log(`  ✓ ${chunks.length} chunks created`)
+
+    // Insert containment edges
+    let edges = payload.containmentEdges
+      .filter(e => e.parent_source_path === path)
+      .map(e => {
+        let chunkNode = chunkNodes.find(c => c.position === e.child_position)
+        return {
+          parent_id: articleNode.id,
+          child_id: chunkNode.id,
+          position: e.position
+        }
+      })
+
+    if (edges.length > 0) {
+      let { error: edgesError } = await supabase
+        .from('containment_edges')
+        .insert(edges)
+      if (edgesError) throw edgesError
+      console.log(`  ✓ ${edges.length} containment edges created`)
+    }
+
+    // Upsert keywords and create occurrences
+    let articleKws = payload.articleKeywords[path] || []
+    let chunkKws = payload.chunkKeywords[path] || {}
+
+    // Collect all unique keywords for this article
+    let allKws = new Set([...articleKws])
+    for (let kws of Object.values(chunkKws)) {
+      for (let kw of kws) allKws.add(kw)
+    }
+
+    // Upsert keywords
+    for (let kw of allKws) {
+      let kwData = keywordMap.get(kw)
+      if (!kwData) {
+        console.warn(`  ⚠ Keyword not found in prepared data: ${kw}`)
+        continue
+      }
+
+      let { data: kwRow, error: kwError } = await supabase
+        .from('keywords')
+        .upsert(
+          {
+            keyword: kwData.keyword,
+            embedding: kwData.embedding,
+            embedding_256: kwData.embedding_256
+          },
+          { onConflict: 'keyword' }
+        )
+        .select()
+        .single()
+
+      if (kwError) throw kwError
+
+      // Create occurrences for article-level keywords
+      if (articleKws.includes(kw)) {
+        await supabase
+          .from('keyword_occurrences')
+          .upsert(
+            {
+              keyword_id: kwRow.id,
+              node_id: articleNode.id,
+              node_type: 'article'
+            },
+            { onConflict: 'keyword_id,node_id' }
+          )
+      }
+
+      // Create occurrences for chunk-level keywords
+      for (let chunkNode of chunkNodes) {
+        let chunkKwList = chunkKws[chunkNode.position] || []
+        if (chunkKwList.includes(kw)) {
+          await supabase
+            .from('keyword_occurrences')
+            .upsert(
+              {
+                keyword_id: kwRow.id,
+                node_id: chunkNode.id,
+                node_type: 'chunk'
+              },
+              { onConflict: 'keyword_id,node_id' }
+            )
+        }
+      }
+    }
+    console.log(`  ✓ ${allKws.size} keywords upserted with occurrences`)
+  }
+
+  console.log(`\n✓ Database insertion complete`)
+  console.log(`  ${stats.created} created, ${stats.updated} updated, ${stats.skipped} skipped\n`)
+
+  return stats
+}
+
+// ============================================================================
+// NEW: Run Steps 6-9 to complete the pipeline
+// ============================================================================
+
+// Step 6: Generate content embeddings
+let contentEmbeddings = await getOrGenerateContentEmbeddings(
+  articleSummaries,
+  dedupedChunks
+)
+
+// Step 7: Generate content hashes
+let contentHashes = await getOrGenerateContentHashes(files.slice(0, 5))
+
+// Step 8: Prepare database payloads
+let dbPayloads = await prepareDatabasePayloads(
+  articleSummaries,
+  contentEmbeddings,
+  contentHashes,
+  dedupedChunks,
+  { keywordRecords, keywordOccurrences }
+)
+
+// Step 9: Insert to database (dry run by default - set dryRun: false to execute)
+// Uncomment to run: let dbStats = await insertToDatabase(dbPayloads, { dryRun: false })
+
+// ============================================================================
 // Start interactive REPL with all variables in scope
 // ============================================================================
 
@@ -345,9 +805,16 @@ console.log('  topSimilar, topSimilarCustom')
 console.log('  clusters, deduped')
 console.log('  mapping, dedupedChunks, finalKeywords')
 console.log('  keywordRecords, keywordOccurrences')
+console.log('  contentEmbeddings, contentHashes, dbPayloads')
 console.log('\nFiles saved:')
 console.log('  ./data/chunks-keywords-deduplicated.json')
 console.log('  ./data/keywords-prepared.json')
+console.log('  ./data/article-summaries.json')
+console.log('  ./data/content-embeddings.json')
+console.log('  ./data/content-hashes.json')
+console.log('  ./data/db-payloads.json')
+console.log('\nTo insert to database:')
+console.log('  await insertToDatabase(dbPayloads, { dryRun: false })')
 console.log('\nStarting REPL...\n')
 
 const replServer = repl.start({ prompt: '> ' })
@@ -361,11 +828,14 @@ Object.assign(replServer.context, {
   saveTopSimilar, loadTopSimilar,
   getFinalKeywords, prepareKeywordRecords, prepareKeywordOccurrences,
   savePreparedData, loadPreparedData,
+  getOrGenerateContentEmbeddings, getOrGenerateContentHashes,
+  prepareDatabasePayloads, insertToDatabase,
 
   // Library modules
   vault, parser, chunker, summarization, embeddings,
   mathUtils, llm, keywordSim, keywordDedup,
   cacheUtils, arrayUtils,
+  supabaseLib, ingestionChunks,
   fs,
 
   // Loaded data
@@ -379,6 +849,7 @@ Object.assign(replServer.context, {
   // Final prepared data
   mapping, dedupedChunks, finalKeywords,
   keywordRecords, keywordOccurrences,
+  contentEmbeddings, contentHashes, dbPayloads,
 })
 
 }

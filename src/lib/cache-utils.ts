@@ -79,3 +79,11 @@ export async function getOrCompute<TItem, TValue>(
 
   return results;
 }
+
+/**
+ * Generate SHA256 hash of content (first 16 characters).
+ * Used for change detection in ingestion pipeline.
+ */
+export function hash(content: string): string {
+  return createHash("sha256").update(content).digest("hex").slice(0, 16);
+}
