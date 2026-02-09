@@ -37,6 +37,7 @@ export async function POST(request: NextRequest) {
   console.log(`[search] Embed: ${embedTime.toFixed(0)}ms, RPC: ${rpcTime.toFixed(0)}ms, Total: ${totalTime.toFixed(0)}ms, results: ${(data as unknown[])?.length}`);
 
   if (error) {
+    console.error("[search] RPC error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
