@@ -6,9 +6,9 @@
 import type * as THREE from "three";
 
 // Screen-pixel-based constants (consistent at all zoom levels)
-export const PULL_LINE_PX = 50;     // from viewport edge — where pulled nodes are placed
-export const UI_PROXIMITY_PX = 20;   // extra margin on sides adjacent to UI chrome (sidebar left, header top)
-export const VIEWPORT_OVERSCAN_PX = 80; // extend margin detection beyond visible edge (prevents pop-in)
+export const PULL_LINE_PX = 25;     // from viewport edge — where pulled nodes are placed
+export const UI_PROXIMITY_PX = 10;   // extra margin on sides adjacent to UI chrome (sidebar left, header top)
+export const VIEWPORT_OVERSCAN_PX = 40; // extend margin detection beyond visible edge (prevents pop-in)
 
 export const MAX_PULLED_NODES = 20;          // keywords
 export const MAX_PULLED_CONTENT_NODES = 20;  // content
