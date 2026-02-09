@@ -188,7 +188,7 @@ export async function getKeywordBackbone(
 
   // Add community colors
   if (communityLevel >= 0 && nodes.length > 0) {
-    await addCommunityIds(supabase, nodes, communityLevel, nodeType);
+    await addCommunityIds(supabase, nodes, communityLevel);
   }
 
   return { nodes, edges };
@@ -278,8 +278,7 @@ async function computeNearestNeighborEdges(
 async function addCommunityIds(
   supabase: SupabaseClient,
   nodes: KeywordNode[],
-  level: number,
-  nodeType: 'article' | 'chunk'
+  level: number
 ): Promise<void> {
   const labels = nodes.map((n) => n.label);
     const communityByKeyword = new Map<string, number>();
@@ -287,11 +286,10 @@ async function addCommunityIds(
   for (let i = 0; i < labels.length; i += QUERY_BATCH_SIZE) {
     const batch = labels.slice(i, i + QUERY_BATCH_SIZE);
 
-    // Get keyword IDs for these labels
+    // Get keyword IDs for these labels (keywords are canonical - one per text)
     const { data: kwData } = await supabase
       .from("keywords")
       .select("id, keyword")
-      .eq("node_type", nodeType)
       .in("keyword", batch);
 
     if (!kwData || kwData.length === 0) continue;
@@ -334,27 +332,38 @@ export async function getArticlesForKeyword(
   const { data, error } = await supabase
     .from("keywords")
     .select(`
-      node_id,
-      nodes!inner (
-        id,
-        source_path,
-        summary
+      id,
+      keyword,
+      keyword_occurrences!inner (
+        node_id,
+        node_type,
+        nodes!inner (
+          id,
+          source_path,
+          summary
+        )
       )
     `)
-    .eq("node_type", "article")
-    .eq("keyword", keyword);
+    .eq("keyword_occurrences.node_type", "article")
+    .eq("keyword", keyword) as any;
 
   if (error) {
     console.error("[graph-queries] Error fetching articles for keyword:", error);
     throw new Error(`Failed to fetch articles: ${error.message}`);
   }
 
-  return (data || []).map((row) => {
-    const node = row.nodes as unknown as { id: string; source_path: string; summary: string | null };
-    return {
-      id: `art:${node.id}`,
-      label: node.source_path.split("/").pop()?.replace(".md", "") || node.source_path,
-      size: node.summary?.length || 100,
-    };
-  });
+  // Flatten keyword_occurrences array (keyword can occur in multiple articles)
+  interface KeywordWithOccurrences {
+    keyword_occurrences: Array<{
+      nodes: { id: string; source_path: string; summary: string | null };
+    }>;
+  }
+
+  return ((data || []) as KeywordWithOccurrences[]).flatMap((row) =>
+    row.keyword_occurrences.map((occ) => ({
+      id: `art:${occ.nodes.id}`,
+      label: occ.nodes.source_path.split("/").pop()?.replace(".md", "") || occ.nodes.source_path,
+      size: occ.nodes.summary?.length || 100,
+    }))
+  );
 }

@@ -162,8 +162,8 @@ async function deleteArticleWithChunks(
     }
   }
 
-  // Delete keywords for all nodes
-  await supabase.from("keywords").delete().in("node_id", allNodeIds);
+  // Delete keyword occurrences for all nodes (keywords themselves are canonical and may be reused)
+  await supabase.from("keyword_occurrences").delete().in("node_id", allNodeIds);
 
   // Delete containment edges
   await supabase.from("containment_edges").delete().in("parent_id", allNodeIds);
