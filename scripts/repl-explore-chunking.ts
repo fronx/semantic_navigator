@@ -5,9 +5,21 @@
  * how files get chunked and what keywords are extracted.
  *
  * Usage:
- *   1. Start REPL: npm run script
- *   2. Copy/paste sections below
- *   3. Modify the folderPath variable to point to your folder
+ *   npm run script scripts/repl-explore-chunking.ts [limit]
+ *
+ *   Arguments:
+ *     limit: (optional) Number of files to process
+ *            - Default: 5
+ *            - Use "all", "unlimited", or "0" for no limit
+ *            - Examples: 10, 20, all
+ *
+ *   Examples:
+ *     npm run script scripts/repl-explore-chunking.ts       # Process 5 files (default)
+ *     npm run script scripts/repl-explore-chunking.ts 10    # Process 10 files
+ *     npm run script scripts/repl-explore-chunking.ts all   # Process all files
+ *
+ * Configuration:
+ *   - Modify the folderPath variable below to point to your target folder
  *
  * Philosophy:
  *   Functions are small, composable, and pure transformations.
@@ -37,6 +49,7 @@ let summarization = await use('@/lib/summarization')
 let embeddings = await use('@/lib/embeddings')
 let cacheUtils = await use('@/lib/cache-utils')
 let arrayUtils = await use('@/lib/array-utils')
+let cliUtils = await use('@/lib/cli-utils')
 let fs = await import('fs/promises')
 let repl = await import('repl')
 
@@ -289,8 +302,20 @@ let loadPreparedData = async () => {
 // STEP 5: Example workflow
 // ============================================================================
 
-let chunksMap = await getOrGenerateChunks(files.slice(0, 5))
-let articleSummaries = await getOrGenerateArticleSummaries(files.slice(0, 5))
+// Parse file limit from command line arguments
+let fileLimit: number | null
+try {
+  fileLimit = cliUtils.parseLimit(process.argv[2], 5)
+} catch (error) {
+  console.error(error.message)
+  process.exit(1)
+}
+
+let filesToProcess = fileLimit === null ? files : files.slice(0, fileLimit)
+console.log(`\nProcessing ${filesToProcess.length} file(s) ${fileLimit === null ? '(no limit)' : `(limit: ${fileLimit})`}\n`)
+
+let chunksMap = await getOrGenerateChunks(filesToProcess)
+let articleSummaries = await getOrGenerateArticleSummaries(filesToProcess)
 let allChunks = Array.from(chunksMap.values()).flat()
 
 let keywords = keywordDedup.getUniqueKeywords(chunksMap)
@@ -779,7 +804,7 @@ let contentEmbeddings = await getOrGenerateContentEmbeddings(
 )
 
 // Step 7: Generate content hashes
-let contentHashes = await getOrGenerateContentHashes(files.slice(0, 5))
+let contentHashes = await getOrGenerateContentHashes(filesToProcess)
 
 // Step 8: Prepare database payloads
 let dbPayloads = await prepareDatabasePayloads(
@@ -834,7 +859,7 @@ Object.assign(replServer.context, {
   // Library modules
   vault, parser, chunker, summarization, embeddings,
   mathUtils, llm, keywordSim, keywordDedup,
-  cacheUtils, arrayUtils,
+  cacheUtils, arrayUtils, cliUtils,
   supabaseLib, ingestionChunks,
   fs,
 
