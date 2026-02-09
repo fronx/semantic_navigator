@@ -9,6 +9,7 @@ import type { SimNode } from "@/lib/map-renderer";
 import type { FocusState } from "@/lib/focus-mode";
 import { useThreeTextGeometry } from "@/hooks/useThreeTextGeometry";
 import { computeUnitsPerPixel, smoothstep } from "@/lib/three-text-utils";
+import { isDarkMode } from "@/lib/theme";
 
 function buildClusterSearchOpacity(
   nodeToCluster: Map<string, number> | undefined,
@@ -45,6 +46,8 @@ export interface ClusterLabels3DProps {
   labelFadeT?: number;
   /** Focus state — when active, only show cluster labels for clusters with focused nodes */
   focusState?: FocusState | null;
+  /** Shadow strength (0 = no shadow, 2 = extra strong) */
+  shadowStrength?: number;
 }
 
 const DEFAULT_MIN_SCREEN_PX = 18;
@@ -58,6 +61,7 @@ interface LabelRegistration {
   communityId: number;
   billboard: THREE.Group | null;
   material: THREE.MeshBasicMaterial;
+  shadowMaterial: THREE.MeshBasicMaterial;
   baseOpacity: number;
   baseFontSize: number;
   clusterNodes: SimNode[];
@@ -78,6 +82,7 @@ export function ClusterLabels3D({
   globalContrast = 0,
   labelFadeT = 0,
   focusState,
+  shadowStrength = 0.8,
 }: ClusterLabels3DProps) {
   const { camera, size } = useThree();
   const labelRegistry = useRef(new Map<number, LabelRegistration>());
@@ -98,7 +103,7 @@ export function ClusterLabels3D({
 
   useFrame(() => {
     labelRegistry.current.forEach((entry) => {
-      const { billboard, material, baseOpacity, baseFontSize, clusterNodes, labelZ } = entry;
+      const { billboard, material, shadowMaterial, baseOpacity, baseFontSize, clusterNodes, labelZ } = entry;
       if (!billboard) return;
       if (clusterNodes && clusterNodes.length > 0) {
         let sumX = 0;
@@ -123,9 +128,15 @@ export function ClusterLabels3D({
       const smooth = smoothstep(fadeT);
       const sizeFade = 1 - smooth;
       const finalOpacity = baseOpacity * sizeFade * (1 - labelFadeT);
+
+      // Update both label and shadow with identical opacity
       if (material.opacity !== finalOpacity) {
         material.opacity = finalOpacity;
         material.needsUpdate = true;
+      }
+      if (shadowMaterial.opacity !== finalOpacity) {
+        shadowMaterial.opacity = finalOpacity;
+        shadowMaterial.needsUpdate = true;
       }
     });
   });
@@ -195,6 +206,7 @@ export function ClusterLabels3D({
             registerLabel={registerLabel}
             clusterNodes={nodesInCluster}
             labelZ={labelZ}
+            shadowStrength={shadowStrength}
           />
         );
       })}
@@ -213,6 +225,7 @@ interface ClusterLabelSpriteProps {
   registerLabel: (communityId: number, data: LabelRegistration | null) => void;
   clusterNodes: SimNode[];
   labelZ: number;
+  shadowStrength: number;
 }
 
 function ClusterLabelSprite({
@@ -226,6 +239,7 @@ function ClusterLabelSprite({
   registerLabel,
   clusterNodes,
   labelZ,
+  shadowStrength,
 }: ClusterLabelSpriteProps) {
   const geometryEntry = useThreeTextGeometry({
     text,
@@ -254,6 +268,21 @@ function ClusterLabelSprite({
     [color, baseOpacity]
   );
 
+  // Shadow material (dark version for background)
+  const shadowMaterial = useMemo(() => {
+    const isDark = isDarkMode();
+    const shadowColor = isDark ? "#000000" : "#333333";
+    return new THREE.MeshBasicMaterial({
+      color: shadowColor,
+      transparent: true,
+      toneMapped: false,
+      depthTest: false,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      opacity: baseOpacity, // Updated dynamically in useFrame to match label
+    });
+  }, [baseOpacity]);
+
   useEffect(() => {
     material.color.set(color);
   }, [material, color]);
@@ -266,6 +295,10 @@ function ClusterLabelSprite({
     material.dispose();
   }, [material]);
 
+  useEffect(() => () => {
+    shadowMaterial.dispose();
+  }, [shadowMaterial]);
+
   useEffect(() => {
     if (!geometryEntry) {
       registerLabel(communityId, null);
@@ -276,6 +309,7 @@ function ClusterLabelSprite({
       communityId,
       billboard: billboardRef.current,
       material,
+      shadowMaterial,
       baseOpacity,
       baseFontSize,
       clusterNodes,
@@ -287,7 +321,7 @@ function ClusterLabelSprite({
       registerLabel(communityId, null);
       registrationRef.current = null;
     };
-  }, [communityId, geometryEntry, material, baseFontSize, registerLabel]);
+  }, [communityId, geometryEntry, material, shadowMaterial, baseFontSize, registerLabel]);
 
   useEffect(() => {
     if (registrationRef.current) {
@@ -316,6 +350,16 @@ function ClusterLabelSprite({
   return (
     <Billboard ref={setBillboardRef} position={position} follow={false} lockZ>
       <group position={[-anchorOffset[0], -anchorOffset[1], 0]}>
+        {/* Shadow layer positioned close behind text */}
+        {shadowStrength > 0 && (
+          <mesh
+            geometry={geometryEntry.geometry}
+            material={shadowMaterial}
+            position={[2, -2, -0.13]}
+            frustumCulled={false}
+          />
+        )}
+        {/* Label mesh (rendered last, appears in front) */}
         <mesh
           geometry={geometryEntry.geometry}
           material={material}

@@ -106,6 +106,8 @@ export interface TopicsViewProps {
   panelAnisotropicBlur?: number;
   /** Transmission panel thickness multiplier (scales auto-computed value) */
   panelThicknessMultiplier?: number;
+  /** Cluster label shadow strength (0 = no shadow, 2 = extra strong) */
+  clusterLabelShadowStrength?: number;
   /** Callback when cluster count changes */
   onClusterCountChange?: (count: number) => void;
   /** Callback when semantic filter state changes (for breadcrumb UI) */
@@ -169,6 +171,7 @@ export function TopicsView({
   panelTransmission = 0.97,
   panelAnisotropicBlur = 5.0,
   panelThicknessMultiplier = 1.0,
+  clusterLabelShadowStrength = 0.8,
   onClusterCountChange,
   onSemanticFilterChange,
   onChunkHover,
@@ -564,6 +567,7 @@ export function TopicsView({
           nodeToCluster={nodeToCluster}
           searchOpacities={nodeOpacities}
           cameraZ={cameraZ}
+          clusterLabelShadowStrength={clusterLabelShadowStrength}
           onKeywordClick={handleFocusClick}
           onKeywordLabelClick={handleFocusClick}
           onClusterLabelClick={handleClusterLabelClick}

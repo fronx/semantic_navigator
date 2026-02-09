@@ -108,6 +108,8 @@ export interface R3FTopicsSceneProps {
   cameraZ?: number;
   /** Runtime cluster IDs map (for label rendering) */
   nodeToCluster?: Map<string, number>;
+  /** Cluster label shadow strength (0 = no shadow, 2 = extra strong) */
+  clusterLabelShadowStrength?: number;
   onProjectClick?: (projectId: string) => void;
   onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
   onZoomChange?: (zoomScale: number) => void;
@@ -157,6 +159,7 @@ export function R3FTopicsScene({
   searchOpacities,
   cameraZ,
   nodeToCluster,
+  clusterLabelShadowStrength,
   onProjectClick,
   onProjectDrag,
   onZoomChange,
@@ -517,6 +520,7 @@ export function R3FTopicsScene({
           globalContrast={getGlobalContrastParams().amount}
           labelFadeT={labelFadeT}
           focusState={focusState}
+          shadowStrength={clusterLabelShadowStrength}
         />
       )}
 

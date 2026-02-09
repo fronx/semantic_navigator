@@ -373,6 +373,22 @@ export function ControlSidebar({
               step={0.05}
               format={(v) => `${(v * 100).toFixed(0)}%`}
             />
+
+            {/* Cluster Labels subsection */}
+            <div className="pt-2 mt-2 border-t border-zinc-200 dark:border-zinc-700">
+              <div className="text-[10px] uppercase tracking-wider font-semibold text-zinc-400 dark:text-zinc-500 mb-2">
+                Cluster Labels
+              </div>
+              <Slider
+                label="Shadow"
+                value={settings.clusterLabelShadowStrength}
+                onChange={(v) => update("clusterLabelShadowStrength", v)}
+                min={0}
+                max={2.0}
+                step={0.1}
+                format={(v) => v.toFixed(1)}
+              />
+            </div>
           </Section>
 
           {/* Graph */}

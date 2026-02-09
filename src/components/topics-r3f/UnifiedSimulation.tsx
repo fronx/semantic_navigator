@@ -98,7 +98,7 @@ function tetherToParent(
       if (closestParentId) {
         const contentCount = contentCountsByParent.get(closestParentId) ?? 1;
         const baseDistance = keywordRadius * baseDistanceMultiplier;
-        const additionalSpace = Math.sqrt(contentCount) * contentRadius * contentSpreadFactor;
+        const additionalSpace = Math.log(contentCount) * contentRadius * contentSpreadFactor;
         const maxDistance = baseDistance + additionalSpace;
 
         if (closestDist > maxDistance) {
@@ -159,7 +159,7 @@ export function UnifiedSimulation({
 
   // Calculate radii for collision and tethering
   const keywordRadius = BASE_DOT_RADIUS * DOT_SCALE_FACTOR;
-  const contentRadius = keywordRadius * contentSizeMultiplier * 1.2;
+  const contentRadius = keywordRadius * contentSizeMultiplier * 1.0;
 
   // Convert keyword nodes to SimNode format (needed for createContentNodes)
   const keywordSimNodes = useMemo(() => {
@@ -251,8 +251,8 @@ export function UnifiedSimulation({
         keywordRadius,
         contentRadius,
         springStrength,
-        2.5, // baseDistanceMultiplier
-        1.5  // contentSpreadFactor
+        2.0, // baseDistanceMultiplier
+        1.0  // contentSpreadFactor
       ))
       .force("center", d3.forceCenter(0, 0))
       .alphaDecay(0.01)

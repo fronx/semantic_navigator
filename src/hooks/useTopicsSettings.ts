@@ -53,6 +53,8 @@ export interface TopicsSettings {
   dynamicClustering: boolean;
   /** Use unified simulation (keywords + content in single simulation) vs separate simulations */
   unifiedSimulation: boolean;
+  /** Cluster label shadow strength (0 = no shadow, 2 = extra strong) */
+  clusterLabelShadowStrength: number;
 
   // UI state
   sidebarCollapsed: boolean;
@@ -91,6 +93,7 @@ const DEFAULT_SETTINGS: TopicsSettings = {
   panelThicknessMultiplier: 1.0,
   dynamicClustering: true,
   unifiedSimulation: false,
+  clusterLabelShadowStrength: 0.8,
   sidebarCollapsed: false,
   sectionStates: {
     Renderer: true,

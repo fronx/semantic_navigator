@@ -65,6 +65,8 @@ export interface R3FTopicsCanvasProps {
   searchOpacities?: Map<string, number>;
   /** Current camera Z position for zoom-dependent effects */
   cameraZ?: number;
+  /** Cluster label shadow strength (0 = no shadow, 2 = extra strong) */
+  clusterLabelShadowStrength?: number;
   onKeywordClick?: (keyword: string) => void;
   onKeywordLabelClick?: (keywordId: string) => void;
   onClusterLabelClick?: (clusterId: number) => void;
@@ -113,6 +115,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     nodeToCluster,
     searchOpacities,
     cameraZ,
+    clusterLabelShadowStrength,
     onKeywordClick,
     onKeywordLabelClick,
     onClusterLabelClick,
@@ -275,6 +278,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
           searchOpacities={searchOpacities}
           cameraZ={cameraZ}
           nodeToCluster={nodeToCluster ?? undefined}
+          clusterLabelShadowStrength={clusterLabelShadowStrength}
           onProjectClick={onProjectClick}
           onProjectDrag={onProjectDrag}
           onZoomChange={onZoomChange}

@@ -552,6 +552,7 @@ export default function TopicsPage() {
             degreeSizeMax={settings.degreeSizeMax}
             contentSizeMultiplier={settings.contentSizeMultiplier}
             contentTextContrast={settings.contentTextContrast}
+            clusterLabelShadowStrength={settings.clusterLabelShadowStrength}
             contentSpringStrength={settings.contentSpringStrength}
             chargeStrength={settings.chargeStrength}
             unifiedSimulation={settings.unifiedSimulation}
