@@ -413,6 +413,16 @@ export function ControlSidebar({
                 step={0.1}
                 format={(v) => v.toFixed(1)}
               />
+              <Checkbox
+                label="Semantic fonts (clusters)"
+                checked={settings.useSemanticFontsForClusters}
+                onChange={(v) => update("useSemanticFontsForClusters", v)}
+              />
+              <Checkbox
+                label="Semantic fonts (keywords)"
+                checked={settings.useSemanticFontsForKeywords}
+                onChange={(v) => update("useSemanticFontsForKeywords", v)}
+              />
             </div>
           </Section>
 

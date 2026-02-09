@@ -68,8 +68,27 @@ Required variables:
 - `OPENAI_API_KEY` - for embeddings
 - `ANTHROPIC_API_KEY` - for summarization
 - `VAULT_PATH` - path to your Obsidian vault
+- `GOOGLE_FONTS_API_KEY` - for downloading semantic fonts (optional, get from [Google Fonts API](https://developers.google.com/fonts/docs/developer_api))
 
-### 4. Run
+### 4. Download semantic fonts
+
+Cluster labels and keywords use semantically-matched Google Fonts for visual distinction:
+
+```bash
+npm run script scripts/prepare-keyword-fonts.ts
+```
+
+This will:
+- Fetch Google Fonts metadata (~1800 fonts with semantic tags)
+- Match keywords/cluster labels to appropriate fonts using Claude Haiku
+- Download matched fonts (~400 fonts, ~15 MB total)
+- Generate TypeScript mapping file
+
+**Cost:** ~$0.36 in Claude Haiku API calls (batch processing, 50 keywords per call)
+
+See [scripts/fonts/README.md](scripts/fonts/README.md) for details on the matching pipeline.
+
+### 5. Run
 
 ```bash
 npm run dev

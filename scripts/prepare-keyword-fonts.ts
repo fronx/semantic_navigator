@@ -267,12 +267,26 @@ async function step4_generateMapping(): Promise<void> {
   const lines = (await fs.readFile(RESULTS_JSONL_PATH, "utf-8")).trim().split("\n");
   const results: FontMatchResult[] = lines.map((line) => JSON.parse(line));
 
-  // Build mapping (keyword -> font family)
+  // Build mapping (keyword -> font family), only for fonts that were successfully downloaded
   const mapping: Record<string, string> = {};
+  let skippedMissing = 0;
+
   for (const result of results) {
     if (result.selectedFont) {
-      mapping[result.keyword] = result.selectedFont;
+      // Check if font file exists
+      const safeFamily = result.selectedFont.replace(/\s+/g, "-").replace(/[^a-zA-Z0-9-]/g, "");
+      const fontPath = path.join(FONTS_DIR, `${safeFamily}.woff2`);
+
+      if (await checkFileExists(fontPath)) {
+        mapping[result.keyword] = result.selectedFont;
+      } else {
+        skippedMissing++;
+      }
     }
+  }
+
+  if (skippedMissing > 0) {
+    console.log(`⚠ Skipped ${skippedMissing} keywords with missing font files (will use fallback)`);
   }
 
   // Generate TypeScript file

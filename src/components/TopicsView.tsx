@@ -110,6 +110,10 @@ export interface TopicsViewProps {
   panelThicknessMultiplier?: number;
   /** Cluster label shadow strength (0 = no shadow, 2 = extra strong) */
   clusterLabelShadowStrength?: number;
+  /** Use semantically-matched fonts for cluster labels */
+  useSemanticFontsForClusters?: boolean;
+  /** Use semantically-matched fonts for keyword labels */
+  useSemanticFontsForKeywords?: boolean;
   /** Callback when cluster count changes */
   onClusterCountChange?: (count: number) => void;
   /** Callback when semantic filter state changes (for breadcrumb UI) */
@@ -179,6 +183,8 @@ export function TopicsView({
   panelAnisotropicBlur = 5.0,
   panelThicknessMultiplier = 1.0,
   clusterLabelShadowStrength = 0.8,
+  useSemanticFontsForClusters = true,
+  useSemanticFontsForKeywords = true,
   onClusterCountChange,
   onSemanticFilterChange,
   onChunkHover,
@@ -619,6 +625,8 @@ export function TopicsView({
           searchOpacities={nodeOpacities}
           cameraZ={cameraZ}
           clusterLabelShadowStrength={clusterLabelShadowStrength}
+          useSemanticFontsForClusters={useSemanticFontsForClusters}
+          useSemanticFontsForKeywords={useSemanticFontsForKeywords}
           onKeywordClick={handleFocusClick}
           onKeywordLabelClick={handleFocusClick}
           onClusterLabelClick={handleClusterLabelClick}

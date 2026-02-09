@@ -1,0 +1,20 @@
+Fonts in this directory are from Google Fonts (https://fonts.google.com/)
+
+All fonts are licensed under open source licenses, primarily:
+- SIL Open Font License 1.1 (OFL) - http://scripts.sil.org/OFL
+- Apache License 2.0 - http://www.apache.org/licenses/LICENSE-2.0
+
+Each font retains its original license. For specific license information for
+each font, see:
+https://fonts.google.com/specimen/[Font+Name]/license
+
+Example:
+- Dancing Script: https://fonts.google.com/specimen/Dancing+Script/license
+- Monoton: https://fonts.google.com/specimen/Monoton/license
+
+These fonts were selected through an automated semantic matching process and
+are used for cluster label typography in this application.
+
+Generated: 2026-02-09
+Font Count: 66
+Pipeline: scripts/prepare-keyword-fonts.ts

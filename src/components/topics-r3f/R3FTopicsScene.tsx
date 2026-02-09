@@ -112,6 +112,10 @@ export interface R3FTopicsSceneProps {
   nodeToCluster?: Map<string, number>;
   /** Cluster label shadow strength (0 = no shadow, 2 = extra strong) */
   clusterLabelShadowStrength?: number;
+  /** Use semantically-matched fonts for cluster labels */
+  useSemanticFontsForClusters?: boolean;
+  /** Use semantically-matched fonts for keyword labels */
+  useSemanticFontsForKeywords?: boolean;
   onProjectClick?: (projectId: string) => void;
   onProjectDrag?: (projectId: string, position: { x: number; y: number }) => void;
   onZoomChange?: (zoomScale: number) => void;
@@ -163,6 +167,8 @@ export function R3FTopicsScene({
   cameraZ,
   nodeToCluster,
   clusterLabelShadowStrength,
+  useSemanticFontsForClusters = true,
+  useSemanticFontsForKeywords = true,
   onProjectClick,
   onProjectDrag,
   onZoomChange,
@@ -531,6 +537,7 @@ export function R3FTopicsScene({
           labelFadeT={labelFadeT}
           focusState={focusState}
           shadowStrength={clusterLabelShadowStrength}
+          useSemanticFonts={useSemanticFontsForClusters}
         />
       )}
 
@@ -555,6 +562,7 @@ export function R3FTopicsScene({
           flyToRef={flyToRef}
           onKeywordHover={onKeywordHover}
           onKeywordClick={onKeywordClick}
+          useSemanticFonts={useSemanticFontsForKeywords}
         />
       )}
 

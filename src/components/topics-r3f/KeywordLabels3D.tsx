@@ -16,8 +16,7 @@ import { isDarkMode } from "@/lib/theme";
 import type { LabelRefs } from "./R3FLabelContext";
 import { handleKeywordClick, handleKeywordHover } from "@/lib/keyword-interaction-handlers";
 import { KEYWORD_TIER_SCALES } from "@/lib/semantic-filter-config";
-
-const FONT_DEFAULT = "/fonts/source-code-pro-regular.woff2";
+import { getFontPath } from "@/lib/keyword-fonts";
 const LABEL_LINE_HEIGHT = 1.05;
 const DEFAULT_MIN_SCREEN_PX = 12;
 const DEFAULT_MAX_SCREEN_PX = 18;
@@ -78,6 +77,8 @@ export interface KeywordLabels3DProps {
   flyToRef?: MutableRefObject<((x: number, y: number) => void) | null>;
   onKeywordHover?: (keywordId: string | null) => void;
   onKeywordClick?: (keywordId: string) => void;
+  /** Use semantically-matched fonts (default true) */
+  useSemanticFonts?: boolean;
 }
 
 export function KeywordLabels3D({
@@ -104,6 +105,7 @@ export function KeywordLabels3D({
   flyToRef,
   onKeywordHover,
   onKeywordClick,
+  useSemanticFonts = true,
 }: KeywordLabels3DProps) {
   const { camera, size } = useThree();
   const labelRegistry = useRef(new Map<string, LabelRegistration>());
@@ -347,6 +349,7 @@ export function KeywordLabels3D({
           flyToRef={flyToRef}
           onKeywordHover={onKeywordHover}
           onKeywordClick={onKeywordClick}
+          useSemanticFonts={useSemanticFonts}
         />
       ))}
     </>
@@ -366,6 +369,7 @@ interface KeywordLabelSpriteProps {
   flyToRef?: MutableRefObject<((x: number, y: number) => void) | null>;
   onKeywordHover?: (keywordId: string | null) => void;
   onKeywordClick?: (keywordId: string) => void;
+  useSemanticFonts: boolean;
 }
 
 function KeywordLabelSprite({
@@ -381,11 +385,18 @@ function KeywordLabelSprite({
   flyToRef,
   onKeywordHover,
   onKeywordClick,
+  useSemanticFonts,
 }: KeywordLabelSpriteProps) {
+  // Get semantic font for this keyword (falls back to default if disabled)
+  const fontUrl = useMemo(
+    () => (useSemanticFonts ? getFontPath(text) : "/fonts/source-code-pro-regular.woff2"),
+    [text, useSemanticFonts]
+  );
+
   const geometryEntry = useThreeTextGeometry({
     text,
     fontSize: baseFontSize,
-    fontUrl: FONT_DEFAULT,
+    fontUrl,
     lineHeight: LABEL_LINE_HEIGHT,
     maxWidth: 150,
     hyphenate: false,

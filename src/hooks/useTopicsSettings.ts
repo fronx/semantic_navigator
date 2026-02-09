@@ -60,6 +60,10 @@ export interface TopicsSettings {
   focusStrategy: 'direct' | 'content-aware';
   /** Maximum number of hops in focus mode (1-3) */
   focusMaxHops: number;
+  /** Use semantically-matched fonts for cluster labels */
+  useSemanticFontsForClusters: boolean;
+  /** Use semantically-matched fonts for keyword labels */
+  useSemanticFontsForKeywords: boolean;
 
   // UI state
   sidebarCollapsed: boolean;
@@ -101,6 +105,8 @@ const DEFAULT_SETTINGS: TopicsSettings = {
   clusterLabelShadowStrength: 0.8,
   focusStrategy: 'direct',
   focusMaxHops: 3,
+  useSemanticFontsForClusters: true,
+  useSemanticFontsForKeywords: true,
   sidebarCollapsed: false,
   sectionStates: {
     Renderer: true,

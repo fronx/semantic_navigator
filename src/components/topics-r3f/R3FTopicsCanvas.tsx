@@ -68,6 +68,10 @@ export interface R3FTopicsCanvasProps {
   cameraZ?: number;
   /** Cluster label shadow strength (0 = no shadow, 2 = extra strong) */
   clusterLabelShadowStrength?: number;
+  /** Use semantically-matched fonts for cluster labels */
+  useSemanticFontsForClusters?: boolean;
+  /** Use semantically-matched fonts for keyword labels */
+  useSemanticFontsForKeywords?: boolean;
   onKeywordClick?: (keyword: string) => void;
   onKeywordLabelClick?: (keywordId: string) => void;
   onClusterLabelClick?: (clusterId: number) => void;
@@ -118,6 +122,8 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     searchOpacities,
     cameraZ,
     clusterLabelShadowStrength,
+    useSemanticFontsForClusters,
+    useSemanticFontsForKeywords,
     onKeywordClick,
     onKeywordLabelClick,
     onClusterLabelClick,
@@ -282,6 +288,8 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
           cameraZ={cameraZ}
           nodeToCluster={nodeToCluster ?? undefined}
           clusterLabelShadowStrength={clusterLabelShadowStrength}
+          useSemanticFontsForClusters={useSemanticFontsForClusters}
+          useSemanticFontsForKeywords={useSemanticFontsForKeywords}
           onProjectClick={onProjectClick}
           onProjectDrag={onProjectDrag}
           onZoomChange={onZoomChange}

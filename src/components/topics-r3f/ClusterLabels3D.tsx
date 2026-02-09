@@ -49,6 +49,8 @@ export interface ClusterLabels3DProps {
   focusState?: FocusState | null;
   /** Shadow strength (0 = no shadow, 2 = extra strong) */
   shadowStrength?: number;
+  /** Use semantically-matched fonts (default true) */
+  useSemanticFonts?: boolean;
 }
 
 const DEFAULT_MIN_SCREEN_PX = 14;
@@ -83,6 +85,7 @@ export function ClusterLabels3D({
   labelFadeT = 0,
   focusState,
   shadowStrength = 0.8,
+  useSemanticFonts = true,
 }: ClusterLabels3DProps) {
   const { camera, size } = useThree();
   const labelRegistry = useRef(new Map<number, LabelRegistration>());
@@ -206,6 +209,7 @@ export function ClusterLabels3D({
             clusterNodes={nodesInCluster}
             labelZ={labelZ}
             shadowStrength={shadowStrength}
+            useSemanticFonts={useSemanticFonts}
           />
         );
       })}
@@ -226,6 +230,7 @@ interface ClusterLabelSpriteProps {
   clusterNodes: SimNode[];
   labelZ: number;
   shadowStrength: number;
+  useSemanticFonts: boolean;
 }
 
 function ClusterLabelSprite({
@@ -241,9 +246,13 @@ function ClusterLabelSprite({
   clusterNodes,
   labelZ,
   shadowStrength,
+  useSemanticFonts,
 }: ClusterLabelSpriteProps) {
-  // Get semantic font for this label (falls back to default if no match)
-  const fontUrl = useMemo(() => getFontPath(label), [label]);
+  // Get semantic font for this label (falls back to default if disabled)
+  const fontUrl = useMemo(
+    () => (useSemanticFonts ? getFontPath(label) : "/fonts/source-code-pro-regular.woff2"),
+    [label, useSemanticFonts]
+  );
 
   const geometryEntry = useThreeTextGeometry({
     text,

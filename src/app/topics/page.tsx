@@ -570,6 +570,8 @@ export default function TopicsPage() {
             contentSizeMultiplier={settings.contentSizeMultiplier}
             contentTextContrast={settings.contentTextContrast}
             clusterLabelShadowStrength={settings.clusterLabelShadowStrength}
+            useSemanticFontsForClusters={settings.useSemanticFontsForClusters}
+            useSemanticFontsForKeywords={settings.useSemanticFontsForKeywords}
             contentSpringStrength={settings.contentSpringStrength}
             chargeStrength={settings.chargeStrength}
             unifiedSimulation={settings.unifiedSimulation}
