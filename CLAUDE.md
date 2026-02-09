@@ -23,8 +23,8 @@ This project has a code-simplifier agent. After implementing features or fixes, 
 
 ## Common Pitfalls
 
-**Label Flicker Bug (occurred 2x: 2026-02-06, 2026-02-07)**: When labels flicker on mouse movement or content updates, the cause is unstable dependencies in the label manager's `useEffect`. This destroys and recreates the manager on every render. **Pattern to follow:**
-- Use `useStableCallback` for all callbacks passed to `LabelsOverlay`
+**Label Flicker Bug (occurred 2x: 2026-02-06, 2026-02-07)**: When labels flicker on mouse movement or content updates, the cause is unstable dependencies in `useEffect` that destroy and recreate expensive objects every render. **Pattern to follow:**
+- Use `useStableCallback` for all callbacks passed as props to label/overlay components
 - Use refs (not direct closure) for frequently-changing data like Maps
 - Wrap expensive effects with `useStableEffect` to detect instability
 - See [`docs/patterns/label-manager-stability.md`](docs/patterns/label-manager-stability.md) for full pattern and [`docs/patterns/enforcing-stability.md`](docs/patterns/enforcing-stability.md) for prevention tools
@@ -61,7 +61,7 @@ npx tsc --noEmit     # Type check
 
 **When to run tests:**
 - After modifying `src/lib/parser.ts` - parser tests verify frontmatter stripping and hierarchy generation
-- After modifying `src/lib/ingestion.ts` - verify node creation logic
+- After modifying `src/lib/ingestion-*.ts` - verify node creation logic
 - Before committing significant changes
 - After fixing bugs (add a regression test first, verify it fails, then fix)
 
@@ -75,7 +75,7 @@ Semantic Navigator is a knowledge base tool that imports markdown files, atomize
 
 1. **Import**: User selects files from vault browser
 2. **Parse**: `src/lib/parser.ts` uses mdast to parse markdown into hierarchical sections
-3. **Ingest**: `src/lib/ingestion.ts` creates nodes in Supabase with embeddings and summaries
+3. **Ingest**: `src/lib/ingestion-parallel.ts` orchestrates node creation in Supabase with embeddings and summaries (split across `ingestion-chunks.ts` and `ingestion-utils.ts`)
 4. **Search**: Vector similarity search via pgvector's `search_similar` RPC function
 
 ### Key Abstractions
@@ -99,15 +99,17 @@ Semantic Navigator is a knowledge base tool that imports markdown files, atomize
 - **MapView** uses `keyword_communities` table (Louvain, 8 levels) - for article-keyword bipartite graphs
 - **TopicsView** uses `precomputed_topic_clusters` table (Leiden, 8 resolutions) - for pure keyword graphs with client-side fallback
 - See [Clustering Systems Guide](docs/guides/clustering-systems.md) for inspection tools, maintenance, and detailed comparison
-- Inspect current state: `npm run script scripts/inspect-keyword-communities.ts`
 
 ### Core Files
 
 - `src/lib/parser.ts` - Markdown parsing with AST, strips frontmatter, extracts backlinks
-- `src/lib/ingestion.ts` - Orchestrates node creation, embeddings, and summarization
+- `src/lib/ingestion-parallel.ts` - Orchestrates node creation, embeddings, and summarization (with `ingestion-chunks.ts`, `ingestion-utils.ts`)
 - `src/lib/summarization.ts` - Claude API calls for summaries and keyword extraction
 - `src/lib/embeddings.ts` - OpenAI embedding generation
 - `src/lib/graph-queries.ts` - Reusable database queries for graph data (keyword backbone, similarity edges)
+- `src/lib/embedding-pca.ts` - PCA dimensionality reduction for embeddings (used in spatial layout)
+- `src/lib/keyword-deduplication.ts` / `keyword-similarity.ts` - Semantic keyword dedup during ingestion
+- `src/lib/focus-mode.ts` - Focus mode state management for filtered exploration
 - `supabase/schema.sql` - Database schema with pgvector setup
 
 ### Core Hooks
@@ -115,11 +117,14 @@ Semantic Navigator is a knowledge base tool that imports markdown files, atomize
 - `src/hooks/useSemanticZoom.ts` - Filter graph data based on zoom level using community hierarchy
 - `src/hooks/useClusterLabels.ts` - Generate cluster labels via LLM with caching
 - `src/hooks/useStableRef.ts` - Prevent React effect re-runs for callbacks (see `docs/patterns/stable-refs.md`)
-- `src/hooks/useD3TopicsRenderer.ts` - D3/SVG graph rendering logic for TopicsView
-- `src/hooks/useThreeTopicsRenderer.ts` - Three.js/WebGL graph rendering logic for TopicsView
 - `src/hooks/useR3FTopicsRenderer.ts` - React Three Fiber rendering hook (primary renderer)
 - `src/hooks/useTopicsFilter.ts` - Click-to-filter and external filter logic
-- `src/hooks/useChunkLoading.ts` - Lazy loading of paragraph chunks for LOD
+- `src/hooks/useContentLoading.ts` - Lazy loading of content chunks for LOD
+- `src/hooks/useContentSimulation.ts` - Content node force simulation
+- `src/hooks/useStableInstanceCount.ts` - Stable instanced mesh allocation (see instancedMesh gotcha)
+- `src/hooks/useFadingMembership.ts` - Animated Set-based membership transitions
+- `src/hooks/useTopicsSearch.ts` / `useTopicsSearchOpacity.ts` - Search integration for TopicsView
+- `src/hooks/useGraphHoverHighlight.ts` - Shared hover highlight logic
 
 ### Renderer Architecture
 
@@ -127,25 +132,28 @@ TopicsView supports three renderers. **R3F (React Three Fiber) is the primary re
 
 **R3F Renderer** (`src/components/topics-r3f/`):
 - Component-based architecture using React Three Fiber
-- `R3FTopicsCanvas.tsx` - Canvas wrapper with DOM label overlay
+- `R3FTopicsCanvas.tsx` - Canvas wrapper
 - `R3FTopicsScene.tsx` - Scene coordinator (orchestrates all components)
-- `ForceSimulation.tsx` - D3-force simulation as React component
-- `KeywordNodes.tsx`, `ChunkNodes.tsx` - Instanced mesh rendering
-- `KeywordEdges.tsx`, `ChunkEdges.tsx` - Merged geometry edge rendering
+- `ForceSimulation.tsx` / `UnifiedSimulation.tsx` - D3-force simulation
+- `KeywordNodes.tsx`, `ContentNodes.tsx` - Instanced mesh rendering
+- `KeywordEdges.tsx`, `ContentEdges.tsx`, `EdgeRenderer.tsx` - Edge rendering
 - `TransmissionPanel.tsx` - Frosted glass effect between layers
 - `CameraController.tsx` - Zoom/pan with cursor-centered zoom
-- `LabelsOverlay.tsx` - DOM-based labels positioned via 3D→2D projection
+- `KeywordLabels3D.tsx`, `ContentTextLabels3D.tsx`, `ClusterLabels3D.tsx` - 3D text labels
+- `R3FLabelContext.tsx` - Label coordination context
+- `ThreeTextLabel.tsx`, `GraphTextLabel.tsx`, `MarkdownTextBillboard.tsx` - Text rendering primitives
 
 **Shared logic** lives in `src/lib/`:
 - `topics-hover-controller.ts` - Hover highlighting, cursor tracking, click handling
 - `topics-graph-nodes.ts` - Node/edge conversion with `convertToSimNodes()`
-- `chunk-scale.ts` - Zoom-based scale interpolation for LOD
-- `chunk-layout.ts` - Force-based chunk positioning around keywords
-- `chunk-zoom-config.ts` - Centralized zoom configuration
+- `content-scale.ts` - Zoom-based scale interpolation for LOD
+- `content-layout.ts` - Force-based content positioning around keywords
+- `content-zoom-config.ts` - Centralized zoom configuration
+- `label-fade-coordinator.ts` - Cross-component label visibility coordination
 
 **Legacy renderers** (D3 and raw Three.js) remain for reference but R3F is preferred.
 
-**Known gotcha — non-unique chunk node IDs**: `createChunkNodes()` in `chunk-layout.ts` creates a separate `ChunkSimNode` for each (keyword, chunk) pair. When a chunk is associated with multiple keywords, multiple nodes share the same `id`. Any Map keyed by `node.id` will silently lose data. Use composite keys like `${parentId}:${node.id}` when tracking chunks. See [Empty Chunk Labels investigation](docs/investigations/empty-chunk-labels.md).
+**Known gotcha — non-unique content node IDs**: `createContentNodes()` in `content-layout.ts` creates a separate `ContentSimNode` for each (keyword, chunk) pair. When a chunk is associated with multiple keywords, multiple nodes share the same `id`. Any Map keyed by `node.id` will silently lose data. Use composite keys like `${parentId}:${node.id}` when tracking content nodes. See [Empty Chunk Labels investigation](docs/investigations/empty-chunk-labels.md).
 
 **R3F rule — never call React setState inside useFrame**: `useFrame` runs every animation frame (60fps). Calling `setState` there causes React to re-render every frame with no error or warning. When bridging imperative animation loops with React state, track previous values and only update on actual changes.
 
@@ -170,6 +178,13 @@ When debugging rendering issues in Three.js/R3F:
 - `GET /api/vault` - Browse vault directory
 - `GET /api/nodes/[id]` - Fetch node with children
 - `GET /api/map` - Graph data for keyword-article visualization
+- `GET /api/topics` - Keyword graph data for TopicsView
+- `GET /api/topics/content` - Content chunks for a keyword
+- `GET /api/precomputed-clusters` - Precomputed Leiden clusters
+- `GET/POST /api/cluster-labels` - Cluster label generation/caching (with `/warm` and `/refine` sub-routes)
+- `GET/POST /api/projects` - Project CRUD; `GET/PATCH/DELETE /api/projects/[id]`
+- `GET /api/projects/[id]/associations` - Project-node associations
+- `GET /api/projects/[id]/neighborhood` - Semantic neighborhood of a project
 
 ### UI Components
 
@@ -192,54 +207,15 @@ The `search_similar` RPC function performs cosine similarity search and returns 
 
 ### Database Migrations
 
-**Applying migrations:**
-```bash
-npx supabase db push  # Push pending migrations to remote database
-```
-
-**Evolving uncommitted migrations (before git commit):**
-
-To modify a migration that's been applied to remote but not yet committed to git:
-
-```bash
-# 1. Manually undo the migration's changes (run in Supabase SQL Editor)
-DROP FUNCTION IF EXISTS function_name(args);
-
-# 2. Mark the migration as reverted in Supabase's tracking
-npx supabase migration repair 007 --status reverted --linked
-
-# 3. Edit the migration file locally
-
-# 4. Re-apply
-npx supabase db push
-```
-
-**Warning:** Never use `migration down --linked` on a database with data you care about. It resets the ENTIRE database (drops all tables) and reapplies migrations from scratch.
-
-**Rolling back deployed migrations (after git commit/deploy):**
-
-Supabase migrations are forward-only. To undo a deployed migration:
-1. Create a NEW migration that reverses the changes
-2. Never try to edit or remove already-deployed migration files
-
-**Local development reset:**
-```bash
-npx supabase db reset  # Resets LOCAL database only (safe)
-```
+- Apply: `npx supabase db push`
+- Local reset: `npx supabase db reset` (local only, safe)
+- Migrations are forward-only once deployed — create a NEW migration to undo changes
+- **Warning:** Never use `migration down --linked` — it resets the ENTIRE database
+- To evolve uncommitted migrations: manually undo in SQL Editor, `supabase migration repair <num> --status reverted --linked`, edit file, re-push
 
 ### Traversing the Hierarchy
 
-To find an article from a keyword or chunk:
-1. Keywords link to nodes via `keywords.node_id` (can be article or chunk)
-2. Chunks link to articles via `containment_edges.child_id` → `parent_id`
-3. Single hop: chunk → article (flat hierarchy)
-
-Example pattern:
-```sql
--- Get parent article of a chunk
-SELECT parent_id FROM containment_edges WHERE child_id = <chunk_id>
--- parent_id will be the article (no intermediate sections)
-```
+Keywords → nodes via `keywords.node_id`. Chunks → articles via `containment_edges` (single hop, flat hierarchy).
 
 ## Architecture Notes
 
@@ -247,33 +223,9 @@ This project uses precomputed clusters (from database) AND runtime/dynamic clust
 
 ## Styling
 
-**Prefer CSS classes over inline styles.** Define reusable classes in `src/app/globals.css`.
+**Prefer CSS classes over inline styles.** Define reusable classes in `src/app/globals.css`. Design classes to be composable (e.g., `.graph-label-overlay` + `.graph-label-glow`).
 
-**When to use CSS classes:**
-- Styles that appear in multiple places or could be reused
-- Theme-aware styles (light/dark mode via `prefers-color-scheme`)
-- Structural styles (positioning, layout, transforms)
-- Visual styles (colors, shadows, fonts)
-
-**When inline styles are acceptable:**
-- Dynamic values that change per-element (e.g., `left`, `top`, `opacity` computed from data)
-- One-off styles truly specific to a single use case
-- Values derived from runtime calculations (zoom level, node positions)
-
-**When TypeScript assigns styles dynamically**, reference CSS base values in comments:
-```typescript
-// Base size matches .keyword-label in globals.css
-const baseFontSize = 16;
-const zoomScale = Math.min(1, 500 / cameraZ);
-labelEl.style.fontSize = `${baseFontSize * zoomScale}px`;
-```
-
-**Composability:** Design classes to be combinable. For example:
-- `.graph-label-overlay` - base overlay container
-- `.graph-label-glow` - theme-aware text glow (can add to any element)
-- `.keyword-label` - complete keyword label styling (convenience composition)
-
-See `src/app/globals.css` for existing graph visualization label classes.
+**Inline styles are acceptable** for dynamic per-element values computed at runtime (positions, opacity, zoom-derived sizes). When TypeScript assigns dynamic styles, reference the CSS base value in a comment so the connection is discoverable.
 
 ## Environment
 
