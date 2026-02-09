@@ -74,16 +74,7 @@ export function coordinatesToHSL(x: number, y: number, desaturation: number = 0)
   const baseColor = `hsl(${hue.toFixed(0)}, ${saturation.toFixed(0)}%, ${lightness}%)`;
 
   if (desaturation === 0) return baseColor;
-
-  // Use LCH color space to preserve perceptual lightness while reducing chroma (saturation)
-  const color = chroma(baseColor);
-  const l = color.get('lch.l');
-  const c = color.get('lch.c');
-  const h = color.get('lch.h') || 0; // hue can be NaN for achromatic colors
-
-  // Reduce chroma while preserving lightness
-  const reducedC = c * (1 - desaturation);
-  return chroma.lch(l, reducedC, h).hex();
+  return desaturateLCH(chroma(baseColor), desaturation).hex();
 }
 
 /**
@@ -222,16 +213,7 @@ export function nodeColorFromCluster(
   const baseColor = `hsl(${h.toFixed(0)}, ${s.toFixed(0)}%, ${l.toFixed(0)}%)`;
 
   if (desaturation === 0) return baseColor;
-
-  // Use LCH color space to preserve perceptual lightness while reducing chroma (saturation)
-  const color = chroma(baseColor);
-  const lchL = color.get('lch.l');
-  const lchC = color.get('lch.c');
-  const lchH = color.get('lch.h') || 0; // hue can be NaN for achromatic colors
-
-  // Reduce chroma while preserving lightness
-  const reducedC = lchC * (1 - desaturation);
-  return chroma.lch(lchL, reducedC, lchH).hex();
+  return desaturateLCH(chroma(baseColor), desaturation).hex();
 }
 
 // --- Shared cluster color utilities ---
@@ -247,25 +229,25 @@ export function clusterColorToCSS(
   isDark: boolean = false
 ): string {
   const base = chroma.hsl(info.h, info.s / 100, info.l / 100);
-  let result: string;
 
+  let result: chroma.Color;
   if (desaturation <= 0) {
-    const [h, s, l] = base.hsl();
-    result = `hsl(${h.toFixed(0)}, ${(s * 100).toFixed(0)}%, ${(l * 100).toFixed(0)}%)`;
+    result = base;
   } else {
-    const l = base.get("lch.l");
-    const c = base.get("lch.c");
-    const h = base.get("lch.h") || 0;
-    const reduced = chroma.lch(l, c * (1 - desaturation), h);
-    const [h2, s2, l2] = reduced.hsl();
-    result = `hsl(${h2.toFixed(0)}, ${(s2 * 100).toFixed(0)}%, ${(l2 * 100).toFixed(0)}%)`;
+    const desaturated = desaturateLCH(base, desaturation);
+    // When desaturated, push lightness toward white (dark theme) or black (light theme)
+    const [h, s, l] = desaturated.hsl();
+    const targetL = isDark ? 0.98 : 0.10;
+    const adjustedL = l + (targetL - l) * desaturation;
+    result = chroma.hsl(isNaN(h) ? 0 : h, s, adjustedL);
   }
 
-  if (contrast > 0) {
-    result = adjustContrast(result, contrast, isDark);
+  let css = result.css();
+  // Skip contrast adjustment when highly desaturated (>50%) - we want bright/dark extremes
+  if (contrast > 0 && desaturation < 0.5) {
+    css = adjustContrast(css, contrast, isDark);
   }
-
-  return result;
+  return css;
 }
 
 /** Node with embedding */
@@ -391,6 +373,19 @@ export function computeNeighborAveragedColors(
 }
 
 // --- Internal helpers ---
+
+/**
+ * Desaturate a color in LCH space by reducing chroma.
+ * Preserves perceptual lightness while reducing colorfulness.
+ * @param color - chroma.js color object
+ * @param desaturation - 0 = no change, 1 = fully desaturated
+ */
+function desaturateLCH(color: chroma.Color, desaturation: number): chroma.Color {
+  const l = color.get("lch.l");
+  const c = color.get("lch.c");
+  const h = color.get("lch.h") || 0; // hue can be NaN for achromatic colors
+  return chroma.lch(l, c * (1 - desaturation), h);
+}
 
 function dotProduct(a: number[], b: number[]): number {
   let sum = 0;

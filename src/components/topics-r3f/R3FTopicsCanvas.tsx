@@ -30,6 +30,7 @@ export interface R3FTopicsCanvasProps {
   contentsByKeyword?: Map<string, ContentNode[]>;
   colorMixRatio: number;
   colorDesaturation: number;
+  clusterLabelDesaturation?: number;
   pcaTransform: PCATransform | null;
   blurEnabled?: boolean;
   /** Show k-NN connectivity edges (usually hidden, only affect force simulation) */
@@ -92,6 +93,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     contentsByKeyword,
     colorMixRatio,
     colorDesaturation,
+    clusterLabelDesaturation = 0,
     pcaTransform,
     blurEnabled = true,
     showKNNEdges = false,
@@ -254,6 +256,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
             contentsByKeyword={contentsByKeyword}
             colorMixRatio={colorMixRatio}
             colorDesaturation={colorDesaturation}
+            clusterLabelDesaturation={clusterLabelDesaturation}
             pcaTransform={pcaTransform}
             blurEnabled={blurEnabled}
             showKNNEdges={showKNNEdges}

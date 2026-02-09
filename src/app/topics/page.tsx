@@ -21,6 +21,7 @@ import { setGlobalContrast } from "@/lib/rendering-utils/node-renderer";
 import { isDarkMode, watchThemeChanges } from "@/lib/theme";
 import { searchResultsToKeywordIds, extractMatchedKeywords } from "@/lib/search-filter";
 import { StartOverlay } from "@/components/StartOverlay";
+import { calculateZoomBasedDesaturation, calculateClusterLabelDesaturation } from "@/lib/zoom-phase-config";
 
 /** Debounce a value - returns the value after it stops changing for `delay` ms */
 function useDebouncedValue<T>(value: T, delay: number): T {
@@ -140,6 +141,21 @@ export default function TopicsPage() {
   // Calculate chunk Z depth from offset multiplier
   // BASE_CAMERA_Z is 1000, so default offset of 0.5 gives depth of 500
   const contentZDepth = BASE_CAMERA_Z * settings.chunkZOffset;
+
+  // Calculate zoom-based desaturation with slider as multiplier
+  // Base desaturation: 0% (zoomed out) → 30% (keyword level) → 65% (detail level)
+  // Slider (colorDesaturation) acts as multiplier: 0.5x to 2x
+  const effectiveDesaturation = useMemo(() => {
+    if (!currentCameraZ) return settings.colorDesaturation;
+    const baseDesaturation = calculateZoomBasedDesaturation(currentCameraZ, settings.zoomPhaseConfig);
+    return Math.min(1, baseDesaturation * settings.colorDesaturation);
+  }, [currentCameraZ, settings.colorDesaturation, settings.zoomPhaseConfig]);
+
+  // Calculate cluster label desaturation (inverse: saturated when zoomed out, desaturated when zoomed in)
+  const clusterLabelDesaturation = useMemo(() => {
+    if (!currentCameraZ) return 0;
+    return calculateClusterLabelDesaturation(currentCameraZ, settings.zoomPhaseConfig);
+  }, [currentCameraZ, settings.zoomPhaseConfig]);
 
   // Convert search results to filter set
   const searchFilter = useMemo(() => {
@@ -519,7 +535,8 @@ export default function TopicsPage() {
             contrast={settings.contrast}
             clusterResolution={debouncedClusterResolution}
             colorMixRatio={settings.colorMixRatio}
-            colorDesaturation={settings.colorDesaturation}
+            colorDesaturation={effectiveDesaturation}
+            clusterLabelDesaturation={clusterLabelDesaturation}
             onClusterCountChange={setClusterCount}
             hoverConfig={{
               similarityThreshold: settings.hoverSimilarity,

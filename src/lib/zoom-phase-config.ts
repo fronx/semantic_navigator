@@ -82,3 +82,48 @@ export function sanitizeZoomPhaseConfig(config: ZoomPhaseConfig): ZoomPhaseConfi
     blur: { ...normalizeRange(config.blur), maxRadius: Math.max(0, config.blur.maxRadius) },
   };
 }
+
+/**
+ * Calculate zoom-based desaturation (0-1 range).
+ *
+ * - Zoomed out (cluster level, ~14000+): 0% desaturation
+ * - Keyword level (chunkCrossfade.far ~3736): 30% desaturation
+ * - Detail level (chunkCrossfade.near ~2052): 65% desaturation
+ *
+ * Uses piecewise linear interpolation with two segments.
+ */
+export function calculateZoomBasedDesaturation(
+  cameraZ: number,
+  config: ZoomPhaseConfig = DEFAULT_ZOOM_PHASE_CONFIG
+): number {
+  const clusterLevel = config.keywordLabels.start;
+  const keywordLevel = config.chunkCrossfade.far;
+  const detailLevel = config.chunkCrossfade.near;
+
+  const z = Math.max(detailLevel, Math.min(clusterLevel, cameraZ));
+
+  if (z >= keywordLevel) {
+    // Cluster level (0%) -> keyword level (30%)
+    const t = (clusterLevel - z) / (clusterLevel - keywordLevel);
+    return t * 0.3;
+  }
+  // Keyword level (30%) -> detail level (65%)
+  const t = (keywordLevel - z) / (keywordLevel - detailLevel);
+  return 0.3 + t * 0.35;
+}
+
+/**
+ * Calculate zoom-based desaturation for cluster labels (inverse of keyword desaturation).
+ *
+ * - Zoomed out (cluster level): 100% desaturation (grayscale)
+ * - Zoomed in (keyword level): 0% desaturation (saturated colors)
+ */
+export function calculateClusterLabelDesaturation(
+  cameraZ: number,
+  config: ZoomPhaseConfig = DEFAULT_ZOOM_PHASE_CONFIG
+): number {
+  const clusterLevel = config.keywordLabels.start;
+  const keywordLevel = config.keywordLabels.full;
+  const z = Math.max(keywordLevel, Math.min(clusterLevel, cameraZ));
+  return (z - keywordLevel) / (clusterLevel - keywordLevel);
+}

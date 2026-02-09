@@ -23,6 +23,7 @@ export interface TopicsSettings {
   nodeType: 'article' | 'chunk';
   blurEnabled: boolean;
   showKNNEdges: boolean;
+  /** Desaturation multiplier: 0.5x to 2x applied to zoom-based desaturation (1.0 = neutral) */
   colorDesaturation: number;
   chunkZOffset: number;
   contentTextDepthScale: number;
@@ -75,7 +76,7 @@ const DEFAULT_SETTINGS: TopicsSettings = {
   nodeType: "article",
   blurEnabled: true,
   showKNNEdges: true,
-  colorDesaturation: 0.3,
+  colorDesaturation: 1.0,
   chunkZOffset: 0.5,
   contentTextDepthScale: -15.0,
   keywordSizeMultiplier: 1.0,

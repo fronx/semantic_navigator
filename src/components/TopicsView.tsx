@@ -50,6 +50,8 @@ export interface TopicsViewProps {
   colorMixRatio: number;
   /** Color desaturation: 0 = no desaturation, 1 = fully desaturated */
   colorDesaturation: number;
+  /** Cluster label desaturation: 0 = no desaturation, 1 = fully desaturated (inverse of keyword desaturation) */
+  clusterLabelDesaturation?: number;
   /** Hover highlight configuration */
   hoverConfig: HoverHighlightConfig;
   /** Callback when a keyword is clicked */
@@ -143,6 +145,7 @@ export function TopicsView({
   clusterResolution,
   colorMixRatio,
   colorDesaturation,
+  clusterLabelDesaturation = 0,
   hoverConfig,
   onKeywordClick,
   onProjectClick,
@@ -544,6 +547,7 @@ export function TopicsView({
           contentsByKeyword={contentsByKeyword}
           colorMixRatio={colorMixRatio}
           colorDesaturation={colorDesaturation}
+          clusterLabelDesaturation={clusterLabelDesaturation}
           pcaTransform={pcaTransform}
           blurEnabled={blurEnabled}
           showKNNEdges={showKNNEdges}

@@ -28,6 +28,7 @@ import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queri
 import type { PCATransform } from "@/lib/semantic-colors";
 import type { SimNode, SimLink } from "@/lib/map-renderer";
 import type { ZoomPhaseConfig } from "@/lib/zoom-phase-config";
+import { calculateClusterLabelDesaturation } from "@/lib/zoom-phase-config";
 import type { LabelRefs } from "./R3FLabelContext";
 import type { ContentNode } from "@/lib/content-loader";
 import type { KeywordTierMap } from "@/lib/topics-filter";
@@ -66,6 +67,7 @@ export interface R3FTopicsSceneProps {
   contentsByKeyword?: Map<string, ContentNode[]>;
   colorMixRatio: number;
   colorDesaturation: number;
+  clusterLabelDesaturation?: number;
   pcaTransform: PCATransform | null;
   blurEnabled?: boolean;
   /** Show k-NN connectivity edges (usually hidden, only affect force simulation) */
@@ -135,6 +137,7 @@ export function R3FTopicsScene({
   contentsByKeyword,
   colorMixRatio,
   colorDesaturation,
+  clusterLabelDesaturation = 0,
   pcaTransform,
   blurEnabled = true,
   showKNNEdges = false,
@@ -348,6 +351,12 @@ export function R3FTopicsScene({
   // Cross-fade between cluster labels and keyword labels based on zoom
   const labelFadeT = computeLabelFade(cameraZ ?? camera.position.z, zoomPhaseConfig.keywordLabels);
 
+  // Calculate real-time cluster label desaturation (inverse: saturated when zoomed out)
+  const currentCameraZ = cameraZ ?? camera.position.z;
+  const baseClusterDesaturation = calculateClusterLabelDesaturation(currentCameraZ, zoomPhaseConfig);
+  // Apply slider multiplier (clusterLabelDesaturation is actually just the base multiplier from slider)
+  const realTimeClusterDesaturation = Math.min(1, baseClusterDesaturation * (clusterLabelDesaturation ?? 1));
+
   // Calculate dynamic max zoom distance based on visible node positions
   const maxDistance = useMemo(() => {
     if (simNodes.length === 0) {
@@ -516,7 +525,7 @@ export function R3FTopicsScene({
           searchOpacities={searchOpacities}
           onClusterLabelClick={onClusterLabelClick}
           labelZ={0}
-          colorDesaturation={colorDesaturation}
+          colorDesaturation={realTimeClusterDesaturation}
           globalContrast={getGlobalContrastParams().amount}
           labelFadeT={labelFadeT}
           focusState={focusState}

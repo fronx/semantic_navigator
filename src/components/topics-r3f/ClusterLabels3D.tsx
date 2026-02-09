@@ -125,18 +125,16 @@ export function ClusterLabels3D({
 
       const pixelSize = (baseFontSize * desiredScale) / unitsPerPixel;
       const fadeT = (pixelSize - FADE_START_PX) / (FADE_END_PX - FADE_START_PX);
-      const smooth = smoothstep(fadeT);
-      const sizeFade = 1 - smooth;
+      // When cluster labels are primary (labelFadeT near 0), skip size fade
+      // to keep them visible even when small on screen
+      const sizeFade = labelFadeT > 0.5 ? 1 - smoothstep(fadeT) : 1.0;
       const finalOpacity = baseOpacity * sizeFade * (1 - labelFadeT);
 
-      // Update both label and shadow with identical opacity
-      if (material.opacity !== finalOpacity) {
-        material.opacity = finalOpacity;
-        material.needsUpdate = true;
-      }
-      if (shadowMaterial.opacity !== finalOpacity) {
-        shadowMaterial.opacity = finalOpacity;
-        shadowMaterial.needsUpdate = true;
+      for (const mat of [material, shadowMaterial]) {
+        if (mat.opacity !== finalOpacity) {
+          mat.opacity = finalOpacity;
+          mat.needsUpdate = true;
+        }
       }
     });
   });

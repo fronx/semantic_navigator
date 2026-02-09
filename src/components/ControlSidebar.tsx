@@ -347,13 +347,13 @@ export function ControlSidebar({
               onChange={(v) => update("dynamicClustering", v)}
             />
             <Slider
-              label="Desaturate"
+              label="Desaturate Mult"
               value={settings.colorDesaturation}
               onChange={(v) => update("colorDesaturation", v)}
-              min={0}
-              max={1}
-              step={0.05}
-              format={(v) => `${(v * 100).toFixed(0)}%`}
+              min={0.5}
+              max={2}
+              step={0.1}
+              format={(v) => `${v.toFixed(1)}x`}
             />
             <Slider
               label="Color contrast"
