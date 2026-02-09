@@ -584,26 +584,45 @@ async function main() {
   const cache = await loadFontCache();
   console.log(`✓ Loaded ${cache.fonts.length} fonts with ${cache.allTags.length} unique tags\n`);
 
-  // Fetch keywords
-  console.log("Fetching keywords from database...");
-  const keywords = await fetchKeywordsFromDatabase(limit);
-  console.log(`✓ Loaded ${keywords.length} keywords\n`);
-
-  // Process keywords in parallel (with concurrency limit)
-  console.log(`Processing keywords with ${concurrency} concurrent instances...\n`);
+  // Fetch keywords and cluster labels
+  console.log("Fetching keywords and cluster labels from database...");
+  const allItems = await fetchKeywordsFromDatabase(limit);
+  console.log(`✓ Loaded ${allItems.length} total items\n`);
 
   // Prepare output file (JSONL format for safe concurrent append)
   const resultsPath = "./data/agentic-keyword-font-results.jsonl";
   await fs.mkdir(path.dirname(resultsPath), { recursive: true });
 
-  // Clear previous results
-  await fs.writeFile(resultsPath, "");
+  // Load existing results to avoid re-processing
+  let existingMatches = new Set<string>();
+  let existingResults: any[] = [];
+
+  try {
+    const existingData = await fs.readFile(resultsPath, "utf-8");
+    const lines = existingData.trim().split("\n").filter(l => l.length > 0);
+    existingResults = lines.map(line => JSON.parse(line));
+    existingMatches = new Set(existingResults.map(r => r.keyword));
+    console.log(`✓ Found ${existingMatches.size} existing matches\n`);
+  } catch {
+    console.log("No existing results found, starting fresh\n");
+  }
+
+  // Filter to only new items
+  const newItems = allItems.filter(item => !existingMatches.has(item));
+
+  if (newItems.length === 0) {
+    console.log("✓ All items already matched! Nothing to do.");
+    return;
+  }
+
+  console.log(`Processing ${newItems.length} new items (${existingMatches.size} already matched)...\n`);
+  console.log(`Using ${concurrency} concurrent Haiku instances...\n`);
 
   const results = await processConcurrently(
-    keywords,
+    newItems,
     concurrency,
     async (keyword, index) => {
-      console.log(`[${index + 1}/${keywords.length}] Starting: "${keyword}"`);
+      console.log(`[${index + 1}/${newItems.length}] Starting: "${keyword}"`);
 
       const { selectedTags, selectedFont, allCandidates } = await findFontsForKeyword(keyword, cache);
 
@@ -614,7 +633,7 @@ async function main() {
         candidateCount: allCandidates.length,
       };
 
-      // Save immediately (JSONL format - one JSON object per line)
+      // Append to existing results (JSONL format - one JSON object per line)
       await fs.appendFile(resultsPath, JSON.stringify(result) + "\n");
 
       // Display result
@@ -627,15 +646,18 @@ async function main() {
     }
   );
 
-  // Summary
-  console.log("=== Summary ===");
-  const withFonts = results.filter((r) => r.selectedFont !== null);
+  // Summary (combine existing + new results)
+  console.log("\n=== Summary ===");
+  const allResults = [...existingResults, ...results];
+  const withFonts = allResults.filter((r) => r.selectedFont !== null);
 
-  console.log(`Keywords with fonts: ${withFonts.length}/${results.length}`);
+  console.log(`New matches: ${results.length}`);
+  console.log(`Total matches: ${allResults.length}`);
+  console.log(`Items with fonts: ${withFonts.length}/${allResults.length}`);
 
-  // Also save as regular JSON for convenience
+  // Also save as regular JSON for convenience (full combined set)
   const jsonPath = "./data/agentic-keyword-font-results.json";
-  await fs.writeFile(jsonPath, JSON.stringify(results, null, 2));
+  await fs.writeFile(jsonPath, JSON.stringify(allResults, null, 2));
   console.log(`\n✓ Saved results to ${resultsPath} (JSONL) and ${jsonPath} (JSON)`);
 }
 

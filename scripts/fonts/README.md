@@ -60,10 +60,18 @@ npm run script scripts/fonts/match-keywords-to-fonts-agentic.ts 50 3
 ```
 
 **Features:**
+- **Incremental matching** - Only processes new items, keeps existing matches
 - Parallel processing with configurable concurrency (default: 6)
 - Incremental JSONL saves for crash safety
 - Two-stage selection for better semantic matching
 - 0 = process all keywords (default)
+
+**How incremental matching works:**
+- Loads existing results from JSONL file
+- Filters out already-matched items
+- Only processes new keywords/cluster labels
+- Appends new results to existing file
+- Perfect for adding cluster labels without re-matching all keywords
 
 ### Step 3: Download Fonts
 
