@@ -19,7 +19,7 @@
  *     npm run script scripts/repl-explore-chunking.ts all   # Process all files
  *
  * Configuration:
- *   - Modify the folderPath variable below to point to your target folder
+ *   - Modify the folderPaths array below to point to your target folders
  *
  * Philosophy:
  *   Functions are small, composable, and pure transformations.
@@ -71,10 +71,14 @@ async function main() {
     content: await vault.readVaultFile(vaultPath, path)
   })
 
-  // Example: Load files from folder
+  // Example: Load files from folders
   let vaultPath = process.env.VAULT_PATH
-  let folderPath = 'Writing/Have a Little Think'
-  let filePaths = await vault.collectMarkdownFiles(vaultPath, folderPath)
+  let folderPaths = [
+    'Writing/Have a Little Think'
+  ]
+  let filePaths = (await Promise.all(
+    folderPaths.map(fp => vault.collectMarkdownFiles(vaultPath, fp))
+  )).flat()
   let files = await Promise.all(filePaths.map(p => loadFile(vaultPath, p)))
 
   // ============================================================================
@@ -1088,7 +1092,7 @@ async function main() {
     fs,
 
     // Loaded data
-    vaultPath, folderPath, filePaths, files, filesToProcess,
+    vaultPath, folderPaths, filePaths, files, filesToProcess,
     chunksMap, allChunks,
     keywords, keywordCounts, top20,
     embeds, matrix,
