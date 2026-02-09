@@ -98,4 +98,6 @@ See [IDEA.md](./IDEA.md) for the full design spec.
 
 ## Documentation
 
-See [docs/README.md](docs/README.md) for architecture docs, guides, and lab experiments.
+- [docs/README.md](docs/README.md) - Architecture docs, guides, and lab experiments
+- [scripts/README.md](scripts/README.md) - Utility scripts and development tools
+- [docs/guides/typescript-repl.md](docs/guides/typescript-repl.md) - Interactive TypeScript REPL guide

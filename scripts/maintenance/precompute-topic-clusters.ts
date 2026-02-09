@@ -209,10 +209,11 @@ async function fetchEmbeddings(
   for (let i = 0; i < keywords.length; i += BATCH_SIZE) {
     const batch = keywords.slice(i, i + BATCH_SIZE);
 
+    // Keywords are now canonical - no node_type column
+    // We just fetch by keyword text
     const { data: kwData } = await supabase
       .from("keywords")
       .select("keyword, embedding_256")
-      .eq("node_type", nodeType)
       .in("keyword", batch);
 
     // Build map of keyword -> embedding

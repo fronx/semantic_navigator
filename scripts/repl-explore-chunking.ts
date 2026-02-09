@@ -819,6 +819,207 @@ let dbPayloads = await prepareDatabasePayloads(
 // Uncomment to run: let dbStats = await insertToDatabase(dbPayloads, { dryRun: false })
 
 // ============================================================================
+// STEP 10: Precompute topic clusters (for TopicsView)
+// ============================================================================
+
+let leidenClustering = await use('@/lib/leiden-clustering')
+
+// Precompute clusters for a given node type (article or chunk)
+let precomputeTopicClusters = async (
+  nodeType = 'chunk',  // 'article' or 'chunk'
+  resolutions = [0.1, 0.3, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0],
+  options = { dryRun: false }
+) => {
+  let supabase = supabaseLib.createServerClient()
+
+  console.log(`\n${options.dryRun ? '[DRY RUN] ' : ''}Precomputing clusters for ${nodeType} keywords...`)
+
+  // Fetch keyword graph from database using RPC
+  console.log('Fetching keyword graph...')
+  let { data: rawPairs, error } = await supabase.rpc(
+    'get_keyword_graph',
+    {
+      filter_node_type: nodeType,
+      max_edges_per_node: 10,
+      min_similarity: 0.3
+    }
+  )
+
+  if (error) {
+    console.error('Error fetching keyword graph:', error)
+    return null
+  }
+
+  if (!rawPairs || rawPairs.length === 0) {
+    console.log(`No keyword graph data found for ${nodeType}. Run Step 9 (insertToDatabase) first.`)
+    return null
+  }
+
+  // Convert pairs to nodes and edges
+  let { nodes, edges } = convertPairsToGraph(rawPairs)
+  console.log(`Graph: ${nodes.length} nodes, ${edges.length} edges`)
+
+  // Fetch embeddings for nodes
+  console.log('Fetching embeddings...')
+  await fetchEmbeddings(supabase, nodes, nodeType)
+
+  if (options.dryRun) {
+    console.log(`\n✓ Dry run complete. Would precompute ${resolutions.length} resolutions for ${nodes.length} nodes\n`)
+    return { nodes, edges }
+  }
+
+  // Clear existing clusters for this node type
+  console.log(`Clearing existing clusters for ${nodeType}...`)
+  await supabase
+    .from('precomputed_topic_clusters')
+    .delete()
+    .eq('node_type', nodeType)
+
+  let allRows = []
+
+  // Compute clusters at each resolution
+  for (let resolution of resolutions) {
+    console.log(`\n=== Resolution ${resolution} ===`)
+
+    // Run Leiden clustering
+    console.log('Running Leiden clustering...')
+    let { nodeToCluster, clusters } = leidenClustering.computeLeidenClustering(
+      nodes,
+      edges,
+      resolution
+    )
+
+    console.log(`Generated ${clusters.size} clusters`)
+
+    // Generate semantic labels via Haiku
+    let clustersForLabeling = Array.from(clusters.values()).map(c => ({
+      id: c.id,
+      keywords: c.members
+    }))
+
+    console.log(`Calling Haiku API for ${clustersForLabeling.length} labels...`)
+    let labels = await llm.generateClusterLabels(clustersForLabeling)
+
+    // Build rows for insertion
+    for (let [nodeId, clusterId] of nodeToCluster) {
+      let cluster = clusters.get(clusterId)
+      allRows.push({
+        resolution,
+        node_type: nodeType,
+        node_id: nodeId,
+        cluster_id: clusterId,
+        hub_node_id: `kw:${cluster.hub}`,
+        cluster_label: labels[clusterId] || cluster.hub,
+        member_count: cluster.members.length
+      })
+    }
+
+    console.log(`✓ Resolution ${resolution} complete`)
+  }
+
+  // Insert all rows
+  console.log(`\nInserting ${allRows.length} cluster assignments...`)
+  let BATCH_SIZE = 500
+  for (let i = 0; i < allRows.length; i += BATCH_SIZE) {
+    let batch = allRows.slice(i, i + BATCH_SIZE)
+    let { error: insertError } = await supabase
+      .from('precomputed_topic_clusters')
+      .insert(batch)
+
+    if (insertError) {
+      console.error('Insert error:', insertError)
+      throw insertError
+    }
+
+    console.log(`  ${Math.min(i + BATCH_SIZE, allRows.length)}/${allRows.length}`)
+  }
+
+  console.log(`\n✓ Precomputed ${resolutions.length} resolutions for ${nodeType}`)
+  return { nodes, edges, clusters: allRows }
+}
+
+// Helper: Convert RPC result to nodes and edges
+let convertPairsToGraph = (pairs) => {
+  let keywordSet = new Set()
+  let keywordTextToId = new Map()
+  let edgeMap = new Map()
+
+  for (let row of pairs) {
+    let kw1 = row.keyword_text
+    let kw2 = row.similar_keyword_text
+    let kw1Id = row.keyword_id
+    let kw2Id = row.similar_keyword_id
+    let similarity = row.similarity
+
+    keywordSet.add(kw1)
+    keywordSet.add(kw2)
+    if (!keywordTextToId.has(kw1)) keywordTextToId.set(kw1, kw1Id)
+    if (!keywordTextToId.has(kw2)) keywordTextToId.set(kw2, kw2Id)
+
+    if (kw1 === kw2) continue
+
+    let edgeKey = kw1 < kw2 ? `${kw1}|${kw2}` : `${kw2}|${kw1}`
+    let existing = edgeMap.get(edgeKey)
+    if (!existing || similarity > existing.similarity) {
+      edgeMap.set(edgeKey, { similarity })
+    }
+  }
+
+  let nodes = [...keywordSet].map(kw => ({
+    id: `kw:${kw}`,
+    label: kw
+  }))
+
+  let edges = [...edgeMap.entries()].map(([key, { similarity }]) => {
+    let [kw1, kw2] = key.split('|')
+    return {
+      source: `kw:${kw1}`,
+      target: `kw:${kw2}`,
+      similarity
+    }
+  })
+
+  return { nodes, edges }
+}
+
+// Helper: Fetch embeddings for nodes (modifies nodes in place)
+let fetchEmbeddings = async (supabase, nodes, nodeType) => {
+  let keywords = nodes.map(n => n.label)
+  let BATCH_SIZE = 100
+
+  for (let i = 0; i < keywords.length; i += BATCH_SIZE) {
+    let batch = keywords.slice(i, i + BATCH_SIZE)
+
+    // Keywords are canonical - no node_type filter
+    let { data: kwData } = await supabase
+      .from('keywords')
+      .select('keyword, embedding_256')
+      .in('keyword', batch)
+
+    let embeddingMap = new Map()
+    for (let kw of kwData || []) {
+      if (kw.embedding_256) {
+        let emb = typeof kw.embedding_256 === 'string'
+          ? JSON.parse(kw.embedding_256)
+          : kw.embedding_256
+        embeddingMap.set(kw.keyword, emb)
+      }
+    }
+
+    for (let node of nodes) {
+      let embedding = embeddingMap.get(node.label)
+      if (embedding) node.embedding = embedding
+    }
+  }
+
+  let withEmbeddings = nodes.filter(n => n.embedding).length
+  console.log(`Fetched embeddings for ${withEmbeddings}/${nodes.length} nodes`)
+}
+
+// Step 10: Precompute clusters (dry run by default - set dryRun: false to execute)
+// Uncomment to run: let clusterResults = await precomputeTopicClusters('chunk', undefined, { dryRun: false })
+
+// ============================================================================
 // Start interactive REPL with all variables in scope
 // ============================================================================
 
@@ -838,8 +1039,10 @@ console.log('  ./data/article-summaries.json')
 console.log('  ./data/content-embeddings.json')
 console.log('  ./data/content-hashes.json')
 console.log('  ./data/db-payloads.json')
-console.log('\nTo insert to database:')
-console.log('  await insertToDatabase(dbPayloads, { dryRun: false })')
+console.log('\nPipeline steps:')
+console.log('  Step 9: await insertToDatabase(dbPayloads, { dryRun: false })')
+console.log('  Step 10: await precomputeTopicClusters("chunk", undefined, { dryRun: false })')
+console.log('  Step 10 (articles): await precomputeTopicClusters("article", undefined, { dryRun: false })')
 console.log('\nStarting REPL...\n')
 
 const replServer = repl.start({ prompt: '> ' })
@@ -855,12 +1058,13 @@ Object.assign(replServer.context, {
   savePreparedData, loadPreparedData,
   getOrGenerateContentEmbeddings, getOrGenerateContentHashes,
   prepareDatabasePayloads, insertToDatabase,
+  precomputeTopicClusters, convertPairsToGraph, fetchEmbeddings,
 
   // Library modules
   vault, parser, chunker, summarization, embeddings,
   mathUtils, llm, keywordSim, keywordDedup,
   cacheUtils, arrayUtils, cliUtils,
-  supabaseLib, ingestionChunks,
+  supabaseLib, ingestionChunks, leidenClustering,
   fs,
 
   // Loaded data

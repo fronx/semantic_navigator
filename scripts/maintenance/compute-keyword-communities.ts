@@ -61,10 +61,10 @@ async function main() {
   console.log(`Found ${allEdges.length} similarity edges`);
 
   // Fetch keywords for label lookup
+  // Keywords are now canonical - get those that have article-level occurrences
   const { data: keywords, error: kwError } = await supabase
     .from("keywords")
-    .select("id, keyword")
-    .eq("node_type", "article");
+    .select("id, keyword");
 
   if (kwError) {
     console.error("Error fetching keywords:", kwError);
@@ -72,7 +72,7 @@ async function main() {
   }
 
   const keywordMap = new Map(keywords?.map((k) => [k.id, k.keyword]) || []);
-  console.log(`Found ${keywordMap.size} article-level keywords`);
+  console.log(`Found ${keywordMap.size} keywords`);
 
   // Build graph
   const graph = new Graph({ type: "undirected" });
