@@ -258,8 +258,30 @@ async function main() {
   // Complete workflow for database preparation
   // ============================================================================
 
-  // 1. Run LLM-based deduplication
-  let mapping = await keywordDedup.deduplicateAllPairs(topSimilar, chunksMap, 0.7)
+  // Get or generate deduplication mapping with caching
+  let getOrGenerateDedup = async (topSimilar, chunksMap, threshold = 0.7, cachePath = './data/keyword-dedup-mapping.json') => {
+    let pairs = keywordDedup.extractPairs(topSimilar, threshold)
+    let pairsKey = pairs.map(p => `${p.keyword1}:${p.keyword2}:${p.score.toFixed(3)}`).sort().join(',')
+    let cacheKey = cacheUtils.hash(pairsKey)
+
+    let cached = await cacheUtils.loadCache(cachePath)
+    if (cached.key === cacheKey && cached.mapping) {
+      console.log(`[Deduplication] Using cached mapping (${Object.keys(cached.mapping).length} keywords mapped)`)
+      return new Map(Object.entries(cached.mapping))
+    }
+
+    let mapping = await keywordDedup.deduplicateAllPairs(topSimilar, chunksMap, threshold)
+
+    await cacheUtils.saveCache(cachePath, {
+      key: cacheKey,
+      mapping: Object.fromEntries(mapping)
+    })
+
+    return mapping
+  }
+
+  // 1. Run LLM-based deduplication (cached by pair set)
+  let mapping = await getOrGenerateDedup(topSimilar, chunksMap, 0.7)
 
   // 2. Apply deduplication to chunks
   let dedupedChunks = keywordDedup.applyDeduplication(chunksMap, mapping)
@@ -267,8 +289,21 @@ async function main() {
   // 3. Get final unique keywords
   let finalKeywords = getFinalKeywords(dedupedChunks)
 
-  // 4. Generate embeddings for final keywords
-  let keywordRecords = await prepareKeywordRecords(finalKeywords)
+  // 4. Build keyword records using already-cached embeddings (no redundant API call)
+  let kwEmbedCache = await loadKeywordEmbeddings()
+  let missingKwEmbeds = finalKeywords.filter(kw => !kwEmbedCache.has(kw))
+  if (missingKwEmbeds.length > 0) {
+    console.log(`[Keywords] Generating ${missingKwEmbeds.length} missing keyword embeddings...`)
+    let newEmbeds = await embeddings.generateEmbeddings(missingKwEmbeds)
+    for (let i = 0; i < missingKwEmbeds.length; i++) kwEmbedCache.set(missingKwEmbeds[i], newEmbeds[i])
+    await saveKeywordEmbeddings(kwEmbedCache)
+  }
+  let keywordRecords = finalKeywords.map(kw => ({
+    keyword: kw,
+    embedding: kwEmbedCache.get(kw),
+    embedding_256: embeddings.truncateEmbedding(kwEmbedCache.get(kw), 256)
+  }))
+  console.log(`✓ Prepared ${keywordRecords.length} keyword records (from cache)\n`)
 
   // 5. Prepare keyword occurrences (which keywords go in which chunks)
   let keywordOccurrences = prepareKeywordOccurrences(dedupedChunks)
@@ -1034,6 +1069,27 @@ async function main() {
   // Uncomment to run: let clusterResults = await precomputeTopicClusters('chunk', undefined, { dryRun: false })
 
   // ============================================================================
+  // STEP 11: Compute PCA transform for semantic colors
+  // ============================================================================
+
+  let embeddingPca = await use('@/lib/embedding-pca')
+  let path = await import('path')
+
+  let computeAndSavePCA = async () => {
+    let output = await embeddingPca.computeEmbeddingPCA(supabaseLib.createServerClient())
+
+    let outputPath = path.join(process.cwd(), 'public', 'data', 'embedding-pca-transform.json')
+    let outputDir = path.dirname(outputPath)
+    await fs.mkdir(outputDir, { recursive: true })
+    await fs.writeFile(outputPath, JSON.stringify(output, null, 2))
+    console.log(`Wrote PCA transform to: ${outputPath}`)
+    return output
+  }
+
+  // Step 11: Compute PCA (needed for semantic colors in the UI)
+  let pcaOutput = await computeAndSavePCA()
+
+  // ============================================================================
   // Start interactive REPL with all variables in scope
   // ============================================================================
 
@@ -1077,7 +1133,7 @@ async function main() {
     saveTopSimilar, loadTopSimilar,
     getFinalKeywords, prepareKeywordRecords, prepareKeywordOccurrences,
     savePreparedData, loadPreparedData,
-    getOrGenerateContentEmbeddings, getOrGenerateContentHashes,
+    getOrGenerateContentEmbeddings, getOrGenerateContentHashes, getOrGenerateDedup,
     prepareDatabasePayloads, insertToDatabase,
     precomputeTopicClusters, convertPairsToGraph, fetchEmbeddings,
 
