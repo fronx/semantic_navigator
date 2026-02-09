@@ -50,7 +50,7 @@ export interface ClusterLabels3DProps {
   shadowStrength?: number;
 }
 
-const DEFAULT_MIN_SCREEN_PX = 18;
+const DEFAULT_MIN_SCREEN_PX = 14;
 const DEFAULT_BASE_FONT_SIZE = 52;
 const FADE_START_PX = 60;
 const FADE_END_PX = 100;
