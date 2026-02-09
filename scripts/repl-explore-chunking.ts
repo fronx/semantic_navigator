@@ -289,37 +289,42 @@ async function main() {
   ) => {
     console.log('\nGenerating content embeddings...')
 
-    // Check if already cached
-    let cached = await cacheUtils.loadCache(cachePath)
-    if (Object.keys(cached).length > 0) {
-      console.log('✓ Content embeddings already cached')
-      return cached
-    }
+    // Load existing cache (may be partial)
+    let result = await cacheUtils.loadCache(cachePath)
+    if (!result.articles) result.articles = {}
+    if (!result.chunks) result.chunks = {}
 
-    // Batch all texts: articles, then chunks
+    // Find missing articles and chunks
     let textsToEmbed = []
-    let articlePaths = []
-    let chunkRefs = []  // {path, position}
+    let missingArticlePaths = []
+    let missingChunkRefs = []
 
-    // Collect article summaries
     for (let [path, summary] of articleSummaries) {
-      // Use content if available (two-sentence summary), otherwise fall back to teaser
-      let text = summary.content || summary.teaser || ''
-      textsToEmbed.push(text)
-      articlePaths.push(path)
-    }
-
-    // Collect chunk contents
-    for (let [path, chunks] of dedupedChunks) {
-      for (let chunk of chunks) {
-        textsToEmbed.push(chunk.content)
-        chunkRefs.push({ path, position: chunk.position })
+      if (!result.articles[path]) {
+        let text = summary.content || summary.teaser || ''
+        textsToEmbed.push(text)
+        missingArticlePaths.push(path)
       }
     }
 
-    console.log(`  Batching ${textsToEmbed.length} texts (${articlePaths.length} articles + ${chunkRefs.length} chunks)`)
+    for (let [path, chunks] of dedupedChunks) {
+      for (let chunk of chunks) {
+        if (!result.chunks[path]?.[chunk.position]) {
+          textsToEmbed.push(chunk.content)
+          missingChunkRefs.push({ path, position: chunk.position })
+        }
+      }
+    }
 
-    // Generate embeddings
+    if (textsToEmbed.length === 0) {
+      console.log('✓ Content embeddings already cached')
+      return result
+    }
+
+    let cachedCount = Object.keys(result.articles).length
+    console.log(`  ${cachedCount} cached, ${missingArticlePaths.length} articles + ${missingChunkRefs.length} chunks to generate`)
+
+    // Generate embeddings for missing items only
     let embeddingsArray = await embeddings.generateEmbeddingsBatched(
       textsToEmbed,
       (completed, total) => {
@@ -329,30 +334,20 @@ async function main() {
       }
     )
 
-    // Split results
-    let articleEmbeddings = embeddingsArray.slice(0, articlePaths.length)
-    let chunkEmbeddings = embeddingsArray.slice(articlePaths.length)
-
-    // Structure results
-    let result = {
-      articles: {},
-      chunks: {}
+    // Merge new article embeddings into cache
+    for (let i = 0; i < missingArticlePaths.length; i++) {
+      result.articles[missingArticlePaths[i]] = embeddingsArray[i]
     }
 
-    // Map article embeddings
-    for (let i = 0; i < articlePaths.length; i++) {
-      result.articles[articlePaths[i]] = articleEmbeddings[i]
-    }
-
-    // Map chunk embeddings
-    for (let i = 0; i < chunkRefs.length; i++) {
-      let { path, position } = chunkRefs[i]
+    // Merge new chunk embeddings into cache
+    for (let i = 0; i < missingChunkRefs.length; i++) {
+      let { path, position } = missingChunkRefs[i]
       if (!result.chunks[path]) result.chunks[path] = {}
-      result.chunks[path][position] = chunkEmbeddings[i]
+      result.chunks[path][position] = embeddingsArray[missingArticlePaths.length + i]
     }
 
     await cacheUtils.saveCache(cachePath, result)
-    console.log(`✓ Saved ${articlePaths.length} article + ${chunkRefs.length} chunk embeddings\n`)
+    console.log(`✓ Generated ${missingArticlePaths.length} article + ${missingChunkRefs.length} chunk embeddings\n`)
 
     return result
   }
@@ -395,17 +390,9 @@ async function main() {
     contentEmbeddings,   // {articles: {path: embedding}, chunks: {path: {pos: embedding}}}
     contentHashes,       // Map: filePath -> hash
     dedupedChunks,       // Map: filePath -> chunks[]
-    preparedData,        // {keywordRecords, keywordOccurrences}
-    cachePath = './data/db-payloads.json'
+    preparedData         // {keywordRecords, keywordOccurrences}
   ) => {
     console.log('\nPreparing database payloads...')
-
-    // Check if already cached
-    let cached = await cacheUtils.loadCache(cachePath)
-    if (cached.articles && cached.articles.length > 0) {
-      console.log(`✓ Database payloads already cached (${cached.articles.length} articles)`)
-      return cached
-    }
 
     let payload = {
       articles: [],
@@ -484,7 +471,6 @@ async function main() {
       }
     }
 
-    await cacheUtils.saveCache(cachePath, payload)
     console.log(`✓ Prepared ${payload.articles.length} articles, ${payload.chunks.length} chunks`)
     console.log(`  ${payload.keywords.length} unique keywords, ${payload.containmentEdges.length} edges\n`)
 
@@ -1073,7 +1059,6 @@ async function main() {
   console.log('  ./data/article-summaries.json')
   console.log('  ./data/content-embeddings.json')
   console.log('  ./data/content-hashes.json')
-  console.log('  ./data/db-payloads.json')
   console.log('\nPipeline steps:')
   console.log('  Step 9 (legacy): await insertToDatabase(dbPayloads, { dryRun: false })')
   console.log('  Step 9 (incremental): await runIncrementalIngestionWithProgress({ batchSize: 5, dryRun: false })')
