@@ -1,25 +1,89 @@
-import { anthropic, parseJsonArray } from "./llm";
+import { anthropic, parseJsonArray, extractJsonFromResponse } from "./llm";
+
+export interface ArticleSummary {
+  type: string;
+  teaser?: string;  // For longer pieces - LLM-generated teaser
+  content?: string;  // For short pieces - full content
+}
 
 export async function generateArticleSummary(
   title: string,
   content: string
-): Promise<string> {
-  console.log(`[Claude] Generating article summary: "${title}"`);
+): Promise<ArticleSummary> {
+  // For very short content, use full content directly
+  const contentLength = content.length;
+  const typicalSummaryLength = 300;
+  const maxDirectContentLength = typicalSummaryLength * 1.5; // ~450 chars
+
+  if (contentLength < maxDirectContentLength) {
+    console.log(`[Claude] Short content (${contentLength} chars), using full content`);
+
+    // Still detect type via LLM
+    const typeResponse = await anthropic.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 50,
+      messages: [
+        {
+          role: "user",
+          content: `Identify the TYPE of this writing in one word (essay, poem, article, reflection, dialogue, guide, etc.):
+
+${content}`,
+        },
+      ],
+    });
+
+    const typeBlock = typeResponse.content.find((block) => block.type === "text");
+    const type = typeBlock?.type === "text" ? typeBlock.text.trim().toLowerCase() : "article";
+
+    return { type, content };
+  }
+
+  // For longer content, generate a teaser
+  console.log(`[Claude] Generating article teaser: "${title}"`);
   const response = await anthropic.messages.create({
     model: "claude-haiku-4-5-20251001",
     max_tokens: 500,
     messages: [
       {
         role: "user",
-        content: `Summarize this article titled "${title}" in 2-4 sentences. Capture the main themes and key takeaways.
+        content: `You are creating a teaser for this piece of writing. Your task has two parts:
 
+1. Identify the TYPE of writing (essay, poem, article, reflection, dialogue, guide, etc.)
+
+2. Write a 2-3 sentence teaser that:
+   - Speaks FROM the piece's perspective, not ABOUT it (avoid "this essay argues...")
+   - MATCHES THE ORIGINAL'S VOICE:
+     * Use "I" ONLY if the piece is personal/autobiographical
+     * For conceptual or philosophical pieces, make direct statements
+     * For instructional pieces, use "you" or imperative voice
+   - Captures its unique voice, style, and approach
+   - Highlights what makes THIS piece distinctive
+   - Makes the reader want to engage with it
+   - Uses plain text only (no markdown, no formatting)
+
+Return ONLY a JSON object:
+{"type": "essay", "teaser": "Your teaser here"}
+
+Title: "${title}"
+
+Content:
 ${content}`,
       },
     ],
   });
 
   const textBlock = response.content.find((block) => block.type === "text");
-  return textBlock?.text ?? "";
+  if (!textBlock || textBlock.type !== "text") {
+    return { type: "article", teaser: "" };
+  }
+
+  try {
+    const jsonText = extractJsonFromResponse(textBlock.text);
+    return JSON.parse(jsonText) as ArticleSummary;
+  } catch {
+    console.error("Failed to parse article summary response:", textBlock.text);
+    return { type: "article", teaser: textBlock.text };
+  }
 }
 
 export interface SectionKeywords {

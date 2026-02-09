@@ -50,6 +50,52 @@ function hash(content: string): string {
   return createHash("sha256").update(content).digest("hex").slice(0, 16);
 }
 
+/**
+ * Inserts or updates a keyword in the canonical keywords table and creates
+ * an occurrence linking it to a node.
+ *
+ * The new schema enforces uniqueness on keyword text, so this function:
+ * 1. Upserts into `keywords` table (creating or reusing the canonical keyword)
+ * 2. Inserts into `keyword_occurrences` (linking keyword to node)
+ */
+async function upsertKeywordOccurrence(
+  supabase: SupabaseClient,
+  keyword: string,
+  embedding: number[],
+  nodeId: string,
+  nodeType: NodeType
+): Promise<void> {
+  // Step 1: Upsert canonical keyword (enforces uniqueness on keyword text)
+  const { data: keywordRow, error: keywordError } = await supabase
+    .from("keywords")
+    .upsert(
+      {
+        keyword,
+        embedding,
+        embedding_256: truncateEmbedding(embedding, 256),
+      },
+      { onConflict: "keyword" }
+    )
+    .select()
+    .single();
+
+  if (keywordError) throw keywordError;
+
+  // Step 2: Link keyword to node (may already exist, that's OK)
+  const { error: occurrenceError } = await supabase
+    .from("keyword_occurrences")
+    .upsert(
+      {
+        keyword_id: keywordRow.id,
+        node_id: nodeId,
+        node_type: nodeType,
+      },
+      { onConflict: "keyword_id,node_id" }
+    );
+
+  if (occurrenceError) throw occurrenceError;
+}
+
 export interface ChunkIngestionCallbacks {
   onProgress?: (current: string, completed: number, total: number) => void;
   onError?: (error: Error, context: string) => void;
@@ -343,15 +389,12 @@ export async function ingestArticleWithChunks(
     // Store keywords for this chunk
     for (const keyword of chunk.keywords) {
       const embedding = keywordEmbeddingMap.get(keyword)!;
-      await supabase.from("keywords").upsert(
-        {
-          keyword,
-          embedding,
-          embedding_256: truncateEmbedding(embedding, 256),
-          node_id: chunkNode.id,
-          node_type: "chunk",  // Denormalized for efficient filtering
-        },
-        { onConflict: "node_id,keyword" }
+      await upsertKeywordOccurrence(
+        supabase,
+        keyword,
+        embedding,
+        chunkNode.id,
+        "chunk"
       );
     }
 
@@ -379,15 +422,12 @@ export async function ingestArticleWithChunks(
         embedding = newEmbedding;
       }
 
-      await supabase.from("keywords").upsert(
-        {
-          keyword,
-          embedding,
-          embedding_256: truncateEmbedding(embedding, 256),
-          node_id: articleNode.id,
-          node_type: "article",  // Denormalized for efficient filtering
-        },
-        { onConflict: "node_id,keyword" }
+      await upsertKeywordOccurrence(
+        supabase,
+        keyword,
+        embedding,
+        articleNode.id,
+        "article"
       );
     }
 

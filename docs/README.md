@@ -3,6 +3,9 @@
 ## Guides
 
 - [Architecture Onboarding](guides/architecture-onboarding.md) - **Essential reading before implementing TopicsView features** - The three key files to understand existing patterns, TDD workflow with project-specific test patterns, and how to avoid building parallel implementations
+- [Indexing Pipeline](guides/indexing-pipeline.md) - Complete guide to how markdown files are ingested: parsing, chunking, embedding generation, keyword extraction, and database storage
+- [Chunk Ingestion Plan](guides/chunk-ingestion-plan.md) - REPL-driven development plan for extending chunk-based ingestion with progressive cache layers (article summaries, content embeddings, database insertion)
+- [TypeScript REPL](guides/typescript-repl.md) - Interactive development with TypeScript REPL for experimenting with import infrastructure, querying the database, and prototyping changes
 - [Clustering Systems](guides/clustering-systems.md) - Understanding the two clustering systems (MapView vs TopicsView), inspection tools, and maintenance
 - [Local NPM Packages](guides/local-npm-packages.md) - Developing with locally checked-out packages (umapper)
 

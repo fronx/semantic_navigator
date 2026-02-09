@@ -24,20 +24,36 @@ const CHUNK_SYSTEM_PROMPT = `You help segment text into semantic chunks for a na
 
 A good chunk is a complete thought - an argument, example, or dialog turn. Aim for 500-1500 tokens. Headings naturally start new chunks.
 
-Keywords are how chunks connect to each other across documents. Good keywords are:
-- Specific terms defined or introduced in the text (e.g., "gradient descent", "cache invalidation")
-- Named references: people, frameworks, theories (e.g., "Shannon entropy", "Kahneman")
-- Domain-specific phrases that would connect to other documents
+Keywords help connect this chunk to other chunks. Extract 1-5 SIMPLE, LITERAL concepts from the text.
 
-Avoid generic/meta keywords like "synthesis", "outline", "introduction" - these describe the text's structure rather than its content.
+Core principles:
+1. **Prefer words FROM the text** - If text says "freedom", use "freedom" not "existential freedom"
+2. **Keep it simple** - Use 1-2 word concepts, not elaborate phrases ("confidence" not "types of confidence")
+3. **Most connectable** - Choose concepts likely to appear in OTHER chunks, not just interpretations
+
+Good keywords:
+- Core terms the text uses: "readiness", "attention", "freedom", "commitment"
+- Domain-specific terms: "phenomenology", "cache invalidation", "gradient descent"
+- Named references: "Kahneman", "React"
+
+Bad keywords to avoid:
+- Multi-word phrases ("social roles dissolution" → use "social roles")
+- Over-abstracted terms ("existential freedom" when text just says "freedom")
+- Verbatim quotes ("walked down the street", "feeling overwhelmed")
+- Invented concepts not in text ("epistemic closure" for "not knowing")
+- Meta-descriptions ("introduction", "synthesis", "transition")
 
 If you're unsure where a thought ends, put the uncertain portion in "remainder" for the next pass.`;
 
 const CHUNK_USER_PROMPT = `Please segment this text into chunks. Return a JSON object:
 
-{"chunks":[{"text":"verbatim chunk text","type":"problem statement","keywords":["specific phrase"]}],"remainder":"text at end if incomplete","summary":"brief context for next pass"}
+{"chunks":[{"text":"verbatim chunk text","type":"problem statement","keywords":["freedom","belief","commitment"]}],"remainder":"text at end if incomplete","summary":"brief context for next pass"}
 
-IMPORTANT: The "text" field must be copied VERBATIM from the input - never summarize or paraphrase. If you can't fit all chunks, put the remaining text in "remainder" (also verbatim). For type, use natural phrases like "problem statement" or "worked example".
+IMPORTANT:
+- The "text" field must be copied VERBATIM from the input - never summarize or paraphrase
+- If you can't fit all chunks, put the remaining text in "remainder" (also verbatim)
+- For type, use natural phrases like "problem statement" or "worked example"
+- For keywords, extract SIMPLE 1-2 word concepts that appear in the text
 
 TEXT:
 `;
