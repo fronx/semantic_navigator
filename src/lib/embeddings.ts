@@ -33,6 +33,11 @@ export async function generateEmbedding(text: string, context?: EmbeddingContext
 export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return [];
 
+  const invalid = texts.findIndex(t => !t || typeof t !== "string");
+  if (invalid !== -1) {
+    throw new Error(`generateEmbeddings: invalid input at index ${invalid}: ${JSON.stringify(texts[invalid])}`);
+  }
+
   const totalChars = texts.reduce((sum, t) => sum + t.length, 0);
   console.log(`[OpenAI] Generating ${texts.length} embeddings for ${totalChars} chars total`);
   const response = await openai.embeddings.create({

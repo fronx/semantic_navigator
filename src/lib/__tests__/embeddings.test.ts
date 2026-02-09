@@ -271,6 +271,20 @@ describe("generateEmbeddings", () => {
     expect(result[1]).toEqual([0.3, 0.4]);
   });
 
+  it("throws on empty string in input", async () => {
+    await expect(generateEmbeddings(["hello", "", "world"])).rejects.toThrow(
+      "generateEmbeddings: invalid input at index 1"
+    );
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it("throws on null/undefined in input", async () => {
+    await expect(
+      generateEmbeddings(["hello", null as any, "world"])
+    ).rejects.toThrow("generateEmbeddings: invalid input at index 1");
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
   it("logs total characters", async () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 

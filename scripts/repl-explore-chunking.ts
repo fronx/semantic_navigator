@@ -330,7 +330,8 @@ async function main() {
 
     for (let [path, summary] of articleSummaries) {
       if (!result.articles[path]) {
-        let text = summary.content || summary.teaser || ''
+        let text = summary.content || summary.teaser
+        if (!text) continue
         textsToEmbed.push(text)
         missingArticlePaths.push(path)
       }
@@ -339,6 +340,7 @@ async function main() {
     for (let [path, chunks] of dedupedChunks) {
       for (let chunk of chunks) {
         if (!result.chunks[path]?.[chunk.position]) {
+          if (!chunk.content) continue
           textsToEmbed.push(chunk.content)
           missingChunkRefs.push({ path, position: chunk.position })
         }
