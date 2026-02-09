@@ -24,23 +24,32 @@ interface ContentLabelRegistration {
   updateLayout?: (layout: { worldWidth: number; worldHeight: number }) => void;
 }
 
-const DEFAULT_MIN_SCREEN_PX = 0.5;
-const DEFAULT_BASE_FONT_SIZE = 0.3;
+const DEFAULT_MIN_SCREEN_PX = 0.2;
+// Base font size for text geometry generation. This affects geometry detail/quality but NOT
+// the final rendered size on screen. Rendered size is controlled by TEXT_FILL_X (below) because
+// text is auto-scaled to fit card width (see line ~160). Higher values = more detailed geometry.
+const DEFAULT_BASE_FONT_SIZE = 1;
 const FADE_START_PX = 160;
 const FADE_END_PX = 320;
+// Maximum characters to show before truncation (increase to show more text per card)
 const PREVIEW_CHAR_LIMIT = 700;
 const MIN_SCREEN_WIDTH_PX = 40;
 const CONTENT_LINE_HEIGHT = 1.3;
 const CONTENT_FONT_DEFAULT = "/fonts/source-code-pro-regular.woff2";
 const CONTENT_FONT_BOLD = "/fonts/source-code-pro-bold.woff2";
 const CONTENT_FONT_MONO = "/fonts/source-code-pro-regular.woff2";
-const CARD_HEIGHT_SCALE = 5;
+// Controls card height: cardHeight = contentRadius * 2 * CARD_HEIGHT_SCALE
+// Increase to make taller cards that fit more text before clipping at bottom
+const CARD_HEIGHT_SCALE = 9;
 const GOLDEN_RATIO = (1 + Math.sqrt(5)) / 2;
+// Horizontal margin as fraction of card width (0.06 = 6% margins on each side)
 const H_MARGIN_RATIO = 0.06;
+// Vertical margin as fraction of card height (0.1 = 10% margins top and bottom)
 const V_MARGIN_RATIO = 0.1;
-const CARD_CORNER_RATIO = 0.08;
+// Controls text size relative to card: text fills this fraction of usable card width
+// Increase (e.g., 1.2) for larger text, decrease (e.g., 0.6) for smaller text
+// This is the PRIMARY way to adjust text size - baseFontSize doesn't directly control rendered size
 const TEXT_FILL_X = 0.9;
-const TEXT_FILL_Y = 0.85;
 
 interface LabelPreview {
   text: string;
@@ -155,14 +164,12 @@ export function ContentTextLabels3D({
       const unitsPerPixel = computeUnitsPerPixel(camera, size, worldPosition, cameraPos);
 
       const geometryWidth = entry.geometryWidth > 0 ? entry.geometryWidth : fontSize;
-      const geometryHeight = entry.geometryHeight > 0 ? entry.geometryHeight : fontSize * CONTENT_LINE_HEIGHT;
       const usableScreenWidth = Math.max(1, screenRect.width * (1 - 2 * H_MARGIN_RATIO) * TEXT_FILL_X);
-      const usableScreenHeight = Math.max(1, screenRect.height * (1 - 2 * V_MARGIN_RATIO) * TEXT_FILL_Y);
       const targetPixelWidth = Math.max(minScreenPx, usableScreenWidth);
-      const targetPixelHeight = Math.max(minScreenPx, usableScreenHeight);
-      const scaleFromWidth = (targetPixelWidth * unitsPerPixel) / geometryWidth;
-      const scaleFromHeight = (targetPixelHeight * unitsPerPixel) / geometryHeight;
-      const targetScale = Math.min(scaleFromWidth, scaleFromHeight);
+      // Width-fitting: scale text to fill targetPixelWidth regardless of base font size.
+      // This is why changing baseFontSize doesn't affect rendered size - the scale compensates.
+      // To change text size, modify TEXT_FILL_X instead.
+      const targetScale = (targetPixelWidth * unitsPerPixel) / geometryWidth;
       const minScale = contentScale * 0.05;
       const maxScale = contentScale * 2;
       const desiredScale = THREE.MathUtils.clamp(targetScale, minScale, maxScale);
@@ -257,7 +264,7 @@ function ContentTextLabel({
   const registrationRef = useRef<ContentLabelRegistration | null>(null);
   const textRef = useRef<THREE.Mesh>(null);
   const maskRef = useRef<THREE.Mesh>(null);
-  const clipGeometry = useMemo(() => createRoundedRectGeometry(1, 1, CARD_CORNER_RATIO), []);
+  const clipGeometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
 
   const material = useMemo(
     () =>
@@ -265,7 +272,7 @@ function ContentTextLabel({
         color: new THREE.Color(1, 1, 1),
         transparent: true,
         toneMapped: false,
-        depthTest: false,
+        depthTest: true,
         depthWrite: false,
         opacity: 1,
         vertexColors: true,
@@ -521,21 +528,4 @@ function hashId(id: string): number {
     hash = (hash * 131 + id.charCodeAt(i)) >>> 0;
   }
   return (hash % 0xfffe) + 1;
-}
-
-function createRoundedRectGeometry(width: number, height: number, radius: number): THREE.ShapeGeometry {
-  const shape = new THREE.Shape();
-  const hw = width / 2;
-  const hh = height / 2;
-  const clampedRadius = Math.min(radius, hw, hh);
-  shape.moveTo(-hw + clampedRadius, -hh);
-  shape.lineTo(hw - clampedRadius, -hh);
-  shape.quadraticCurveTo(hw, -hh, hw, -hh + clampedRadius);
-  shape.lineTo(hw, hh - clampedRadius);
-  shape.quadraticCurveTo(hw, hh, hw - clampedRadius, hh);
-  shape.lineTo(-hw + clampedRadius, hh);
-  shape.quadraticCurveTo(-hw, hh, -hw, hh - clampedRadius);
-  shape.lineTo(-hw, -hh + clampedRadius);
-  shape.quadraticCurveTo(-hw, -hh, -hw + clampedRadius, -hh);
-  return new THREE.ShapeGeometry(shape);
 }
