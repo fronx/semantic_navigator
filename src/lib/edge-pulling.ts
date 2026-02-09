@@ -7,6 +7,7 @@ import type * as THREE from "three";
 
 // Screen-pixel-based constants (consistent at all zoom levels)
 export const PULL_LINE_PX = 25;     // from viewport edge — where pulled nodes are placed
+export const FOCUS_PULL_LINE_PX = 80; // from viewport edge — where focused keywords are placed (inner zone)
 export const UI_PROXIMITY_PX = 10;   // extra margin on sides adjacent to UI chrome (sidebar left, header top)
 export const VIEWPORT_OVERSCAN_PX = 40; // extend margin detection beyond visible edge (prevents pop-in)
 
@@ -29,6 +30,13 @@ export interface ViewportZones {
   };
   /** Margin boundary (pull line) where nodes start clamping */
   pullBounds: {
+    left: number;
+    right: number;
+    bottom: number;
+    top: number;
+  };
+  /** Inner boundary (focus pull line) for focused keywords in focus mode - keeps them visible */
+  focusPullBounds: {
     left: number;
     right: number;
     bottom: number;
@@ -68,6 +76,7 @@ export function computeViewportZones(
   // Convert screen-pixel margins to world units
   const worldPerPx = visibleWidth / canvasWidth;
   const pullPadBase = PULL_LINE_PX * worldPerPx;
+  const focusPullPad = FOCUS_PULL_LINE_PX * worldPerPx;
   const uiPad = UI_PROXIMITY_PX * worldPerPx;
   const overscan = VIEWPORT_OVERSCAN_PX * worldPerPx;
 
@@ -77,6 +86,13 @@ export function computeViewportZones(
     right: camX + halfW - marginPad,
     bottom: camY - halfH + marginPad,
     top: camY + halfH - marginPad - uiPad,
+  };
+
+  const focusPull = {
+    left: camX - halfW + focusPullPad + uiPad,
+    right: camX + halfW - focusPullPad,
+    bottom: camY - halfH + focusPullPad,
+    top: camY + halfH - focusPullPad - uiPad,
   };
 
   return {
@@ -89,6 +105,7 @@ export function computeViewportZones(
       camY,
     },
     pullBounds: basePull,
+    focusPullBounds: focusPull,
     extendedViewport: {
       left: camX - halfW - overscan,
       right: camX + halfW + overscan,
@@ -160,4 +177,58 @@ export function isInCliffZone(
     y < pullBounds.bottom ||
     y > pullBounds.top
   );
+}
+
+/**
+ * Apply fisheye compression to a position in focus mode.
+ * Maps positions smoothly: natural position near center, compressed toward edge as distance increases.
+ *
+ * @param nodeX - Node's natural x position
+ * @param nodeY - Node's natural y position
+ * @param camX - Camera center x
+ * @param camY - Camera center y
+ * @param compressionStartRadius - Distance from center where compression starts (world units)
+ * @param maxRadius - Maximum allowed distance from center (world units, at viewport edge)
+ * @returns Compressed position
+ */
+export function applyFisheyeCompression(
+  nodeX: number,
+  nodeY: number,
+  camX: number,
+  camY: number,
+  compressionStartRadius: number,
+  maxRadius: number,
+): { x: number; y: number } {
+  const dx = nodeX - camX;
+  const dy = nodeY - camY;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+
+  // No compression needed if within start radius
+  if (distance <= compressionStartRadius) {
+    return { x: nodeX, y: nodeY };
+  }
+
+  // Avoid division by zero
+  if (distance === 0) {
+    return { x: nodeX, y: nodeY };
+  }
+
+  // Asymptotic compression: smoothly maps [compressionStartRadius, infinity) → [compressionStartRadius, maxRadius]
+  // The farther the node is, the more it gets compressed toward maxRadius
+  const excess = distance - compressionStartRadius;
+  const compressionRange = maxRadius - compressionStartRadius;
+
+  // Asymptotic mapping: excess / (excess + scale)
+  // This guarantees compressedExcess ≤ compressionRange for all inputs
+  // Scale controls how aggressive the compression is (lower = more aggressive)
+  const scale = compressionRange * 0.5; // Tune this for desired compression curve
+  const compressedExcess = compressionRange * (excess / (excess + scale));
+  const compressedDistance = compressionStartRadius + compressedExcess;
+
+  // Preserve direction, apply compressed distance
+  const ratio = compressedDistance / distance;
+  return {
+    x: camX + dx * ratio,
+    y: camY + dy * ratio,
+  };
 }

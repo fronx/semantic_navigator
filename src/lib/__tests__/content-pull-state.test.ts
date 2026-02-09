@@ -6,6 +6,7 @@ import type { SimNode } from "@/lib/map-renderer";
 const mockZones = (): ViewportZones => ({
   viewport: { left: -5, right: 5, bottom: -5, top: 5, camX: 0, camY: 0 },
   pullBounds: { left: -4, right: 4, bottom: -4, top: 4 },
+  focusPullBounds: { left: -3.5, right: 3.5, bottom: -3.5, top: 3.5 },
   extendedViewport: { left: -6, right: 6, bottom: -6, top: 6, camX: 0, camY: 0 },
   worldPerPx: 1 / 100,
 });

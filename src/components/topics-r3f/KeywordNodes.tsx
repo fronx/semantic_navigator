@@ -153,6 +153,7 @@ export function KeywordNodes({
       adjacencyMap,
       zones,
       contentDrivenKeywordIds: contentDrivenKeywordIdsRef?.current,
+      focusState,
     });
 
     // Write pulled positions to shared ref (for edges and labels)
@@ -272,9 +273,12 @@ export function KeywordNodes({
       const isFocusMargin = !!focusPos;
 
       // Hide cliff-zone nodes without an anchor (only when not focus-animated)
+      // Exception: in focus mode, focused keywords use fisheye compression and should always be visible
+      const isFocusedKeyword = focusState?.focusedNodeIds.has(node.id) ?? false;
       const isCliffWithoutAnchor =
         !isFocusMargin &&
         !isPulled &&
+        !isFocusedKeyword && // Don't hide focused keywords in focus mode
         isInViewport(realX, realY, zones.viewport) &&
         isInCliffZone(realX, realY, zones.pullBounds);
 

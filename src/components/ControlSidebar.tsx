@@ -318,91 +318,94 @@ export function ControlSidebar({
             />
           </Section>
 
-          {/* Display */}
-          <Section {...section("Display")}>
-            <Checkbox
-              label="Enable blur layer"
-              checked={settings.blurEnabled}
-              onChange={(v) => update("blurEnabled", v)}
-            />
-            <Slider
-              label="Roughness"
-              value={settings.panelRoughness}
-              onChange={(v) => update("panelRoughness", v)}
-              min={0}
-              max={1}
-              step={0.05}
-            />
-            <Slider
-              label="Transmission"
-              value={settings.panelTransmission}
-              onChange={(v) => update("panelTransmission", v)}
-              min={0}
-              max={1}
-              step={0.01}
-            />
-            <Slider
-              label="Blur strength"
-              value={settings.panelAnisotropicBlur}
-              onChange={(v) => update("panelAnisotropicBlur", v)}
-              min={0}
-              max={20}
-              step={0.5}
-            />
-            <Slider
-              label="Thickness"
-              value={settings.panelThicknessMultiplier}
-              onChange={(v) => update("panelThicknessMultiplier", v)}
-              min={0}
-              max={3}
-              step={0.1}
-              format={(v) => `${v.toFixed(1)}x`}
-            />
-            <Checkbox
-              label="Show k-NN edges"
-              checked={settings.showKNNEdges}
-              onChange={(v) => update("showKNNEdges", v)}
-            />
-            <Checkbox
-              label="Dynamic clustering"
-              checked={settings.dynamicClustering ?? true}
-              onChange={(v) => update("dynamicClustering", v)}
-            />
-            <Slider
-              label="Desaturate Mult"
-              value={settings.colorDesaturation}
-              onChange={(v) => update("colorDesaturation", v)}
-              min={0.5}
-              max={2}
-              step={0.1}
-              format={(v) => `${v.toFixed(1)}x`}
-            />
-            <Slider
-              label="Color contrast"
-              value={settings.globalContrast}
-              onChange={(v) => update("globalContrast", v)}
-              min={0}
-              max={1}
-              step={0.05}
-              format={(v) => `${(v * 100).toFixed(0)}%`}
-            />
-            <Slider
-              label="Text contrast"
-              value={settings.contentTextContrast}
-              onChange={(v) => update("contentTextContrast", v)}
-              min={0}
-              max={1}
-              step={0.05}
-              format={(v) => `${(v * 100).toFixed(0)}%`}
-            />
+          {/* Appearance */}
+          <Section {...section("Appearance")}>
+            {/* Blur Layer subsection */}
+            <div className="space-y-2">
+              <div className="text-[10px] uppercase tracking-wider font-semibold text-zinc-400 dark:text-zinc-500">
+                Blur Layer
+              </div>
+              <Checkbox
+                label="Enable blur layer"
+                checked={settings.blurEnabled}
+                onChange={(v) => update("blurEnabled", v)}
+              />
+              <Slider
+                label="Roughness"
+                value={settings.panelRoughness}
+                onChange={(v) => update("panelRoughness", v)}
+                min={0}
+                max={1}
+                step={0.05}
+              />
+              <Slider
+                label="Transmission"
+                value={settings.panelTransmission}
+                onChange={(v) => update("panelTransmission", v)}
+                min={0}
+                max={1}
+                step={0.01}
+              />
+              <Slider
+                label="Blur strength"
+                value={settings.panelAnisotropicBlur}
+                onChange={(v) => update("panelAnisotropicBlur", v)}
+                min={0}
+                max={20}
+                step={0.5}
+              />
+              <Slider
+                label="Thickness"
+                value={settings.panelThicknessMultiplier}
+                onChange={(v) => update("panelThicknessMultiplier", v)}
+                min={0}
+                max={3}
+                step={0.1}
+                format={(v) => `${v.toFixed(1)}x`}
+              />
+            </div>
 
-            {/* Cluster Labels subsection */}
-            <div className="pt-2 mt-2 border-t border-zinc-200 dark:border-zinc-700">
-              <div className="text-[10px] uppercase tracking-wider font-semibold text-zinc-400 dark:text-zinc-500 mb-2">
-                Cluster Labels
+            {/* Colors subsection */}
+            <div className="pt-2 mt-2 border-t border-zinc-200 dark:border-zinc-700 space-y-2">
+              <div className="text-[10px] uppercase tracking-wider font-semibold text-zinc-400 dark:text-zinc-500">
+                Colors
               </div>
               <Slider
-                label="Shadow"
+                label="Desaturate"
+                value={settings.colorDesaturation}
+                onChange={(v) => update("colorDesaturation", v)}
+                min={0.5}
+                max={2}
+                step={0.1}
+                format={(v) => `${v.toFixed(1)}x`}
+              />
+              <Slider
+                label="Color contrast"
+                value={settings.globalContrast}
+                onChange={(v) => update("globalContrast", v)}
+                min={0}
+                max={1}
+                step={0.05}
+                format={(v) => `${(v * 100).toFixed(0)}%`}
+              />
+              <Slider
+                label="Text contrast"
+                value={settings.contentTextContrast}
+                onChange={(v) => update("contentTextContrast", v)}
+                min={0}
+                max={1}
+                step={0.05}
+                format={(v) => `${(v * 100).toFixed(0)}%`}
+              />
+            </div>
+
+            {/* Labels subsection */}
+            <div className="pt-2 mt-2 border-t border-zinc-200 dark:border-zinc-700 space-y-2">
+              <div className="text-[10px] uppercase tracking-wider font-semibold text-zinc-400 dark:text-zinc-500">
+                Labels
+              </div>
+              <Slider
+                label="Cluster shadow"
                 value={settings.clusterLabelShadowStrength}
                 onChange={(v) => update("clusterLabelShadowStrength", v)}
                 min={0}
@@ -413,83 +416,62 @@ export function ControlSidebar({
             </div>
           </Section>
 
-          {/* Graph */}
-          <Section {...section("Graph")}>
-            <Slider
-              label="Cluster sens"
-              value={settings.clusterSensitivity}
-              onChange={(v) => update("clusterSensitivity", v)}
-              min={0.5}
-              max={5}
-              step={0.1}
-              format={(v) => v.toFixed(1)}
-            />
-            <Slider
-              label="Contrast"
-              value={settings.contrast}
-              onChange={(v) => update("contrast", v)}
-              min={1}
-              max={5}
-              step={0.1}
-              format={(v) => v.toFixed(1)}
-            />
-            <Slider
-              label="k-NN"
-              value={strengthToSlider(settings.knnStrength)}
-              onChange={(v) => update("knnStrength", sliderToStrength(v))}
-              min={0}
-              max={100}
-              step={1}
-              format={() => settings.knnStrength.toFixed(2)}
-            />
+          {/* Graph Structure */}
+          <Section {...section("Graph Structure")}>
+            {/* Clustering subsection */}
+            <div className="space-y-2">
+              <div className="text-[10px] uppercase tracking-wider font-semibold text-zinc-400 dark:text-zinc-500">
+                Clustering
+              </div>
+              <Checkbox
+                label="Dynamic clustering"
+                checked={settings.dynamicClustering ?? true}
+                onChange={(v) => update("dynamicClustering", v)}
+              />
+              <Slider
+                label="Sensitivity"
+                value={settings.clusterSensitivity}
+                onChange={(v) => update("clusterSensitivity", v)}
+                min={0.5}
+                max={5}
+                step={0.1}
+                format={(v) => v.toFixed(1)}
+              />
+            </div>
+
+            {/* Edges subsection */}
+            <div className="pt-2 mt-2 border-t border-zinc-200 dark:border-zinc-700 space-y-2">
+              <div className="text-[10px] uppercase tracking-wider font-semibold text-zinc-400 dark:text-zinc-500">
+                Edges
+              </div>
+              <Checkbox
+                label="Show k-NN edges"
+                checked={settings.showKNNEdges}
+                onChange={(v) => update("showKNNEdges", v)}
+              />
+              <Slider
+                label="k-NN (D3)"
+                value={strengthToSlider(settings.knnStrength)}
+                onChange={(v) => update("knnStrength", sliderToStrength(v))}
+                min={0}
+                max={100}
+                step={1}
+                format={() => settings.knnStrength.toFixed(2)}
+              />
+              <Slider
+                label="Contrast (D3)"
+                value={settings.contrast}
+                onChange={(v) => update("contrast", v)}
+                min={1}
+                max={5}
+                step={0.1}
+                format={(v) => v.toFixed(1)}
+              />
+            </div>
           </Section>
 
-          {/* Hover */}
-          <Section {...section("Hover")}>
-            <Slider
-              label="Similarity"
-              value={settings.hoverSimilarity}
-              onChange={(v) => update("hoverSimilarity", v)}
-              min={0.3}
-              max={0.95}
-              step={0.05}
-            />
-            <Slider
-              label="Base dim"
-              value={settings.baseDim}
-              onChange={(v) => update("baseDim", v)}
-              min={0}
-              max={0.5}
-              step={0.05}
-              format={(v) => `${(v * 100).toFixed(0)}%`}
-            />
-            <Slider
-              label="Color mix"
-              value={settings.colorMixRatio}
-              onChange={(v) => update("colorMixRatio", v)}
-              min={0}
-              max={1}
-              step={0.05}
-              format={(v) => `${(v * 100).toFixed(0)}%`}
-            />
-          </Section>
-
-          {/* Content Layout */}
-          <Section {...section("Content Layout")}>
-            <Checkbox
-              label="Unified simulation"
-              checked={settings.unifiedSimulation}
-              onChange={(v) => update("unifiedSimulation", v)}
-            />
-            <Slider
-              label="Charge"
-              value={settings.chargeStrength}
-              onChange={(v) => update("chargeStrength", v)}
-              min={-500}
-              max={0}
-              step={10}
-              format={(v) => `${v}`}
-            />
+          {/* Node Sizing */}
+          <Section {...section("Node Sizing")}>
             <Slider
               label="Keyword size"
               value={settings.keywordSizeMultiplier}
@@ -526,6 +508,24 @@ export function ControlSidebar({
                 />
               </>
             )}
+          </Section>
+
+          {/* Physics */}
+          <Section {...section("Physics")}>
+            <Checkbox
+              label="Unified simulation"
+              checked={settings.unifiedSimulation}
+              onChange={(v) => update("unifiedSimulation", v)}
+            />
+            <Slider
+              label="Charge"
+              value={settings.chargeStrength}
+              onChange={(v) => update("chargeStrength", v)}
+              min={-500}
+              max={0}
+              step={10}
+              format={(v) => `${v}`}
+            />
             <Slider
               label="Spring force"
               value={Math.log10(settings.contentSpringStrength)}
@@ -537,16 +537,46 @@ export function ControlSidebar({
             />
           </Section>
 
+          {/* Hover */}
+          <Section {...section("Hover")}>
+            <Slider
+              label="Similarity"
+              value={settings.hoverSimilarity}
+              onChange={(v) => update("hoverSimilarity", v)}
+              min={0.3}
+              max={0.95}
+              step={0.05}
+            />
+            <Slider
+              label="Base dim"
+              value={settings.baseDim}
+              onChange={(v) => update("baseDim", v)}
+              min={0}
+              max={0.5}
+              step={0.05}
+              format={(v) => `${(v * 100).toFixed(0)}%`}
+            />
+            <Slider
+              label="Color mix"
+              value={settings.colorMixRatio}
+              onChange={(v) => update("colorMixRatio", v)}
+              min={0}
+              max={1}
+              step={0.05}
+              format={(v) => `${(v * 100).toFixed(0)}%`}
+            />
+          </Section>
+
           {/* Zoom Phases */}
           <Section {...section("Zoom Phases")}>
             <div className="space-y-3">
               {/* Keyword labels */}
               <div className="space-y-1">
                 <div className="text-[10px] uppercase tracking-wider text-zinc-400 font-medium">
-                  Keyword labels
+                  Keyword Labels
                 </div>
                 <ZoomSlider
-                  label="Start"
+                  label="Start fade"
                   value={settings.zoomPhaseConfig.keywordLabels.start}
                   onChange={(z) =>
                     updateZoomPhaseConfig((prev) => ({
@@ -556,7 +586,7 @@ export function ControlSidebar({
                   }
                 />
                 <ZoomSlider
-                  label="Full"
+                  label="Full opacity"
                   value={settings.zoomPhaseConfig.keywordLabels.full}
                   onChange={(z) =>
                     updateZoomPhaseConfig((prev) => ({
@@ -567,13 +597,13 @@ export function ControlSidebar({
                 />
               </div>
 
-              {/* Chunk crossfade */}
+              {/* Content fade-in */}
               <div className="space-y-1">
                 <div className="text-[10px] uppercase tracking-wider text-zinc-400 font-medium">
-                  Chunk crossfade
+                  Content Fade-In
                 </div>
                 <ZoomSlider
-                  label="Fade out"
+                  label="Start fade"
                   value={settings.zoomPhaseConfig.chunkCrossfade.far}
                   onChange={(z) =>
                     updateZoomPhaseConfig((prev) => ({
@@ -583,7 +613,7 @@ export function ControlSidebar({
                   }
                 />
                 <ZoomSlider
-                  label="Full"
+                  label="Full opacity"
                   value={settings.zoomPhaseConfig.chunkCrossfade.near}
                   onChange={(z) =>
                     updateZoomPhaseConfig((prev) => ({
@@ -592,8 +622,15 @@ export function ControlSidebar({
                     }))
                   }
                 />
+              </div>
+
+              {/* Content geometry */}
+              <div className="space-y-1">
+                <div className="text-[10px] uppercase tracking-wider text-zinc-400 font-medium">
+                  Content Geometry
+                </div>
                 <Slider
-                  label="Depth"
+                  label="Card depth"
                   value={settings.chunkZOffset}
                   onChange={(value) => update("chunkZOffset", value)}
                   min={-0.1}
