@@ -1,8 +1,10 @@
 # Chunk Node LOD Optimization Investigation
 
+> **ARCHIVED (2026-02):** This investigation analyzed LOD optimization for the raw Three.js renderer, which was removed from the codebase. The R3F (React Three Fiber) implementation uses a different approach with instanced rendering and visibility-based culling.
+
 **Date**: 2026-02-03
-**Status**: Analysis Complete - Recommendation Provided
-**Related Files**: `src/lib/three/node-renderer.ts`, `src/lib/three/renderer.ts`
+**Status**: Analysis Complete - Recommendation Provided (for archived Three.js renderer)
+**Related Files**: `src/lib/three/node-renderer.ts`, `src/lib/three/renderer.ts` (deleted)
 
 ## Summary
 

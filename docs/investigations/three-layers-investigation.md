@@ -1,5 +1,7 @@
 # Three.js Layers Investigation: Why Layer-Based Rendering Failed
 
+> **ARCHIVED (2026-02):** This investigation documents why the layer-based rendering approach failed in the raw Three.js renderer. The raw Three.js renderer was subsequently removed from the codebase in favor of R3F (React Three Fiber). The lessons learned from this investigation informed R3F's architecture, which successfully implements blur effects using a different approach (TransmissionPanel component).
+
 **Date:** 2026-02-03
 **Context:** Attempted to implement Gaussian blur for keyword nodes using Three.js layer system
 

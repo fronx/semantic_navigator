@@ -1,7 +1,9 @@
 # Chunk Node LOD Optimization - Executive Summary
 
+> **ARCHIVED (2026-02):** This investigation was for the raw Three.js renderer, which was removed from the codebase. The R3F (React Three Fiber) implementation already includes visibility-based culling and instanced rendering.
+
 **Investigation Date**: 2026-02-03
-**Status**: Analysis Complete - Ready for Implementation
+**Status**: Analysis Complete (for archived Three.js renderer)
 **Estimated Implementation Time**: 15-30 minutes
 
 ## Quick Answer

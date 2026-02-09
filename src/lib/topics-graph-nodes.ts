@@ -99,15 +99,3 @@ export function convertToD3Nodes(
     includeKNN: true,
   });
 }
-
-/**
- * Convert keyword nodes to simulation-ready format for Three.js renderer.
- */
-export function convertToThreeNodes(
-  options: GraphNodeConversionOptions
-): GraphNodeConversionResult {
-  return convertToSimNodes({
-    ...options,
-    includeKNN: false,
-  });
-}

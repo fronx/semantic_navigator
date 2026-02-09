@@ -93,8 +93,8 @@ PCA is also computed automatically as Step 11 of the REPL ingestion script (`scr
 **Consumers** (pass `pcaTransform` through):
 - `src/components/TopicsView.tsx` - Loads PCA transform, passes to renderers
 - `src/lib/map-renderer.ts` - D3/SVG node and edge coloring
-- `src/lib/three/node-renderer.ts` - Three.js instanced node coloring
-- `src/lib/hull-renderer.ts` / `src/lib/three/hull-renderer.ts` - Hull coloring from cluster centroids
+- `src/components/topics-r3f/KeywordNodes.tsx` - R3F instanced node coloring
+- `src/lib/rendering-utils/hull-renderer.ts` - Hull coloring from cluster centroids
 - `src/lib/edge-colors.ts` - Edge coloring derived from source/target node colors
 
 ## Consequences

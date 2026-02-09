@@ -4,7 +4,7 @@
  */
 
 import { blendColors } from "./colors";
-import { getNodeColor } from "./three/node-renderer";
+import { getNodeColor } from "@/lib/rendering-utils/node-renderer";
 import type { SimNode, SimLink } from "./map-renderer";
 import type { PCATransform, ClusterColorInfo } from "./semantic-colors";
 

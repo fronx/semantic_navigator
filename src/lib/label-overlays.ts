@@ -9,7 +9,7 @@ import type { ContentSimNode } from "@/lib/content-layout";
 import { computeClusterLabels } from "@/lib/cluster-labels";
 import { communityColorScale } from "@/lib/hull-renderer";
 import { clusterColorToCSS, type ClusterColorInfo } from "@/lib/semantic-colors";
-import { CAMERA_FOV_DEGREES } from "@/lib/three/zoom-to-cursor";
+import { CAMERA_FOV_DEGREES } from "@/lib/rendering-utils/zoom-to-cursor";
 import { updateLabelStyles } from "@/lib/dom-update-utils";
 
 // ============================================================================

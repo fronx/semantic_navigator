@@ -10,12 +10,12 @@ import { OrbitControls } from "@react-three/drei";
 import { useThree, useFrame } from "@react-three/fiber";
 import type { OrbitControls as OrbitControlsType } from "three-stdlib";
 import type { Camera, WebGLRenderer } from "three";
-import { CAMERA_Z_SCALE_BASE } from "@/lib/three/camera-controller";
+import { CAMERA_Z_SCALE_BASE } from "@/lib/rendering-utils/camera-controller";
 import { CAMERA_Z_MIN, CAMERA_Z_MAX } from "@/lib/content-zoom-config";
-import { calculateZoomToCursor, calculateZoomFactor } from "@/lib/three/zoom-to-cursor";
-import { createPanHandler } from "@/lib/three/pan-handler";
-import { classifyWheelGesture } from "@/lib/three/gesture-classifier";
-import { calculatePan } from "@/lib/three/pan-camera";
+import { calculateZoomToCursor, calculateZoomFactor } from "@/lib/rendering-utils/zoom-to-cursor";
+import { createPanHandler } from "@/lib/rendering-utils/pan-handler";
+import { classifyWheelGesture } from "@/lib/rendering-utils/gesture-classifier";
+import { calculatePan } from "@/lib/rendering-utils/pan-camera";
 
 export interface CameraControllerProps {
   onZoomChange?: (zoomScale: number) => void;

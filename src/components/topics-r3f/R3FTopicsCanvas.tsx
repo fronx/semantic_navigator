@@ -10,7 +10,7 @@ import { Environment } from "@react-three/drei";
 import { R3FTopicsScene } from "./R3FTopicsScene";
 import { getBackgroundColor, watchThemeChanges } from "@/lib/theme";
 import { useStableCallback } from "@/hooks/useStableRef";
-import { CAMERA_FOV_DEGREES } from "@/lib/three/zoom-to-cursor";
+import { CAMERA_FOV_DEGREES } from "@/lib/rendering-utils/zoom-to-cursor";
 import { useWheelEventForwarding } from "@/hooks/useWheelEventForwarding";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 import type { PCATransform, ClusterColorInfo } from "@/lib/semantic-colors";

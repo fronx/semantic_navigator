@@ -7,7 +7,7 @@ import { useEffect, useRef, useMemo } from "react";
 import * as d3 from "d3-force";
 import type { ContentSimNode } from "@/lib/content-layout";
 import type { SimNode } from "@/lib/map-renderer";
-import { BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/three/node-renderer";
+import { BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/rendering-utils/node-renderer";
 
 /**
  * Custom force that tethers content nodes to their parent keywords.

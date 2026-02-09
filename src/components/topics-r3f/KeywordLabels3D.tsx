@@ -11,7 +11,7 @@ import { computeUnitsPerPixel } from "@/lib/three-text-utils";
 import { maxScaleForScreenSize } from "@/lib/screen-size-clamp";
 import { calculateScales } from "@/lib/content-scale";
 import { useThreeTextGeometry } from "@/hooks/useThreeTextGeometry";
-import { getNodeColor, BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/three/node-renderer";
+import { getNodeColor, BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/rendering-utils/node-renderer";
 import { isDarkMode } from "@/lib/theme";
 import type { LabelRefs } from "./R3FLabelContext";
 import { handleKeywordClick, handleKeywordHover } from "@/lib/keyword-interaction-handlers";

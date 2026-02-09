@@ -1,6 +1,6 @@
 /**
  * Hook that manages R3F-based rendering for TopicsView.
- * Follows the same pattern as useD3TopicsRenderer and useThreeTopicsRenderer.
+ * Follows the same pattern as useD3TopicsRenderer.
  */
 
 import { useRef } from "react";

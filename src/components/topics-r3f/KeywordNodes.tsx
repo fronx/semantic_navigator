@@ -12,7 +12,7 @@ import type { ZoomRange } from "@/lib/zoom-phase-config";
 import type { KeywordTierMap } from "@/lib/topics-filter";
 import type { FocusState } from "@/lib/focus-mode";
 import { calculateScales } from "@/lib/content-scale";
-import { getNodeColor, BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/three/node-renderer";
+import { getNodeColor, BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/rendering-utils/node-renderer";
 import { KEYWORD_TIER_SCALES } from "@/lib/semantic-filter-config";
 import { useInstancedMeshMaterial } from "@/hooks/useInstancedMeshMaterial";
 import { useStableInstanceCount } from "@/hooks/useStableInstanceCount";

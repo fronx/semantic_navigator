@@ -15,7 +15,7 @@ import type { SimNode } from "@/lib/map-renderer";
 import type { ContentSimNode } from "@/lib/content-layout";
 import { createContentNodes } from "@/lib/content-layout";
 import type { ContentNode } from "@/lib/content-loader";
-import { BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/three/node-renderer";
+import { BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/rendering-utils/node-renderer";
 import {
   calculateSimulationAlpha,
   calculateVelocityDecay,

@@ -1,5 +1,7 @@
 # Camera Z-Scale Synchronization Bug: Keywords Disappear on Zoom Stop
 
+> **ARCHIVED (2026-02):** This investigation documented a bug in the raw Three.js renderer, which was removed from the codebase. The lessons learned informed R3F's camera synchronization architecture.
+
 ## Issue Description
 
 Keywords were only visible during active zoom operations. When zooming stopped, keywords would disappear and be replaced by chunk nodes becoming visible (snap-back effect). This was the opposite of the intended behavior:

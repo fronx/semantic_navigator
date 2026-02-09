@@ -4,7 +4,7 @@ import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 import { computeClusterLabels } from "@/lib/cluster-labels";
 import { clusterColorToCSS, type ClusterColorInfo } from "@/lib/semantic-colors";
-import { getGlobalContrastParams } from "@/lib/three/node-renderer";
+import { getGlobalContrastParams } from "@/lib/rendering-utils/node-renderer";
 import type { SimNode } from "@/lib/map-renderer";
 import type { FocusState } from "@/lib/focus-mode";
 import { useThreeTextGeometry } from "@/hooks/useThreeTextGeometry";

@@ -1,5 +1,7 @@
 # Chunk LOD: Expected Performance Metrics
 
+> **ARCHIVED (2026-02):** This document analyzed performance metrics for the raw Three.js renderer, which was removed from the codebase. For R3F (React Three Fiber) performance analysis, see the actual R3F implementation.
+
 This document provides expected performance baselines and improvement targets for the chunk node LOD optimization.
 
 ## Current Performance Baseline (Without Visibility Culling)

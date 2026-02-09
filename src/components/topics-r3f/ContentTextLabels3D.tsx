@@ -5,7 +5,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import type { ContentSimNode } from "@/lib/content-layout";
 import { calculateScales } from "@/lib/content-scale";
-import { BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/three/node-renderer";
+import { BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/rendering-utils/node-renderer";
 import type { ZoomRange } from "@/lib/zoom-phase-config";
 import { computeUnitsPerPixel, smoothstep } from "@/lib/three-text-utils";
 import { useThreeTextGeometry } from "@/hooks/useThreeTextGeometry";

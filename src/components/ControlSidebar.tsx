@@ -9,7 +9,7 @@ import type { TopicsSettings } from "@/hooks/useTopicsSettings";
 import type { SemanticFilter } from "@/lib/topics-filter";
 import type { KeywordNode } from "@/lib/graph-queries";
 import { CAMERA_Z_MIN, CAMERA_Z_MAX } from "@/lib/content-zoom-config";
-import { CAMERA_Z_SCALE_BASE } from "@/lib/three/camera-controller";
+import { CAMERA_Z_SCALE_BASE } from "@/lib/rendering-utils/camera-controller";
 
 const LOG_Z_MIN = Math.log10(CAMERA_Z_MIN);
 const LOG_Z_MAX = Math.log10(CAMERA_Z_MAX);
@@ -292,7 +292,6 @@ export function ControlSidebar({
               className="w-full text-[11px] bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-2 py-1"
             >
               <option value="d3">D3/SVG</option>
-              <option value="three">Three.js</option>
               <option value="r3f">R3F/drei</option>
             </select>
           </Section>

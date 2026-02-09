@@ -3,6 +3,8 @@
 ## Status
 Implemented
 
+> **Note (2026-02):** This ADR was written when the raw Three.js renderer existed. The LOD feature was ultimately implemented in the R3F (React Three Fiber) renderer, not the raw Three.js renderer. The raw Three.js renderer was removed from the codebase in February 2026. The "Files Modified" section below references the original implementation plan which was superseded by the R3F implementation.
+
 ## Terminology Note
 > **Visual Layer vs Database Layer**
 > - **Content nodes** (visual): The graph nodes you see in TopicsView that display paragraph text
@@ -236,13 +238,15 @@ WHERE keywords.keyword IN (...)
 6. **`src/app/api/topics/chunks/route.ts`** - API endpoint for chunk data
 7. **`src/lib/__tests__/chunk-scale.test.ts`** - Scale calculation tests
 
-### Files Modified
-1. **`src/lib/three/renderer.ts`** - Integrate chunk loading and rendering
-2. **`src/lib/three/node-renderer.ts`** - Add content node type handling
-3. **`src/lib/three/edge-renderer.ts`** - Render containment edges (keyword → content)
-4. **`src/lib/three/camera-controller.ts`** - Expose cameraZ for scale calculations
-5. **`src/hooks/useThreeTopicsRenderer.ts`** - Wire up chunk loading hook
-6. **`src/components/TopicsView.tsx`** - Pass enableChunks flag to renderer
+### Files Modified (Original Plan - Superseded)
+The original plan targeted the raw Three.js renderer. The actual implementation uses R3F components:
+
+**Actual Implementation (R3F):**
+1. **`src/components/topics-r3f/ContentNodes.tsx`** - Content node instanced rendering
+2. **`src/components/topics-r3f/ContentEdges.tsx`** - Containment edges (keyword → content)
+3. **`src/hooks/useContentSimulation.ts`** - Force simulation for content layout
+4. **`src/hooks/useContentLoading.ts`** - Lazy loading with caching
+5. **`src/components/TopicsView.tsx`** - Orchestrates content loading and rendering
 
 ### Performance Optimizations
 1. **Visibility culling** (future): Hide chunks when scale < 0.01 (invisible anyway)
@@ -268,8 +272,8 @@ WHERE keywords.keyword IN (...)
 - **Non-deterministic layout:** Force simulation varies slightly across loads
 
 ### Neutral
-- **Three.js dependency deepens:** More investment in Three.js renderer (vs D3)
-  - **Note:** D3 renderer still supported, chunk system could be ported if needed
+- **R3F-only feature:** Content LOD is only available in the R3F renderer, not D3
+  - **Note:** Raw Three.js renderer was removed; R3F is now the primary 3D renderer
 - **Z-depth magic number:** `CHUNK_Z_OFFSET = -0.15` tuned empirically
   - Could expose as user preference in future
 - **Exponential interpolation:** Narrow transition zone may surprise users

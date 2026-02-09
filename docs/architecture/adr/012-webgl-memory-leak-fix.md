@@ -3,6 +3,8 @@
 **Status:** Accepted
 **Date:** 2026-02-02
 
+> **Note (2026-02):** This ADR documents WebGL cleanup patterns that were implemented in the raw Three.js renderer (three-renderer.ts), which was subsequently removed. The WebGL cleanup principles documented here remain valid and are preserved in R3F components.
+
 ## Context
 
 The Topics view uses `3d-force-graph` for WebGL-based graph rendering. Users reported that the browser would become unresponsive after extended use, with memory growing from normal levels (< 100 MB) to 2-6 GB.

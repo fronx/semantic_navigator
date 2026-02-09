@@ -6,7 +6,7 @@
 import * as THREE from "three";
 import type { RendererAdapter } from "@/lib/topics-hover-controller";
 import type { SimNode } from "@/lib/map-renderer";
-import { CAMERA_Z_SCALE_BASE } from "@/lib/three/camera-controller";
+import { CAMERA_Z_SCALE_BASE } from "@/lib/rendering-utils/camera-controller";
 
 export interface R3FAdapterOptions {
   camera: THREE.PerspectiveCamera;

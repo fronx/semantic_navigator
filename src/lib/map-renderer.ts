@@ -18,7 +18,7 @@ import {
   type ClusterColorInfo,
 } from "@/lib/semantic-colors";
 import { getEdgeColor } from "@/lib/edge-colors";
-import { getNodeColor } from "@/lib/three/node-renderer";
+import { getNodeColor } from "@/lib/rendering-utils/node-renderer";
 
 export interface SimNode extends d3.SimulationNodeDatum, MapNode {}
 

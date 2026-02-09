@@ -14,7 +14,7 @@ import type { ZoomRange } from "@/lib/zoom-phase-config";
 import type { ContentScreenRect } from "./R3FLabelContext";
 import { CONTENT_Z_DEPTH } from "@/lib/content-zoom-config";
 import { calculateScales } from "@/lib/content-scale";
-import { getNodeColor, BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/three/node-renderer";
+import { getNodeColor, BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/rendering-utils/node-renderer";
 import { useInstancedMeshMaterial } from "@/hooks/useInstancedMeshMaterial";
 import { useStableInstanceCount } from "@/hooks/useStableInstanceCount";
 import { adjustContrast } from "@/lib/colors";

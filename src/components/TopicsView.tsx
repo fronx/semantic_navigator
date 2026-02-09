@@ -7,14 +7,12 @@ import { useStableCallback } from "@/hooks/useStableRef";
 import { useTopicsFilter } from "@/hooks/useTopicsFilter";
 import { useProjectCreation } from "@/hooks/useProjectCreation";
 import { useD3TopicsRenderer } from "@/hooks/useD3TopicsRenderer";
-import { useThreeTopicsRenderer } from "@/hooks/useThreeTopicsRenderer";
 import { useR3FTopicsRenderer } from "@/hooks/useR3FTopicsRenderer";
 import { useContentLoading } from "@/hooks/useContentLoading";
 import { useTopicsSearch } from "@/hooks/useTopicsSearch";
 import { useTopicsSearchOpacity } from "@/hooks/useTopicsSearchOpacity";
 import { R3FTopicsCanvas } from "@/components/topics-r3f/R3FTopicsCanvas";
 import { createContentNodes, applyConstrainedForces } from "@/lib/content-layout";
-import { convertToThreeNodes } from "@/lib/topics-graph-nodes";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 import { loadPCATransform, type PCATransform } from "@/lib/semantic-colors";
 import type { SemanticFilter } from "@/lib/topics-filter";
@@ -22,7 +20,7 @@ import { createFocusState, type FocusState } from "@/lib/focus-mode";
 import { computeVisibleKeywordIds } from "@/lib/focus-mode-content-filter";
 import type { BaseRendererOptions } from "@/lib/renderer-types";
 import type { SimNode } from "@/lib/map-renderer";
-import { CAMERA_Z_SCALE_BASE } from "@/lib/three/camera-controller";
+import { CAMERA_Z_SCALE_BASE } from "@/lib/rendering-utils/camera-controller";
 import { DEFAULT_ZOOM_PHASE_CONFIG, type ZoomPhaseConfig } from "@/lib/zoom-phase-config";
 import { calculatePanelRatio, calculatePanelThickness } from "@/lib/transmission-panel-config";
 
@@ -30,7 +28,7 @@ import { calculatePanelRatio, calculatePanelThickness } from "@/lib/transmission
 // Types
 // ============================================================================
 
-export type RendererType = "d3" | "three" | "r3f";
+export type RendererType = "d3" | "r3f";
 
 export type { BaseRendererOptions };
 
@@ -59,7 +57,7 @@ export interface TopicsViewProps {
   onProjectClick?: (projectId: string) => void;
   /** Callback when zoom level changes */
   onZoomChange?: (zoomScale: number) => void;
-  /** Which renderer to use: "d3" (SVG) or "three" (WebGL) */
+  /** Which renderer to use: "d3" (SVG) or "r3f" (React Three Fiber WebGL) */
   rendererType?: RendererType;
   /** External filter from project selection - keywords in this set are shown */
   externalFilter?: Set<string> | null;
@@ -73,7 +71,7 @@ export interface TopicsViewProps {
   onError?: (message: string) => void;
   /** Zoom phase configuration for semantic transitions */
   zoomPhaseConfig?: ZoomPhaseConfig;
-  /** Whether blur layer is enabled (Three.js/R3F only) */
+  /** Whether blur layer is enabled (R3F only) */
   blurEnabled?: boolean;
   /** Whether to show k-NN edges (usually hidden, only affect force simulation) */
   showKNNEdges?: boolean;
@@ -266,7 +264,7 @@ export function TopicsView({
 
   // Stable callbacks - won't trigger effect re-runs when parent re-renders
   const handleZoomChange = useStableCallback((zoomScale: number) => {
-    if ((rendererType === "three" || rendererType === "r3f") && Number.isFinite(zoomScale) && zoomScale > 0) {
+    if (rendererType === "r3f" && Number.isFinite(zoomScale) && zoomScale > 0) {
       const newCameraZ = CAMERA_Z_SCALE_BASE / zoomScale;
       setCameraZ(newCameraZ);
 
@@ -381,17 +379,11 @@ export function TopicsView({
 
   // Click handler for drill-down filtering - needs refs from the active renderer
   const d3GetPosition = useRef<(id: string) => { x: number; y: number } | undefined>(() => undefined);
-  const threeGetPosition = useRef<(id: string) => { x: number; y: number } | undefined>(() => undefined);
+  const r3fGetPosition = useRef<(id: string) => { x: number; y: number } | undefined>(() => undefined);
 
   const handleFilterClick = useStableCallback(() => {
-    const getPosition =
-      rendererType === "d3" ? d3GetPosition.current :
-      rendererType === "three" ? threeGetPosition.current :
-      r3fGetPosition.current;
-    const highlightedIds =
-      rendererType === "d3" ? d3RendererResult.highlightedIdsRef.current :
-      rendererType === "three" ? threeRendererResult.highlightedIdsRef.current :
-      r3fRendererResult.highlightedIdsRef.current;
+    const getPosition = rendererType === "d3" ? d3GetPosition.current : r3fGetPosition.current;
+    const highlightedIds = rendererType === "d3" ? d3RendererResult.highlightedIdsRef.current : r3fRendererResult.highlightedIdsRef.current;
 
     capturePositions(getPosition);
     applyFilter(highlightedIds);
@@ -430,16 +422,6 @@ export function TopicsView({
     contrast,
   });
 
-  // Three.js renderer hook
-  const threeRendererResult = useThreeTopicsRenderer({
-    ...baseRendererOptions,
-    enabled: rendererType === "three",
-    containerRef,
-    chunksByKeyword: contentsByKeyword,
-    cameraZ,
-    zoomPhaseConfig,
-  });
-
   // R3F renderer hook
   const r3fRendererResult = useR3FTopicsRenderer({
     ...baseRendererOptions,
@@ -449,8 +431,6 @@ export function TopicsView({
 
   // Update position getter refs
   d3GetPosition.current = d3RendererResult.getNodePosition;
-  threeGetPosition.current = threeRendererResult.getNodePosition;
-  const r3fGetPosition = useRef<(id: string) => { x: number; y: number } | undefined>(() => undefined);
   r3fGetPosition.current = r3fRendererResult.getNodePosition;
 
   // Update cluster assignments when clustering changes (without restarting simulation)
@@ -480,41 +460,6 @@ export function TopicsView({
       d3RendererResult.rendererRef.current.tick();
     }
 
-    // Handle Three.js renderer
-    if (rendererType === "three" && threeRendererResult.threeRendererRef.current) {
-      const hubToCluster = new Map<string, { clusterId: number; hub: string }>();
-      for (const [clusterId, cluster] of baseClusters) {
-        hubToCluster.set(cluster.hub, { clusterId, hub: cluster.hub });
-      }
-
-      const threeNodeToCluster = new Map<string, number>();
-      for (const node of keywordNodes) {
-        const clusterId = nodeToCluster.get(node.id);
-        if (clusterId !== undefined) {
-          threeNodeToCluster.set(`kw:${node.label}`, clusterId);
-        }
-      }
-      threeRendererResult.threeRendererRef.current.updateClusters(threeNodeToCluster);
-
-      // Update hullLabel and communityMembers on Three.js nodes (for label rendering)
-      const threeNodes = threeRendererResult.threeRendererRef.current.getNodes();
-      for (const node of threeNodes) {
-        if (node.type !== "keyword") continue;
-        const clusterInfo = hubToCluster.get(node.label);
-        if (clusterInfo) {
-          const cluster = baseClusters.get(clusterInfo.clusterId);
-          node.communityMembers = cluster ? [node.label] : undefined;
-          node.hullLabel = labels[clusterInfo.clusterId] || clusterInfo.hub;
-        } else {
-          node.communityMembers = undefined;
-          node.hullLabel = undefined;
-        }
-      }
-
-      // Update cluster labels after setting hullLabel
-      threeRendererResult.threeRendererRef.current.updateClusterLabels();
-    }
-
     // Handle R3F renderer
     if (rendererType === "r3f" && r3fRendererResult.labelsRef.current) {
       const hubToCluster = new Map<string, { clusterId: number; hub: string }>();
@@ -542,7 +487,7 @@ export function TopicsView({
       }
 
     }
-  }, [nodeToCluster, baseClusters, labels, rendererType, keywordNodes, d3RendererResult.simulationNodesRef, d3RendererResult.rendererRef, threeRendererResult.threeRendererRef, r3fRendererResult.labelsRef]);
+  }, [nodeToCluster, baseClusters, labels, rendererType, keywordNodes, d3RendererResult.simulationNodesRef, d3RendererResult.rendererRef, r3fRendererResult.labelsRef]);
 
   // Update colors when colorMixRatio changes (without relayout) - D3 only
   useEffect(() => {
@@ -595,22 +540,6 @@ export function TopicsView({
           onZoomChange={handleZoomChange}
           onChunkHover={onChunkHover}
           onKeywordHover={onKeywordHover ?? (() => {})}
-        />
-        {isLoading && (
-          <div className="absolute top-4 right-4 px-3 py-2 bg-black/70 text-white text-sm rounded-md">
-            Loading chunks...
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  if (rendererType === "three") {
-    return (
-      <div className="w-full h-full relative">
-        <div
-          ref={containerRef}
-          className="w-full h-full cursor-grab"
         />
         {isLoading && (
           <div className="absolute top-4 right-4 px-3 py-2 bg-black/70 text-white text-sm rounded-md">
