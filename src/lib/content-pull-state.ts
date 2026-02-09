@@ -1,11 +1,11 @@
 import type { SimNode } from "@/lib/map-renderer";
-import type { ViewportZones } from "@/lib/viewport-edge-magnets";
+import type { ViewportZones } from "@/lib/edge-pulling";
 import {
   clampToBounds,
   isInCliffZone,
   isInViewport,
   MAX_PULLED_CONTENT_NODES,
-} from "@/lib/viewport-edge-magnets";
+} from "@/lib/edge-pulling";
 
 export interface ContentPulledNode {
   x: number;

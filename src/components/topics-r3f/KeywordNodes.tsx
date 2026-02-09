@@ -23,7 +23,7 @@ import {
   clampToBounds,
   isInViewport,
   isInCliffZone,
-} from "@/lib/viewport-edge-magnets";
+} from "@/lib/edge-pulling";
 import { computeKeywordPullState } from "@/lib/keyword-pull-state";
 import { handleKeywordClick, handleKeywordHover } from "@/lib/keyword-interaction-handlers";
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { computeContentPullState } from "@/lib/content-pull-state";
-import type { ViewportZones } from "@/lib/viewport-edge-magnets";
+import type { ViewportZones } from "@/lib/edge-pulling";
 import type { SimNode } from "@/lib/map-renderer";
 
 const mockZones = (): ViewportZones => ({

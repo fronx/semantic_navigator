@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SimNode } from "@/lib/map-renderer";
 import { computeKeywordPullState } from "@/lib/keyword-pull-state";
-import type { ViewportZones } from "@/lib/viewport-edge-magnets";
+import type { ViewportZones } from "@/lib/edge-pulling";
 
 const mockZones = (overrides?: Partial<ViewportZones>): ViewportZones => ({
   viewport: { left: -5, right: 5, bottom: -5, top: 5, camX: 0, camY: 0 },

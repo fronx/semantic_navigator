@@ -173,7 +173,7 @@ R3FTopicsScene
 
 | File                                             | Changes                                                                                                                                                   |
 | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/lib/viewport-edge-magnets.ts`               | **Shared utilities**: `computeViewportZones`, `clampToBounds`, `isInViewport`, `isInCliffZone`, constants (2026-02-07)                                    |
+| `src/lib/edge-pulling.ts`                        | **Shared utilities**: `computeViewportZones`, `clampToBounds`, `isInViewport`, `isInCliffZone`, constants (2026-02-07)                                    |
 | `src/components/topics-r3f/KeywordNodes.tsx`     | Viewport zones, cliff detection, asymmetric pull bounds, nodeById optimization, click handler fix. Uses shared utilities.                                 |
 | `src/components/topics-r3f/ContentNodes.tsx`     | Viewport zones, parent-based visibility filtering, off-screen content pulling, writes to `pulledContentPositionsRef`. Uses shared utilities. (2026-02-07) |
 | `src/components/topics-r3f/ContentEdges.tsx`     | Merge keyword and content pulled positions, pass combined map to EdgeRenderer for correct edge endpoints (2026-02-07)                                     |
@@ -188,7 +188,7 @@ R3FTopicsScene
 
 ## Implementation Notes
 
-**Shared utilities** (`src/lib/viewport-edge-magnets.ts`): Both KeywordNodes and ContentNodes use shared utilities to maximize code reuse:
+**Shared utilities** (`src/lib/edge-pulling.ts`): Both KeywordNodes and ContentNodes use shared utilities to maximize code reuse:
 - `computeViewportZones()`: Computes viewport, pull bounds, and cliff bounds in one call
 - `clampToBounds()`: Ray-AABB intersection for clamping positions to viewport edge
 - `isInViewport()`, `isInCliffZone()`: Boundary checking helpers

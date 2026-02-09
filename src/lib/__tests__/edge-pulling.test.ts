@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeViewportZones, PULL_LINE_PX, UI_PROXIMITY_PX, VIEWPORT_OVERSCAN_PX } from "@/lib/viewport-edge-magnets";
+import { computeViewportZones, PULL_LINE_PX, UI_PROXIMITY_PX, VIEWPORT_OVERSCAN_PX } from "@/lib/edge-pulling";
 
 const mockCamera = (positionZ = 1000) => ({
   position: { x: 0, y: 0, z: positionZ },

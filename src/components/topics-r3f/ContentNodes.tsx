@@ -23,7 +23,7 @@ import {
   computeViewportZones,
   isInViewport,
   isInCliffZone,
-} from "@/lib/viewport-edge-magnets";
+} from "@/lib/edge-pulling";
 import { computeContentPullState } from "@/lib/content-pull-state";
 import { useFadingMembership } from "@/hooks/useFadingMembership";
 import { identifyAllMarginParents } from "@/lib/focus-mode-content-filter";

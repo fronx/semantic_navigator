@@ -20,7 +20,7 @@ import {
   computeViewportZones,
   isInViewport,
   isInCliffZone,
-} from "@/lib/viewport-edge-magnets";
+} from "@/lib/edge-pulling";
 import { shouldHideEdgeForPulledEndpoints } from "@/lib/edge-visibility";
 import { useFadingMembership } from "@/hooks/useFadingMembership";
 
