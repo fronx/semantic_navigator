@@ -421,6 +421,7 @@ export function R3FTopicsScene({
           visibleContentIdsRef={visibleContentIdsRef}
           primaryKeywordIdsRef={primaryKeywordIdsRef}
           contentDrivenKeywordIdsRef={contentDrivenKeywordIdsRef}
+          focusState={focusState}
         />
       )}
 

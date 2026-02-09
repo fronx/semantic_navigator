@@ -70,6 +70,8 @@ export interface ContentNodesProps {
   primaryKeywordIdsRef?: React.MutableRefObject<Set<string>>;
   /** Keywords to pull because their content cards are in-viewport (written here, read by KeywordNodes next frame) */
   contentDrivenKeywordIdsRef?: React.MutableRefObject<Set<string>>;
+  /** Focus state for applying fisheye compression to content with focused parents */
+  focusState?: import("@/lib/focus-mode").FocusState | null;
 }
 
 export function ContentNodes({
@@ -92,6 +94,7 @@ export function ContentNodes({
   visibleContentIdsRef,
   primaryKeywordIdsRef,
   contentDrivenKeywordIdsRef,
+  focusState,
 }: ContentNodesProps) {
   const { camera, size, viewport } = useThree();
 
@@ -213,6 +216,7 @@ export function ContentNodes({
       contentNodes,
       primaryKeywordIds,
       zones,
+      focusState,
     });
 
     if (visibleContentIdsRef) {
