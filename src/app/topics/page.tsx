@@ -8,7 +8,6 @@ import type { SearchResult } from "@/components/SearchBar";
 import { useErrorNotification } from "@/hooks/useErrorNotification";
 import { useTopicsSettings } from "@/hooks/useTopicsSettings";
 import { useContentLoading } from "@/hooks/useContentLoading";
-import { ProjectSelector, type Project } from "@/components/ProjectSelector";
 import { ProjectSidebar, type Project as SidebarProject } from "@/components/ProjectSidebar";
 import { InlineTitleInput } from "@/components/InlineTitleInput";
 import { ControlSidebar } from "@/components/ControlSidebar";
@@ -103,11 +102,6 @@ export default function TopicsPage() {
 
   const debouncedClusterResolution = useDebouncedValue(effectiveResolution, 300);
 
-  // Project filtering
-  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const [projectKeywords, setProjectKeywords] = useState<string[] | null>(null);
-  const [projectLoading, setProjectLoading] = useState(false);
-
   // Project nodes for graph display
   const [graphProjects, setGraphProjects] = useState<ProjectNode[]>([]);
 
@@ -146,32 +140,6 @@ export default function TopicsPage() {
   // Calculate chunk Z depth from offset multiplier
   // BASE_CAMERA_Z is 1000, so default offset of 0.5 gives depth of 500
   const contentZDepth = BASE_CAMERA_Z * settings.chunkZOffset;
-
-  // Fetch project neighborhood when project selected
-  useEffect(() => {
-    if (!selectedProject) {
-      setProjectKeywords(null);
-      return;
-    }
-
-    setProjectLoading(true);
-    fetch(`/api/projects/${selectedProject.id}/neighborhood?hops=2`)
-      .then((r) => r.json())
-      .then((data) => {
-        setProjectKeywords(data.keywordLabels || []);
-      })
-      .catch((err) => {
-        console.error("Failed to fetch project neighborhood:", err);
-        setProjectKeywords([]);
-      })
-      .finally(() => setProjectLoading(false));
-  }, [selectedProject]);
-
-  // Convert keyword labels to filter set
-  const projectFilter = useMemo(() => {
-    if (!projectKeywords) return null;
-    return new Set(projectKeywords.map((label) => `kw:${label}`));
-  }, [projectKeywords]);
 
   // Convert search results to filter set
   const searchFilter = useMemo(() => {
@@ -487,52 +455,30 @@ export default function TopicsPage() {
       <ErrorBanner message={notificationError} onDismiss={clearError} />
       <header className="flex-shrink-0 border-b bg-white dark:bg-zinc-900 dark:border-zinc-800">
         <div className="px-3 py-1.5 flex items-center gap-3">
-          <ProjectSelector
-            selectedProject={selectedProject}
-            onSelect={setSelectedProject}
-          />
-
-          {/* Search Bar */}
-          <div className="flex-1 max-w-md">
-            <SearchBar
-              displayMode="inline"
-              placeholder="Search topics..."
-              nodeType={settings.nodeType}
-              onSearch={handleSearch}
-              showFilterButton={true}
-              onFilter={handleSearchFilter}
-              filterActive={searchFilterActive}
-            />
+          {/* Search Bar with Stats */}
+          <div className="flex-1 flex items-center justify-center gap-3">
+            <div className="flex-1 max-w-xl">
+              <SearchBar
+                displayMode="inline"
+                placeholder="Search topics..."
+                nodeType={settings.nodeType}
+                onSearch={handleSearch}
+                showFilterButton={true}
+                onFilter={handleSearchFilter}
+                filterActive={searchFilterActive}
+              />
+            </div>
+            <span className="text-xs text-zinc-500 dark:text-zinc-500 whitespace-nowrap">
+              {data.nodes.length} keywords
+              {isStale && <span className="ml-2 text-amber-600 dark:text-amber-400">(offline)</span>}
+            </span>
           </div>
 
-          <h1 className="text-sm font-medium text-zinc-600 dark:text-zinc-400">
-            {projectFilter ? (
-              <>
-                {projectFilter.size} keywords
-                {projectLoading && <span className="ml-1 text-zinc-400">(loading...)</span>}
-              </>
-            ) : (
-              <>
-                Topics ({data.nodes.length} keywords, {data.edges.length} edges)
-              </>
-            )}
-            {isStale && (
-              <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">(offline - cached data)</span>
-            )}
-          </h1>
-
-          <div className="ml-auto flex items-center gap-3">
+          <div className="flex items-center gap-3">
             <GranularityToggle
               value={settings.nodeType}
               onChange={(value) => update('nodeType', value)}
             />
-
-            <a
-              href="/"
-              className="text-xs text-blue-500 hover:text-blue-600"
-            >
-              Back to Map
-            </a>
           </div>
         </div>
       </header>
@@ -590,7 +536,7 @@ export default function TopicsPage() {
               }
             }}
             rendererType={settings.rendererType}
-            externalFilter={projectFilter}
+            externalFilter={null}
             searchFilter={searchFilter}
             onCreateProject={handleCreateProject}
             onProjectDrag={handleProjectDrag}

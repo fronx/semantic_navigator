@@ -10,7 +10,6 @@ interface GranularityToggleProps {
 export function GranularityToggle({ value, onChange }: GranularityToggleProps) {
   return (
     <div className="inline-flex items-center gap-2">
-      <span className="text-xs text-zinc-500 dark:text-zinc-400">View:</span>
       <div className="relative inline-flex bg-zinc-100 dark:bg-zinc-800 rounded-lg p-0.5 shadow-sm border border-zinc-200 dark:border-zinc-700">
         {/* Sliding background pill */}
         <div
