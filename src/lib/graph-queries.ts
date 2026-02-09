@@ -18,6 +18,8 @@ export interface KeywordNode {
   communityId?: number;
   /** 256-dim embedding for semantic operations */
   embedding?: number[];
+  /** Number of backbone edges (non-k-NN) connected to this keyword */
+  degree?: number;
 }
 
 /** Project node for user-created organizational nodes in the graph */

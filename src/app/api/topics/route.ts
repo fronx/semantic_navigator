@@ -36,13 +36,28 @@ export async function GET(request: Request) {
       nodeType,
     });
 
+    // Calculate degree for each node (count backbone edges only, exclude k-NN)
+    const degreeMap = new Map<string, number>();
+    for (const edge of result.edges) {
+      if (!edge.isKNN) {
+        degreeMap.set(edge.source, (degreeMap.get(edge.source) || 0) + 1);
+        degreeMap.set(edge.target, (degreeMap.get(edge.target) || 0) + 1);
+      }
+    }
+
+    // Attach degree to each node
+    const nodesWithDegree = result.nodes.map(node => ({
+      ...node,
+      degree: degreeMap.get(node.id) || 0,
+    }));
+
     console.log(
       `[topics] Loaded ${result.nodes.length} ${nodeType} keywords,`,
       result.edges.length,
       "similarity edges"
     );
 
-    return NextResponse.json(result);
+    return NextResponse.json({ ...result, nodes: nodesWithDegree });
   } catch (error) {
     console.error("[topics] Error:", error);
     return NextResponse.json(

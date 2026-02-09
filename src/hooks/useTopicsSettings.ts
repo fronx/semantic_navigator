@@ -28,6 +28,12 @@ export interface TopicsSettings {
   contentTextDepthScale: number;
   /** Size multiplier for keyword nodes (default 1.0) */
   keywordSizeMultiplier: number;
+  /** Enable degree-based node sizing (default true) */
+  scaleNodesByDegree: boolean;
+  /** Minimum size multiplier for degree-based sizing (default 0.5) */
+  degreeSizeMin: number;
+  /** Maximum size multiplier for degree-based sizing (default 2.0) */
+  degreeSizeMax: number;
   contentSizeMultiplier: number;
   contentTextContrast: number;
   /** Global color contrast: push colors away from background (0 = no change, 1 = max contrast) */
@@ -71,6 +77,9 @@ const DEFAULT_SETTINGS: TopicsSettings = {
   chunkZOffset: 0.5,
   contentTextDepthScale: -15.0,
   keywordSizeMultiplier: 1.0,
+  scaleNodesByDegree: true,
+  degreeSizeMin: 0.5,
+  degreeSizeMax: 2.0,
   contentSizeMultiplier: 1.5,
   contentTextContrast: 0.7,
   globalContrast: 0.5,

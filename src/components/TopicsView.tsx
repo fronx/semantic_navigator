@@ -15,6 +15,7 @@ import { R3FTopicsCanvas } from "@/components/topics-r3f/R3FTopicsCanvas";
 import { createContentNodes, applyConstrainedForces } from "@/lib/content-layout";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 import { loadPCATransform, type PCATransform } from "@/lib/semantic-colors";
+import { calculateDegreeSizeMultiplier } from "@/lib/topics-graph-nodes";
 import type { SemanticFilter } from "@/lib/topics-filter";
 import { createFocusState, type FocusState } from "@/lib/focus-mode";
 import { computeVisibleKeywordIds } from "@/lib/focus-mode-content-filter";
@@ -81,6 +82,12 @@ export interface TopicsViewProps {
   contentTextDepthScale?: number;
   /** Size multiplier for keyword nodes (default 1.0) */
   keywordSizeMultiplier?: number;
+  /** Enable degree-based node sizing (default true) */
+  scaleNodesByDegree?: boolean;
+  /** Minimum size multiplier for degree-based sizing (default 0.5) */
+  degreeSizeMin?: number;
+  /** Maximum size multiplier for degree-based sizing (default 2.0) */
+  degreeSizeMax?: number;
   /** Size multiplier for chunk/article nodes (default 1.5) */
   contentSizeMultiplier?: number;
   /** Text contrast for content labels: 0 = low contrast, 1 = high contrast */
@@ -150,6 +157,9 @@ export function TopicsView({
   contentZDepth = -150,
   contentTextDepthScale = -15.0,
   keywordSizeMultiplier = 1.0,
+  scaleNodesByDegree = true,
+  degreeSizeMin = 0.5,
+  degreeSizeMax = 2.0,
   contentSizeMultiplier = 1.5,
   contentTextContrast = 0.7,
   contentSpringStrength = 0.1,
@@ -183,6 +193,28 @@ export function TopicsView({
   // Calculate panel material thickness (controls blur strength)
   // Thickness ramps from 0 (no blur) to 20 (full blur) as camera approaches threshold
   const panelThickness = (cameraZ !== undefined ? calculatePanelThickness(cameraZ) : 0) * panelThicknessMultiplier;
+
+  // Calculate size multipliers based on node degree (number of connections)
+  const nodeSizeMultipliers = useMemo(() => {
+    // Only calculate if degree-based sizing is enabled
+    if (!scaleNodesByDegree) return undefined;
+
+    // Find max degree across all nodes
+    const maxDegree = Math.max(...keywordNodes.map(n => n.degree ?? 0), 1);
+
+    // Map each node to its size multiplier
+    const multipliers = new Map<string, number>();
+    for (const node of keywordNodes) {
+      const multiplier = calculateDegreeSizeMultiplier(
+        node.degree ?? 0,
+        maxDegree,
+        degreeSizeMin,
+        degreeSizeMax
+      );
+      multipliers.set(node.id, multiplier);
+    }
+    return multipliers;
+  }, [keywordNodes, scaleNodesByDegree, degreeSizeMin, degreeSizeMax]);
 
   // Client-side Leiden clustering (must come before useTopicsFilter)
   const { nodeToCluster, baseClusters, labels } = useClusterLabels(
@@ -518,6 +550,7 @@ export function TopicsView({
           contentZDepth={contentZDepth}
           contentTextDepthScale={contentTextDepthScale}
           keywordSizeMultiplier={keywordSizeMultiplier}
+          nodeSizeMultipliers={nodeSizeMultipliers}
           contentSizeMultiplier={contentSizeMultiplier}
           contentTextContrast={contentTextContrast}
           contentSpringStrength={contentSpringStrength}

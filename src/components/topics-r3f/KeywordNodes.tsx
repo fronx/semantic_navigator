@@ -53,6 +53,8 @@ export interface KeywordNodesProps {
   zoomRange: ZoomRange;
   /** Size multiplier for keyword nodes (default 1.0) */
   keywordSizeMultiplier?: number;
+  /** Per-node size multipliers based on degree (node id -> multiplier) */
+  nodeSizeMultipliers?: Map<string, number>;
   keywordTiers?: KeywordTierMap | null;
   /** Focus state for click-to-focus interaction */
   focusState?: FocusState | null;
@@ -86,6 +88,7 @@ export function KeywordNodes({
   pcaTransform,
   zoomRange,
   keywordSizeMultiplier = 1.0,
+  nodeSizeMultipliers,
   keywordTiers,
   focusState,
   focusPositionsRef,
@@ -304,7 +307,10 @@ export function KeywordNodes({
         scaleMultiplier *= 0.6;
       }
 
-      const finalScale = Math.min(keywordScale * scaleMultiplier * keywordSizeMultiplier, maxScale);
+      // Apply degree-based size multiplier
+      const degreeScale = nodeSizeMultipliers?.get(node.id) ?? 1.0;
+
+      const finalScale = Math.min(keywordScale * scaleMultiplier * keywordSizeMultiplier * degreeScale, maxScale);
 
       // Compose matrix with position and scale
       positionRef.current.set(x, y, 0);

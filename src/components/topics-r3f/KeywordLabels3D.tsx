@@ -15,6 +15,7 @@ import { getNodeColor, BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/rendering
 import { isDarkMode } from "@/lib/theme";
 import type { LabelRefs } from "./R3FLabelContext";
 import { handleKeywordClick, handleKeywordHover } from "@/lib/keyword-interaction-handlers";
+import { KEYWORD_TIER_SCALES } from "@/lib/semantic-filter-config";
 
 const FONT_DEFAULT = "/fonts/source-code-pro-regular.woff2";
 const LABEL_LINE_HEIGHT = 1.05;
@@ -57,6 +58,10 @@ export interface KeywordLabels3DProps {
   baseFontSize?: number;
   labelZ?: number;
   keywordTiers?: KeywordTierMap | null;
+  /** Size multiplier for keyword nodes (default 1.0) */
+  keywordSizeMultiplier?: number;
+  /** Per-node size multipliers based on degree (node id -> multiplier) */
+  nodeSizeMultipliers?: Map<string, number>;
   pulledPositionsRef?: LabelRefs["pulledPositionsRef"];
   /** Focus-animated positions (margin push) — highest priority position override */
   focusPositionsRef?: MutableRefObject<Map<string, { x: number; y: number }>>;
@@ -87,6 +92,8 @@ export function KeywordLabels3D({
   baseFontSize = DEFAULT_BASE_FONT_SIZE,
   labelZ = 0,
   keywordTiers,
+  keywordSizeMultiplier = 1.0,
+  nodeSizeMultipliers,
   pulledPositionsRef,
   focusPositionsRef,
   hoveredKeywordIdRef,
@@ -206,11 +213,35 @@ export function KeywordLabels3D({
       const x = focusPos?.x ?? pulledPosition?.x ?? node.x ?? 0;
       const y = focusPos?.y ?? pulledPosition?.y ?? node.y ?? 0;
 
-      // Offset label below the keyword dot circle
-      const dotWorldRadius = zoomRange
-        ? BASE_DOT_RADIUS * DOT_SCALE_FACTOR * calculateScales(camera.position.z, zoomRange).keywordScale
-        : 0;
-      billboard.position.set(x, y - dotWorldRadius * 2.2, entry.labelZ);
+      // Calculate full keyword dot scale (matching KeywordNodes.tsx logic)
+      let scaleMultiplier = 1.0;
+
+      // Apply tier-based scale multiplier (semantic filter)
+      if (keywordTiers) {
+        const tier = keywordTiers.get(id);
+        if (tier) {
+          scaleMultiplier *= KEYWORD_TIER_SCALES[tier];
+        }
+      }
+
+      // Hide margin dots entirely in focus mode (same logic as KeywordNodes)
+      if (isFocusMargin) {
+        scaleMultiplier = 0;
+      }
+
+      // Base zoom scale
+      const { keywordScale } = zoomRange
+        ? calculateScales(camera.position.z, zoomRange)
+        : { keywordScale: 1.0 };
+
+      // Apply degree-based size multiplier
+      const degreeMultiplier = nodeSizeMultipliers?.get(id) ?? 1.0;
+
+      // Final scale (matches KeywordNodes.tsx line 313)
+      const finalScale = keywordScale * scaleMultiplier * keywordSizeMultiplier * degreeMultiplier;
+
+      const dotWorldRadius = BASE_DOT_RADIUS * DOT_SCALE_FACTOR * finalScale;
+      billboard.position.set(x, y - dotWorldRadius * 1.9, entry.labelZ);
 
       const worldPosition = billboard.getWorldPosition(tempVec);
       const unitsPerPixel = computeUnitsPerPixel(

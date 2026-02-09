@@ -461,6 +461,33 @@ export function ControlSidebar({
               step={0.1}
               format={(v) => `${v.toFixed(1)}x`}
             />
+            <Checkbox
+              label="Scale by degree"
+              checked={settings.scaleNodesByDegree}
+              onChange={(v) => update("scaleNodesByDegree", v)}
+            />
+            {settings.scaleNodesByDegree && (
+              <>
+                <Slider
+                  label="Degree min"
+                  value={settings.degreeSizeMin}
+                  onChange={(v) => update("degreeSizeMin", v)}
+                  min={0.1}
+                  max={1.0}
+                  step={0.05}
+                  format={(v) => `${v.toFixed(2)}x`}
+                />
+                <Slider
+                  label="Degree max"
+                  value={settings.degreeSizeMax}
+                  onChange={(v) => update("degreeSizeMax", v)}
+                  min={1.0}
+                  max={5.0}
+                  step={0.1}
+                  format={(v) => `${v.toFixed(1)}x`}
+                />
+              </>
+            )}
             <Slider
               label="Spring force"
               value={Math.log10(settings.contentSpringStrength)}

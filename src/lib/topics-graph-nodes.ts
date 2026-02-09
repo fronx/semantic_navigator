@@ -99,3 +99,29 @@ export function convertToD3Nodes(
     includeKNN: true,
   });
 }
+
+/**
+ * Calculate size multiplier for a node based on its degree.
+ * Uses logarithmic scaling to handle power-law degree distributions.
+ *
+ * @param degree - Number of backbone edges (non-k-NN) connected to this node
+ * @param maxDegree - Maximum degree in the graph
+ * @param minSize - Minimum size multiplier (default 0.5)
+ * @param maxSize - Maximum size multiplier (default 2.0)
+ * @returns Size multiplier in range [minSize, maxSize]
+ */
+export function calculateDegreeSizeMultiplier(
+  degree: number,
+  maxDegree: number,
+  minSize: number = 0.5,
+  maxSize: number = 2.0
+): number {
+  // Handle edge cases
+  if (maxDegree === 0) return 1.0;
+  if (degree === 0) return minSize;
+
+  // Logarithmic scaling: minSize + log(degree + 1) / log(maxDegree + 1) * (maxSize - minSize)
+  // Maps degree to range [minSize, maxSize]
+  const normalized = Math.log(degree + 1) / Math.log(maxDegree + 1);
+  return minSize + normalized * (maxSize - minSize);
+}

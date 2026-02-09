@@ -40,6 +40,8 @@ export interface R3FTopicsCanvasProps {
   contentZDepth?: number;
   contentTextDepthScale?: number;
   keywordSizeMultiplier?: number;
+  /** Per-node size multipliers based on degree (node id -> multiplier) */
+  nodeSizeMultipliers?: Map<string, number>;
   contentSizeMultiplier?: number;
   contentTextContrast?: number;
   /** Spring force strength for content node tethering (0.01-1.0, default 0.1) */
@@ -97,6 +99,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     contentZDepth,
     contentTextDepthScale,
     keywordSizeMultiplier,
+    nodeSizeMultipliers,
     contentSizeMultiplier,
     contentTextContrast,
     contentSpringStrength,
@@ -257,6 +260,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
             contentZDepth={contentZDepth}
             contentTextDepthScale={contentTextDepthScale}
             keywordSizeMultiplier={keywordSizeMultiplier}
+            nodeSizeMultipliers={nodeSizeMultipliers}
             contentSizeMultiplier={contentSizeMultiplier}
             contentTextContrast={contentTextContrast}
             contentSpringStrength={contentSpringStrength}

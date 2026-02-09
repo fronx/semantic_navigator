@@ -74,6 +74,8 @@ export interface MapNode {
   hullLabel?: string; // Custom label for hull (e.g., semantic label from Haiku)
   // 256-dim embedding for semantic zoom (client-side distance computation)
   embedding?: number[];
+  // Number of backbone edges (non-k-NN) connected to this node
+  degree?: number;
 }
 
 export interface MapEdge {

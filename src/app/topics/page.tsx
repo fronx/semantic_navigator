@@ -601,6 +601,9 @@ export default function TopicsPage() {
             contentZDepth={contentZDepth}
             contentTextDepthScale={settings.contentTextDepthScale}
             keywordSizeMultiplier={settings.keywordSizeMultiplier}
+            scaleNodesByDegree={settings.scaleNodesByDegree}
+            degreeSizeMin={settings.degreeSizeMin}
+            degreeSizeMax={settings.degreeSizeMax}
             contentSizeMultiplier={settings.contentSizeMultiplier}
             contentTextContrast={settings.contentTextContrast}
             contentSpringStrength={settings.contentSpringStrength}
