@@ -1023,8 +1023,10 @@ async function main() {
   let convertPairsToGraph = clusteringUtils.convertPairsToGraph
   let fetchEmbeddings = clusteringUtils.fetchEmbeddings
 
-  // Precompute clusters (dry run by default - set dryRun: false to execute)
-  // Uncomment to run: let clusterResults = await precomputeTopicClusters('chunk', undefined, { dryRun: false })
+  // Precompute clusters for both node types after ingestion
+  console.log('\n=== Precomputing Topic Clusters ===\n')
+  await precomputeTopicClusters('chunk', undefined, { dryRun: false })
+  await precomputeTopicClusters('article', undefined, { dryRun: false })
 
   // ============================================================================
   // Compute PCA transform for semantic colors
