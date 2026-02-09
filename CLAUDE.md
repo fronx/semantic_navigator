@@ -93,6 +93,7 @@ Semantic Navigator is a knowledge base tool that imports markdown files, atomize
 - Keywords have their own embeddings (`vector(1536)`) for semantic matching
 - Linked to nodes (chunk or article) via `node_id` foreign key; `node_type` denormalized for efficient filtering
 - Used in both search (similarity matching) and visualization (clustering)
+- **Graph filtering**: Only keywords that connect content to OTHER content are shown in TopicsView/MapView (see [ADR-015](docs/architecture/adr/015-keywords-as-navigation-primitives.md)). Keywords are navigation primitives, not exhaustive metadata. Filtered keywords remain in the database for search.
 
 **Clustering Systems**:
 - Semantic Navigator has **two clustering systems** serving different views
