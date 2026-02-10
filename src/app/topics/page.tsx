@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { TopicsView } from "@/components/TopicsView";
 import { ErrorBanner } from "@/components/ErrorBanner";
 import { SearchBar } from "@/components/SearchBar";
@@ -19,7 +19,7 @@ import { CAMERA_Z_SCALE_BASE } from "@/lib/rendering-utils/camera-controller";
 import { BASE_CAMERA_Z } from "@/lib/content-zoom-config";
 import { setGlobalContrast } from "@/lib/rendering-utils/node-renderer";
 import { isDarkMode, watchThemeChanges } from "@/lib/theme";
-import { searchResultsToKeywordIds, extractMatchedKeywords } from "@/lib/search-filter";
+import { searchResultsToKeywordIds } from "@/lib/search-filter";
 import { StartOverlay } from "@/components/StartOverlay";
 import { calculateZoomBasedDesaturation, calculateClusterLabelDesaturation } from "@/lib/zoom-phase-config";
 
@@ -66,16 +66,8 @@ export default function TopicsPage() {
   // Track cluster count for debug display
   const [clusterCount, setClusterCount] = useState(0);
 
-  // Search state: query for highlighting, results for filter, active flag for locking
-  const [searchQuery, setSearchQuery] = useState("");
+  // Search state
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
-  const [searchFilterActive, setSearchFilterActive] = useState(false);
-
-  // Derive filtered keywords from results (only when filter is active)
-  const searchFilterKeywords = useMemo(
-    () => searchFilterActive ? extractMatchedKeywords(searchResults) : [],
-    [searchFilterActive, searchResults]
-  );
 
   // Derive cluster resolution from zoom + slider
   // Resolution determines cluster granularity (higher = more clusters)
@@ -84,7 +76,6 @@ export default function TopicsPage() {
   // - Medium zoom (zoomScale ~0.1): ~20-24 clusters
   // - Zoomed in (zoomScale ~1): ~32+ clusters
   const nodeCount = data?.nodes.length ?? 100;
-  const maxResolution = Math.max(2, nodeCount / 15); // Allow up to ~32 clusters with 489 nodes
 
   // Precomputed resolutions available (must match what's in the database)
   const PRECOMPUTED_RESOLUTIONS = [0.1, 0.3, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0];
@@ -157,11 +148,11 @@ export default function TopicsPage() {
     return calculateClusterLabelDesaturation(currentCameraZ, settings.zoomPhaseConfig);
   }, [currentCameraZ, settings.zoomPhaseConfig]);
 
-  // Convert search results to filter set
-  const searchFilter = useMemo(() => {
-    if (!searchFilterActive || searchResults.length === 0 || !data) return null;
+  // Convert search results to focus keyword IDs (for focus mode)
+  const focusKeywordIds = useMemo(() => {
+    if (searchResults.length === 0 || !data) return null;
     return searchResultsToKeywordIds(searchResults, data.nodes);
-  }, [searchFilterActive, searchResults, data]);
+  }, [searchResults, data]);
 
   // Handle project creation request from TopicsView (N key press)
   const handleCreateProject = useCallback((worldPos: { x: number; y: number }, screenPos: { x: number; y: number }) => {
@@ -258,19 +249,8 @@ export default function TopicsPage() {
     setKeywordChunksDebug(debugLines.join('\n'));
   }, [hoveredKeywordId, contentsByKeyword, data?.nodes]);
 
-  // Ref for contentsByKeyword so handleKeywordHover stays stable
-  const contentsByKeywordRef = useRef(contentsByKeyword);
-  contentsByKeywordRef.current = contentsByKeyword;
-
-  // Handle keyword hover callback (stable — reads contentsByKeyword via ref)
+  // Handle keyword hover callback (stable)
   const handleKeywordHover = useCallback((keywordId: string | null) => {
-    console.log('[page] handleKeywordHover called with:', keywordId);
-    const cbk = contentsByKeywordRef.current;
-    console.log('[page] contentsByKeyword has', cbk.size, 'keywords');
-    if (keywordId) {
-      const chunks = cbk.get(keywordId);
-      console.log('[page] Chunks for', keywordId, ':', chunks?.length ?? 0, chunks);
-    }
     setHoveredKeywordId(keywordId);
   }, []);
 
@@ -338,23 +318,8 @@ export default function TopicsPage() {
     }
   }, []);
 
-  // Handle search filter button click - locks current results as filter
-  const handleSearchFilter = useCallback(() => {
-    if (searchQuery.trim() && searchResults.length > 0) {
-      setSearchFilterActive(true);
-    }
-  }, [searchQuery, searchResults]);
-
-  // Handle clear search filter - resets all search state
-  const handleClearSearchFilter = useCallback(() => {
-    setSearchFilterActive(false);
-    setSearchQuery("");
-    setSearchResults([]);
-  }, []);
-
   // Handle search callback from SearchBar
-  const handleSearch = useCallback((query: string, results: SearchResult[]) => {
-    setSearchQuery(query);
+  const handleSearch = useCallback((_query: string, results: SearchResult[]) => {
     setSearchResults(results);
   }, []);
 
@@ -479,9 +444,6 @@ export default function TopicsPage() {
                 placeholder="Search topics..."
                 nodeType={settings.nodeType}
                 onSearch={handleSearch}
-                showFilterButton={true}
-                onFilter={handleSearchFilter}
-                filterActive={searchFilterActive}
               />
             </div>
             <span className="text-xs text-zinc-500 dark:text-zinc-500 whitespace-nowrap">
@@ -516,8 +478,6 @@ export default function TopicsPage() {
           hoveredChunkId={hoveredContentId}
           hoveredChunkContent={hoveredContentContent}
           keywordChunksDebug={keywordChunksDebug}
-          searchFilterKeywords={searchFilterKeywords}
-          onClearSearchFilter={handleClearSearchFilter}
           semanticFilter={semanticFilterData?.semanticFilter ?? null}
           filterHistory={semanticFilterData?.filterHistory ?? []}
           keywordNodes={semanticFilterData?.keywordNodes ?? []}
@@ -542,9 +502,6 @@ export default function TopicsPage() {
               similarityThreshold: settings.hoverSimilarity,
               baseDim: settings.baseDim,
             }}
-            onKeywordClick={(keyword) => {
-              console.log("Clicked keyword:", keyword);
-            }}
             onProjectClick={handleProjectClick}
             onZoomChange={(scale) => {
               setZoomScale(scale);
@@ -554,7 +511,7 @@ export default function TopicsPage() {
             }}
             rendererType={settings.rendererType}
             externalFilter={null}
-            searchFilter={searchFilter}
+            focusKeywordIds={focusKeywordIds}
             onCreateProject={handleCreateProject}
             onProjectDrag={handleProjectDrag}
             onError={notifyError}
@@ -583,7 +540,6 @@ export default function TopicsPage() {
             initialPrecomputedData={initialClusters}
             onChunkHover={handleContentHover}
             onKeywordHover={handleKeywordHover}
-            searchQuery={searchQuery}
             focusStrategy={settings.focusStrategy}
             focusMaxHops={settings.focusMaxHops}
           />

@@ -25,8 +25,6 @@ export interface UseTopicsFilterOptions {
   keywordNodes: KeywordNode[];
   edges: SimilarityEdge[];
   externalFilter?: Set<string> | null;
-  /** Search filter from semantic search */
-  searchFilter?: Set<string> | null;
   /** Cluster data for cluster-based filtering */
   clusters?: Map<number, { id: number; members: string[] }> | null;
 }
@@ -87,7 +85,7 @@ export interface UseTopicsFilterResult {
  * });
  */
 export function useTopicsFilter(options: UseTopicsFilterOptions): UseTopicsFilterResult {
-  const { keywordNodes, edges, externalFilter, searchFilter, clusters } = options;
+  const { keywordNodes, edges, externalFilter, clusters } = options;
 
   const [filteredNodeIds, setFilteredNodeIds] = useState<Set<string> | null>(null);
   const [semanticFilter, setSemanticFilter] = useState<SemanticFilter | null>(null);
@@ -107,7 +105,7 @@ export function useTopicsFilter(options: UseTopicsFilterOptions): UseTopicsFilte
     [semanticFilter]
   );
 
-  // Compute effective filter combining external, search, and semantic filters
+  // Compute effective filter combining external and semantic filters
   const effectiveFilter = useMemo(() => {
     // Semantic filter takes precedence (drill-down)
     if (semanticFilter) {
@@ -115,26 +113,9 @@ export function useTopicsFilter(options: UseTopicsFilterOptions): UseTopicsFilte
       return computeEffectiveFilter(externalFilter, semanticIds);
     }
 
-    // Combine external (project) and search filters
-    let baseFilter: Set<string> | null = null;
-
-    if (externalFilter && searchFilter) {
-      // Both active: intersection (only keywords in both)
-      baseFilter = new Set<string>();
-      for (const id of externalFilter) {
-        if (searchFilter.has(id)) {
-          baseFilter.add(id);
-        }
-      }
-    } else if (externalFilter) {
-      baseFilter = externalFilter;
-    } else if (searchFilter) {
-      baseFilter = searchFilter;
-    }
-
-    // Combine with internal filter (click-to-filter)
-    return computeEffectiveFilter(baseFilter, filteredNodeIds);
-  }, [externalFilter, searchFilter, semanticFilter, filteredNodeIds]);
+    // Combine external filter with internal filter (click-to-filter)
+    return computeEffectiveFilter(externalFilter, filteredNodeIds);
+  }, [externalFilter, semanticFilter, filteredNodeIds]);
 
   const activeNodes = useMemo(
     () => filterNodes(keywordNodes, effectiveFilter),

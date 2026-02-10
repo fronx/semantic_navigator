@@ -92,6 +92,72 @@ function buildContentToKeywordsMap(
 }
 
 /**
+ * Create focus state from a set of keyword IDs (e.g., search results).
+ * For each keyword, computes its neighborhood (1-hop, 2-hop, etc.) just like clicking it.
+ * Merges all neighborhoods into a single focus state.
+ */
+export function createFocusStateFromSet(
+  keywordIds: Set<string>,
+  allNodeIds: string[],
+  edges: SimilarityEdge[],
+  maxHops: number = 3
+): FocusState {
+  const focusedNodeIds = new Set<string>();
+  const keywordTiers: KeywordTierMap = new Map();
+
+  // For each search result keyword, compute its neighborhood
+  for (const keywordId of keywordIds) {
+    const semanticFilter = createSemanticFilter(keywordId, edges);
+
+    // Mark this keyword as selected
+    focusedNodeIds.add(keywordId);
+    keywordTiers.set(keywordId, "selected");
+
+    // Add neighbors based on maxHops (same logic as clicking a keyword)
+    if (maxHops >= 1) {
+      for (const id of semanticFilter.oneHopIds) {
+        focusedNodeIds.add(id);
+        // Only set tier if not already set (prioritize closer tier)
+        if (!keywordTiers.has(id)) {
+          keywordTiers.set(id, "neighbor-1");
+        }
+      }
+    }
+    if (maxHops >= 2) {
+      for (const id of semanticFilter.twoHopIds) {
+        focusedNodeIds.add(id);
+        if (!keywordTiers.has(id)) {
+          keywordTiers.set(id, "neighbor-2");
+        }
+      }
+    }
+    if (maxHops >= 3) {
+      for (const id of semanticFilter.threeHopIds) {
+        focusedNodeIds.add(id);
+        if (!keywordTiers.has(id)) {
+          keywordTiers.set(id, "neighbor-3");
+        }
+      }
+    }
+  }
+
+  // Everything else goes to margins
+  const marginNodeIds = new Set<string>();
+  for (const id of allNodeIds) {
+    if (!focusedNodeIds.has(id)) {
+      marginNodeIds.add(id);
+    }
+  }
+
+  return {
+    focusedKeywordId: keywordIds.values().next().value ?? "", // First result as nominal focus
+    focusedNodeIds,
+    marginNodeIds,
+    keywordTiers,
+  };
+}
+
+/**
  * Create content-aware focus state that hops through content nodes.
  * Hop pattern: keyword → content → keyword → content → keyword
  *

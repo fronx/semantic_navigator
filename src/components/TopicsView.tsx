@@ -9,15 +9,12 @@ import { useProjectCreation } from "@/hooks/useProjectCreation";
 import { useD3TopicsRenderer } from "@/hooks/useD3TopicsRenderer";
 import { useR3FTopicsRenderer } from "@/hooks/useR3FTopicsRenderer";
 import { useContentLoading } from "@/hooks/useContentLoading";
-import { useTopicsSearch } from "@/hooks/useTopicsSearch";
-import { useTopicsSearchOpacity } from "@/hooks/useTopicsSearchOpacity";
 import { R3FTopicsCanvas } from "@/components/topics-r3f/R3FTopicsCanvas";
-import { createContentNodes, applyConstrainedForces } from "@/lib/content-layout";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 import { loadPCATransform, type PCATransform } from "@/lib/semantic-colors";
 import { calculateDegreeSizeMultiplier } from "@/lib/topics-graph-nodes";
 import type { SemanticFilter } from "@/lib/topics-filter";
-import { createFocusState, createContentAwareFocusState, type FocusState } from "@/lib/focus-mode";
+import { createFocusState, createContentAwareFocusState, createFocusStateFromSet, type FocusState } from "@/lib/focus-mode";
 import { computeVisibleKeywordIds } from "@/lib/focus-mode-content-filter";
 import type { BaseRendererOptions } from "@/lib/renderer-types";
 import type { SimNode } from "@/lib/map-renderer";
@@ -64,8 +61,8 @@ export interface TopicsViewProps {
   rendererType?: RendererType;
   /** External filter from project selection - keywords in this set are shown */
   externalFilter?: Set<string> | null;
-  /** Search filter from semantic search - keywords in this set are shown */
-  searchFilter?: Set<string> | null;
+  /** External focus request: if provided, these keywords will be focused (like clicking them) */
+  focusKeywordIds?: Set<string> | null;
   /** Callback when user presses 'N' to create a project at cursor position */
   onCreateProject?: (worldPos: { x: number; y: number }, screenPos: { x: number; y: number }) => void;
   /** Callback when a project node is dragged to a new position */
@@ -131,8 +128,6 @@ export interface TopicsViewProps {
   onKeywordHover?: (keywordId: string | null) => void;
   /** Pre-fetched precomputed cluster data (avoids async fetch on first render) */
   initialPrecomputedData?: PrecomputedClusterData | null;
-  /** Search query for semantic search highlighting */
-  searchQuery?: string;
   /** Focus mode strategy: 'direct' uses keyword-keyword edges, 'content-aware' hops through content nodes */
   focusStrategy?: 'direct' | 'content-aware';
   /** Maximum number of hops in focus mode (1-3) */
@@ -160,7 +155,7 @@ export function TopicsView({
   onZoomChange,
   rendererType = "d3",
   externalFilter,
-  searchFilter,
+  focusKeywordIds,
   onCreateProject,
   onProjectDrag,
   onError,
@@ -190,7 +185,6 @@ export function TopicsView({
   onChunkHover,
   onKeywordHover,
   initialPrecomputedData,
-  searchQuery = "",
   focusStrategy = 'direct',
   focusMaxHops = 3,
 }: TopicsViewProps) {
@@ -203,6 +197,25 @@ export function TopicsView({
   // Focus mode state (click-to-focus pushes non-neighbors to margins)
   const [focusState, setFocusState] = useState<FocusState | null>(null);
   const focusEntryZRef = useRef<number | null>(null);
+
+  // External focus trigger: when focusKeywordIds changes, update focus state
+  // undefined = no change, null or empty Set = clear, non-empty Set = apply
+  useEffect(() => {
+    if (focusKeywordIds == null || focusKeywordIds.size === 0) {
+      if (focusKeywordIds !== undefined) {
+        setFocusState(null);
+        focusEntryZRef.current = null;
+      }
+      return;
+    }
+    const allNodeIds = keywordNodes.map(n => n.id);
+    setFocusState(createFocusStateFromSet(focusKeywordIds, allNodeIds, edges, focusMaxHops));
+    // Capture camera Z only when first entering focus, not on every zoom
+    // Note: cameraZ intentionally not in deps - we want to capture it at entry time only,
+    // not update the entry reference on every zoom (which would break exit detection)
+    focusEntryZRef.current = cameraZ ?? null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusKeywordIds, keywordNodes, edges, focusMaxHops]);
 
   // Calculate panel distance ratio automatically based on camera zoom level
   // This creates a fade effect: keywords blur out at medium distance, clear up when close
@@ -269,7 +282,6 @@ export function TopicsView({
     keywordNodes,
     edges,
     externalFilter,
-    searchFilter,
     clusters: baseClusters,
   });
 
@@ -284,14 +296,6 @@ export function TopicsView({
       goToHistoryIndex,
     });
   }, [semanticFilter, filterHistory, keywordNodes, clearSemanticFilter, goBackInHistory, goToHistoryIndex, onSemanticFilterChange]);
-
-  // Search functionality
-  const { keywordSimilarities, loading: searchLoading } = useTopicsSearch(searchQuery, nodeType);
-  const { nodeOpacities } = useTopicsSearchOpacity({
-    keywordNodes: activeNodes,
-    keywordSimilarities,
-    enabled: true,
-  });
 
   // Chunk loading for visible keywords
   // If semantic filter active, only load chunks for selected + 1-hop
@@ -376,7 +380,16 @@ export function TopicsView({
     applyClusterFilter(clusterId);
   });
 
-  // Handle focus click (R3F only) — toggle focus mode instead of filtering
+  // Compute focus state for a given keyword using the current strategy
+  function computeFocusForKeyword(keywordId: string): FocusState {
+    const allNodeIds = activeNodes.map(n => n.id);
+    if (focusStrategy === 'content-aware') {
+      return createContentAwareFocusState(keywordId, allNodeIds, contentsByKeyword, focusMaxHops);
+    }
+    return createFocusState(keywordId, allNodeIds, activeEdges, focusMaxHops);
+  }
+
+  // Handle focus click (R3F only) -- toggle focus mode instead of filtering
   const handleFocusClick = useStableCallback((keywordId: string) => {
     // Toggle: clicking the already-focused keyword clears focus
     if (focusState?.focusedKeywordId === keywordId) {
@@ -385,59 +398,19 @@ export function TopicsView({
       return;
     }
 
-    let newState: FocusState;
-    if (focusStrategy === 'content-aware') {
-      // Use content-aware hopping (through keyword→content→keyword paths)
-      newState = createContentAwareFocusState(
-        keywordId,
-        activeNodes.map(n => n.id),
-        contentsByKeyword,
-        focusMaxHops,
-      );
-    } else {
-      // Use direct hopping (through keyword→keyword edges)
-      newState = createFocusState(
-        keywordId,
-        activeNodes.map(n => n.id),
-        activeEdges,
-        focusMaxHops,
-      );
-    }
-
-    setFocusState(newState);
+    setFocusState(computeFocusForKeyword(keywordId));
     focusEntryZRef.current = cameraZ ?? null;
 
-    // Also call external handler with keyword label
     const node = activeNodes.find(n => n.id === keywordId);
-    if (node) {
-      onKeywordClick?.(node.label);
-    }
+    if (node) onKeywordClick?.(node.label);
   });
 
   // Recompute focus state when strategy or max hops changes (while focus is active)
   // Note: focusState is intentionally not in deps to avoid infinite loop and
   // unnecessary recomputation when clicking keywords (which updates focusState directly)
   useEffect(() => {
-    if (!focusState) return; // Only recompute if focus mode is active
-
-    let newState: FocusState;
-    if (focusStrategy === 'content-aware') {
-      newState = createContentAwareFocusState(
-        focusState.focusedKeywordId,
-        activeNodes.map(n => n.id),
-        contentsByKeyword,
-        focusMaxHops,
-      );
-    } else {
-      newState = createFocusState(
-        focusState.focusedKeywordId,
-        activeNodes.map(n => n.id),
-        activeEdges,
-        focusMaxHops,
-      );
-    }
-
-    setFocusState(newState);
+    if (!focusState) return;
+    setFocusState(computeFocusForKeyword(focusState.focusedKeywordId));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusStrategy, focusMaxHops, activeNodes, activeEdges, contentsByKeyword]);
 
@@ -491,7 +464,7 @@ export function TopicsView({
     pcaTransform,
     getSavedPosition,
     contentZDepth,
-    searchOpacities: nodeOpacities,
+    searchOpacities: undefined,
     onKeywordClick: handleKeywordClickInternal,
     onProjectClick: handleProjectClick,
     onProjectDrag: handleProjectDrag,
@@ -526,57 +499,39 @@ export function TopicsView({
 
   // Update cluster assignments when clustering changes (without restarting simulation)
   useEffect(() => {
+    // Build hub-to-cluster lookup (shared by both renderers)
+    const hubToCluster = new Map<string, number>();
+    for (const [clusterId, cluster] of baseClusters) {
+      hubToCluster.set(cluster.hub, clusterId);
+    }
+
+    function assignClusterFields(node: SimNode): void {
+      node.communityId = nodeToCluster.get(node.id);
+      const clusterId = hubToCluster.get(node.label);
+      if (clusterId !== undefined) {
+        node.communityMembers = baseClusters.has(clusterId) ? [node.label] : undefined;
+        node.hullLabel = labels[clusterId] || baseClusters.get(clusterId)!.hub;
+      } else {
+        node.communityMembers = undefined;
+        node.hullLabel = undefined;
+      }
+    }
+
     // Handle D3 renderer
     if (rendererType === "d3" && d3RendererResult.simulationNodesRef.current.length > 0 && d3RendererResult.rendererRef.current) {
-      const hubToCluster = new Map<string, { clusterId: number; hub: string }>();
-      for (const [clusterId, cluster] of baseClusters) {
-        hubToCluster.set(cluster.hub, { clusterId, hub: cluster.hub });
-      }
-
       for (const node of d3RendererResult.simulationNodesRef.current) {
-        node.communityId = nodeToCluster.get(node.id);
-
-        const clusterInfo = hubToCluster.get(node.label);
-        if (clusterInfo) {
-          const cluster = baseClusters.get(clusterInfo.clusterId);
-          node.communityMembers = cluster ? [node.label] : undefined;
-          node.hullLabel = labels[clusterInfo.clusterId] || clusterInfo.hub;
-        } else {
-          node.communityMembers = undefined;
-          node.hullLabel = undefined;
-        }
+        assignClusterFields(node);
       }
-
       d3RendererResult.rendererRef.current.refreshClusters();
       d3RendererResult.rendererRef.current.tick();
     }
 
     // Handle R3F renderer
     if (rendererType === "r3f" && r3fRendererResult.labelsRef.current) {
-      const hubToCluster = new Map<string, { clusterId: number; hub: string }>();
-      for (const [clusterId, cluster] of baseClusters) {
-        hubToCluster.set(cluster.hub, { clusterId, hub: cluster.hub });
-      }
-
-      // Update communityId, hullLabel and communityMembers on R3F nodes (for label rendering)
-      const r3fNodes = r3fRendererResult.labelsRef.current.getNodes();
-      for (const node of r3fNodes) {
+      for (const node of r3fRendererResult.labelsRef.current.getNodes()) {
         if (node.type !== "keyword") continue;
-
-        // Update communityId from nodeToCluster map
-        node.communityId = nodeToCluster.get(node.id);
-
-        const clusterInfo = hubToCluster.get(node.label);
-        if (clusterInfo) {
-          const cluster = baseClusters.get(clusterInfo.clusterId);
-          node.communityMembers = cluster ? [node.label] : undefined;
-          node.hullLabel = labels[clusterInfo.clusterId] || clusterInfo.hub;
-        } else {
-          node.communityMembers = undefined;
-          node.hullLabel = undefined;
-        }
+        assignClusterFields(node);
       }
-
     }
   }, [nodeToCluster, baseClusters, labels, rendererType, keywordNodes, d3RendererResult.simulationNodesRef, d3RendererResult.rendererRef, r3fRendererResult.labelsRef]);
 
@@ -622,7 +577,7 @@ export function TopicsView({
           keywordTiers={focusState ? focusState.keywordTiers : keywordTiers}
           focusState={focusState}
           nodeToCluster={nodeToCluster}
-          searchOpacities={nodeOpacities}
+          searchOpacities={undefined}
           cameraZ={cameraZ}
           clusterLabelShadowStrength={clusterLabelShadowStrength}
           useSemanticFontsForClusters={useSemanticFontsForClusters}

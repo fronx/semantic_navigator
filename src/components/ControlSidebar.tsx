@@ -156,9 +156,6 @@ export interface ControlSidebarProps {
   hoveredChunkId?: string | null;
   hoveredChunkContent?: string | null;
   keywordChunksDebug?: string;
-  // Search filter context
-  searchFilterKeywords?: string[];
-  onClearSearchFilter?: () => void;
   // Semantic filter navigation
   semanticFilter?: SemanticFilter | null;
   filterHistory?: string[];
@@ -174,8 +171,6 @@ export function ControlSidebar({
   updateZoomPhaseConfig,
   toggleSection,
   cameraZ,
-  searchFilterKeywords = [],
-  onClearSearchFilter,
   semanticFilter,
   filterHistory = [],
   keywordNodes = [],
@@ -250,36 +245,6 @@ export function ControlSidebar({
                 >
                   Clear Filter
                 </button>
-              </div>
-            </div>
-          )}
-
-          {/* Search Filter Context */}
-          {searchFilterKeywords.length > 0 && (
-            <div className="border-b border-zinc-200 dark:border-zinc-700 px-3 py-2">
-              <div className="flex items-center justify-between mb-1.5">
-                <h3 className="font-medium text-xs text-zinc-600 dark:text-zinc-400">Search Filter</h3>
-                <button
-                  onClick={onClearSearchFilter}
-                  className="text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
-                >
-                  Clear
-                </button>
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {searchFilterKeywords.slice(0, 5).map((kw, i) => (
-                  <span
-                    key={i}
-                    className="px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 rounded text-xs"
-                  >
-                    {kw}
-                  </span>
-                ))}
-                {searchFilterKeywords.length > 5 && (
-                  <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                    +{searchFilterKeywords.length - 5} more
-                  </span>
-                )}
               </div>
             </div>
           )}
@@ -435,7 +400,7 @@ export function ControlSidebar({
               </div>
               <Checkbox
                 label="Dynamic clustering"
-                checked={settings.dynamicClustering ?? true}
+                checked={settings.dynamicClustering}
                 onChange={(v) => update("dynamicClustering", v)}
               />
               <Slider
