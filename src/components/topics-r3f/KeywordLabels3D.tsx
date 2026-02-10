@@ -299,11 +299,13 @@ export function KeywordLabels3D({
         material.needsUpdate = true;
       }
 
-      // Soft glow: shift color toward white (dark mode) or black (light mode)
+      // Focus glow (70% intensity) and/or hover glow (full intensity)
       tempColor.copy(entry.baseColor);
-      if (isHovered) {
+      const isFocused = keywordTiers?.get(id) === "selected";
+      if (isFocused || isHovered) {
         glowTarget.set(isDarkMode() ? 0xffffff : 0x000000);
-        tempColor.lerp(glowTarget, 0.35);
+        if (isFocused) tempColor.lerp(glowTarget, 0.245);
+        if (isHovered) tempColor.lerp(glowTarget, isFocused ? 0.105 : 0.35);
       }
       if (!material.color.equals(tempColor)) {
         material.color.copy(tempColor);

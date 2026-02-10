@@ -16,6 +16,10 @@ interface Props {
   placeholder?: string;
   /** Node type filter for search API */
   nodeType?: 'article' | 'chunk';
+  /** Optional controlled query value - if provided, overrides internal state */
+  query?: string;
+  /** Callback when query changes (required if query prop is provided) */
+  onQueryChange?: (query: string) => void;
 }
 
 function matchTypeClass(matchType: MatchedKeyword['matchType']): string {
@@ -36,10 +40,16 @@ export function SearchBar({
   displayMode = "results",
   placeholder = "Search your knowledge base...",
   nodeType,
+  query: controlledQuery,
+  onQueryChange,
 }: Props) {
-  const [query, setQuery] = useState("");
+  const [internalQuery, setInternalQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // Use controlled query if provided, otherwise use internal state
+  const query = controlledQuery !== undefined ? controlledQuery : internalQuery;
+  const setQuery = onQueryChange || setInternalQuery;
 
   async function executeSearch(searchQuery: string, limit: number): Promise<void> {
     setLoading(true);

@@ -30,6 +30,8 @@ export interface KeywordEdgesProps {
   focusPositionsRef?: React.RefObject<Map<string, { x: number; y: number }>>;
   /** Keyword tiers for focus mode edge filtering */
   keywordTiers?: KeywordTierMap | null;
+  /** Focused keyword ID (from focus mode) - edges connected to this node are highlighted */
+  focusedKeywordIdRef?: React.RefObject<string | null>;
 }
 
 export function KeywordEdges({
@@ -46,6 +48,7 @@ export function KeywordEdges({
   pulledPositionsRef,
   focusPositionsRef,
   keywordTiers,
+  focusedKeywordIdRef,
 }: KeywordEdgesProps): React.JSX.Element | null {
   const nodeMap = useMemo(
     () => new Map(simNodes.map((n) => [n.id, n])),
@@ -81,6 +84,7 @@ export function KeywordEdges({
       focusPositionsRef={focusPositionsRef}
       keywordTiers={keywordTiers}
       highlightConnectedToRef={hoveredKeywordIdRef}
+      focusedKeywordIdRef={focusedKeywordIdRef}
     />
   );
 }

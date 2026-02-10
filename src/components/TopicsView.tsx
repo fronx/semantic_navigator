@@ -14,7 +14,7 @@ import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queri
 import { loadPCATransform, type PCATransform } from "@/lib/semantic-colors";
 import { calculateDegreeSizeMultiplier } from "@/lib/topics-graph-nodes";
 import type { SemanticFilter } from "@/lib/topics-filter";
-import { createFocusState, createContentAwareFocusState, createFocusStateFromSet, type FocusState } from "@/lib/focus-mode";
+import { createFocusState, createContentAwareFocusState, createSearchFocusState, type FocusState } from "@/lib/focus-mode";
 import { computeVisibleKeywordIds } from "@/lib/focus-mode-content-filter";
 import type { BaseRendererOptions } from "@/lib/renderer-types";
 import type { SimNode } from "@/lib/map-renderer";
@@ -53,6 +53,8 @@ export interface TopicsViewProps {
   hoverConfig: HoverHighlightConfig;
   /** Callback when a keyword is clicked */
   onKeywordClick?: (keyword: string) => void;
+  /** Callback when focus mode changes (focus started/ended) */
+  onFocusChange?: (isFocused: boolean) => void;
   /** Callback when a project node is clicked */
   onProjectClick?: (projectId: string) => void;
   /** Callback when zoom level changes */
@@ -151,6 +153,7 @@ export function TopicsView({
   clusterLabelDesaturation = 0,
   hoverConfig,
   onKeywordClick,
+  onFocusChange,
   onProjectClick,
   onZoomChange,
   rendererType = "d3",
@@ -199,23 +202,28 @@ export function TopicsView({
   const focusEntryZRef = useRef<number | null>(null);
 
   // External focus trigger: when focusKeywordIds changes, update focus state
-  // undefined = no change, null or empty Set = clear, non-empty Set = apply
+  // undefined = not provided (no-op), null or empty Set = clear, non-empty Set = apply
   useEffect(() => {
-    if (focusKeywordIds == null || focusKeywordIds.size === 0) {
-      if (focusKeywordIds !== undefined) {
-        setFocusState(null);
-        focusEntryZRef.current = null;
-      }
+    if (focusKeywordIds === undefined) return;
+
+    if (focusKeywordIds === null || focusKeywordIds.size === 0) {
+      setFocusState(null);
+      focusEntryZRef.current = null;
       return;
     }
+
+    // Search results: highlight only direct matches (no neighbors)
     const allNodeIds = keywordNodes.map(n => n.id);
-    setFocusState(createFocusStateFromSet(focusKeywordIds, allNodeIds, edges, focusMaxHops));
-    // Capture camera Z only when first entering focus, not on every zoom
-    // Note: cameraZ intentionally not in deps - we want to capture it at entry time only,
-    // not update the entry reference on every zoom (which would break exit detection)
+    setFocusState(createSearchFocusState(focusKeywordIds, allNodeIds));
+    // Capture camera Z at entry time only (not on every zoom)
     focusEntryZRef.current = cameraZ ?? null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusKeywordIds, keywordNodes, edges, focusMaxHops]);
+  }, [focusKeywordIds, keywordNodes]);
+
+  // Notify parent when focus mode changes (for clearing search)
+  useEffect(() => {
+    onFocusChange?.(focusState !== null);
+  }, [focusState, onFocusChange]);
 
   // Calculate panel distance ratio automatically based on camera zoom level
   // This creates a fade effect: keywords blur out at medium distance, clear up when close
@@ -391,10 +399,8 @@ export function TopicsView({
 
   // Handle focus click (R3F only) -- toggle focus mode instead of filtering
   const handleFocusClick = useStableCallback((keywordId: string) => {
-    // Toggle: clicking the already-focused keyword clears focus
+    // No-op: clicking the already-focused keyword does nothing
     if (focusState?.focusedKeywordId === keywordId) {
-      setFocusState(null);
-      focusEntryZRef.current = null;
       return;
     }
 

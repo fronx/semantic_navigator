@@ -35,16 +35,25 @@ function collectMatchedKeywordLabels(searchResults: SearchResult[]): Set<string>
 
 /**
  * Convert search results to a Set of keyword node IDs for filtering.
+ * Also includes ALL keywords that match the search query (substring match).
  */
 export function searchResultsToKeywordIds(
   searchResults: SearchResult[],
-  allKeywordNodes: KeywordNode[]
+  allKeywordNodes: KeywordNode[],
+  searchQuery?: string
 ): Set<string> {
   const matchedLabels = collectMatchedKeywordLabels(searchResults);
 
   const keywordIds = new Set<string>();
+  const normalizedQuery = searchQuery?.toLowerCase().trim();
+
   for (const node of allKeywordNodes) {
+    // Include if explicitly matched in search results
     if (matchedLabels.has(node.label)) {
+      keywordIds.add(node.id);
+    }
+    // Also include if the keyword contains the search query (case-insensitive)
+    else if (normalizedQuery && node.label.toLowerCase().includes(normalizedQuery)) {
       keywordIds.add(node.id);
     }
   }

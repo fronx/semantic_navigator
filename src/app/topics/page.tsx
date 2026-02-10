@@ -67,6 +67,7 @@ export default function TopicsPage() {
   const [clusterCount, setClusterCount] = useState(0);
 
   // Search state
+  const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
 
   // Derive cluster resolution from zoom + slider
@@ -151,8 +152,8 @@ export default function TopicsPage() {
   // Convert search results to focus keyword IDs (for focus mode)
   const focusKeywordIds = useMemo(() => {
     if (searchResults.length === 0 || !data) return null;
-    return searchResultsToKeywordIds(searchResults, data.nodes);
-  }, [searchResults, data]);
+    return searchResultsToKeywordIds(searchResults, data.nodes, searchQuery);
+  }, [searchResults, data, searchQuery]);
 
   // Handle project creation request from TopicsView (N key press)
   const handleCreateProject = useCallback((worldPos: { x: number; y: number }, screenPos: { x: number; y: number }) => {
@@ -323,6 +324,22 @@ export default function TopicsPage() {
     setSearchResults(results);
   }, []);
 
+  // Clear search state (shared by keyword click and focus exit)
+  const clearSearch = useCallback(() => {
+    setSearchQuery("");
+    setSearchResults([]);
+  }, []);
+
+  // Handle keyword click - clear search when focusing
+  const handleKeywordClick = useCallback((_keyword: string) => {
+    clearSearch();
+  }, [clearSearch]);
+
+  // Handle focus mode change - clear search when exiting focus mode
+  const handleFocusChange = useCallback((isFocused: boolean) => {
+    if (!isFocused) clearSearch();
+  }, [clearSearch]);
+
   // Fetch data with localStorage cache fallback
   useEffect(() => {
     const CACHE_KEY = "topics-data-cache";
@@ -443,6 +460,8 @@ export default function TopicsPage() {
                 displayMode="inline"
                 placeholder="Search topics..."
                 nodeType={settings.nodeType}
+                query={searchQuery}
+                onQueryChange={setSearchQuery}
                 onSearch={handleSearch}
               />
             </div>
@@ -502,6 +521,8 @@ export default function TopicsPage() {
               similarityThreshold: settings.hoverSimilarity,
               baseDim: settings.baseDim,
             }}
+            onKeywordClick={handleKeywordClick}
+            onFocusChange={handleFocusChange}
             onProjectClick={handleProjectClick}
             onZoomChange={(scale) => {
               setZoomScale(scale);

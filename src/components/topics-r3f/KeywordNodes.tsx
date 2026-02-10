@@ -334,9 +334,7 @@ export function KeywordNodes({
       colorRef.current.set(color);
 
       // Reduce opacity for margin nodes (focus) or pulled nodes (edge pulling)
-      if (isFocusMargin) {
-        colorRef.current.multiplyScalar(0.4);
-      } else if (isPulled) {
+      if (isFocusMargin || isPulled) {
         colorRef.current.multiplyScalar(0.4);
       }
 
@@ -356,10 +354,13 @@ export function KeywordNodes({
         colorRef.current.multiplyScalar(searchOpacity);
       }
 
-      // Soft glow when hovered (matches label glow behavior)
-      if (hoveredKeywordIdRef?.current === node.id) {
+      // Focus glow (70% intensity) and/or hover glow (full intensity)
+      const isFocused = currentFocusId === node.id;
+      const isHovered = hoveredKeywordIdRef?.current === node.id;
+      if (isFocused || isHovered) {
         glowTarget.set(isDarkMode() ? 0xffffff : 0x000000);
-        colorRef.current.lerp(glowTarget, 0.35);
+        if (isFocused) colorRef.current.lerp(glowTarget, 0.245);
+        if (isHovered) colorRef.current.lerp(glowTarget, isFocused ? 0.105 : 0.35);
       }
 
       meshRef.current.setColorAt(i, colorRef.current);

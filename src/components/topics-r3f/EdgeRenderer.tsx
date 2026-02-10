@@ -74,6 +74,8 @@ export interface EdgeRendererProps {
   visibleSourceIdsRef?: React.RefObject<Set<string>>;
   /** Highlight edges connected to this node ID (brighter/more opaque when hovered) */
   highlightConnectedToRef?: React.RefObject<string | null>;
+  /** Focused keyword ID (from focus mode) - edges connected to this node are highlighted */
+  focusedKeywordIdRef?: React.RefObject<string | null>;
 }
 
 export function EdgeRenderer({
@@ -98,6 +100,7 @@ export function EdgeRenderer({
   zoomRange,
   visibleSourceIdsRef,
   highlightConnectedToRef,
+  focusedKeywordIdRef,
 }: EdgeRendererProps): React.JSX.Element | null {
   const lineRef = useRef<THREE.Line>(null);
   const tempColor = useRef(new THREE.Color());
@@ -174,6 +177,9 @@ export function EdgeRenderer({
 
     // Node ID for edge highlighting (show connected edges brighter)
     const highlightNodeId = highlightConnectedToRef?.current ?? null;
+
+    // Focused keyword ID for edge highlighting (from focus mode)
+    const focusedKeywordId = focusedKeywordIdRef?.current ?? null;
 
     // Source fade map (animated by useFadingMembership hook)
     const sourceFade = visibleSourceIdsRef ? sourceFadeRef.current : null;
@@ -323,10 +329,18 @@ export function EdgeRenderer({
         }
       }
 
-      // Hover highlighting: brighten edges connected to hovered node (with smooth fade animation)
+      // Hover/focus highlighting: brighten edges connected to hovered or focused node
       const edgeKey = `${sourceId}->${targetId}`;
-      const isConnected = highlightNodeId !== null && (sourceId === highlightNodeId || targetId === highlightNodeId);
-      const targetBrightness = isConnected ? 4.0 : 1.0;
+      const touchesEndpoint = (nodeId: string | null) =>
+        nodeId !== null && (sourceId === nodeId || targetId === nodeId);
+      const isConnectedToHovered = touchesEndpoint(highlightNodeId);
+      const isConnectedToFocused = touchesEndpoint(focusedKeywordId);
+      const isConnected = isConnectedToHovered || isConnectedToFocused;
+
+      // Hovered edges at full intensity (4x), focused at 70% (2.8x)
+      let targetBrightness = 1.0;
+      if (isConnectedToHovered) targetBrightness = 4.0;
+      else if (isConnectedToFocused) targetBrightness = 2.8;
 
       // Animate brightness using lerp (same pattern as useFadingMembership)
       const brightnessMap = edgeBrightnessRef.current;

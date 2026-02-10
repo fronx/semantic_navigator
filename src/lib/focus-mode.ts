@@ -6,11 +6,21 @@
 import {
   createSemanticFilter,
   computeKeywordTiers,
-  type SemanticFilter,
   type KeywordTierMap,
 } from "./topics-filter";
 import type { SimilarityEdge } from "@/lib/graph-queries";
 import type { ContentNode } from "./content-loader";
+
+/**
+ * Compute the set of node IDs not in `focused` (i.e., everything that goes to margins).
+ */
+function computeMarginIds(allNodeIds: string[], focused: Set<string>): Set<string> {
+  const margin = new Set<string>();
+  for (const id of allNodeIds) {
+    if (!focused.has(id)) margin.add(id);
+  }
+  return margin;
+}
 
 /**
  * Focus state for click-to-focus interaction.
@@ -54,17 +64,10 @@ export function createFocusState(
     for (const id of semanticFilter.threeHopIds) focusedNodeIds.add(id);
   }
 
-  const marginNodeIds = new Set<string>();
-  for (const id of allNodeIds) {
-    if (!focusedNodeIds.has(id)) {
-      marginNodeIds.add(id);
-    }
-  }
-
   return {
     focusedKeywordId: selectedKeywordId,
     focusedNodeIds,
-    marginNodeIds,
+    marginNodeIds: computeMarginIds(allNodeIds, focusedNodeIds),
     keywordTiers,
   };
 }
@@ -89,6 +92,30 @@ function buildContentToKeywordsMap(
   }
 
   return contentToKeywords;
+}
+
+/**
+ * Create focus state from search results - highlights ONLY the matched keywords.
+ * Does NOT include neighbors (1-hop, 2-hop, etc.).
+ */
+export function createSearchFocusState(
+  keywordIds: Set<string>,
+  allNodeIds: string[]
+): FocusState {
+  const focusedNodeIds = new Set<string>(keywordIds);
+  const keywordTiers: KeywordTierMap = new Map();
+
+  // Mark all search matches as "selected"
+  for (const keywordId of keywordIds) {
+    keywordTiers.set(keywordId, "selected");
+  }
+
+  return {
+    focusedKeywordId: keywordIds.values().next().value ?? "",
+    focusedNodeIds,
+    marginNodeIds: computeMarginIds(allNodeIds, focusedNodeIds),
+    keywordTiers,
+  };
 }
 
 /**
@@ -141,18 +168,10 @@ export function createFocusStateFromSet(
     }
   }
 
-  // Everything else goes to margins
-  const marginNodeIds = new Set<string>();
-  for (const id of allNodeIds) {
-    if (!focusedNodeIds.has(id)) {
-      marginNodeIds.add(id);
-    }
-  }
-
   return {
     focusedKeywordId: keywordIds.values().next().value ?? "", // First result as nominal focus
     focusedNodeIds,
-    marginNodeIds,
+    marginNodeIds: computeMarginIds(allNodeIds, focusedNodeIds),
     keywordTiers,
   };
 }
@@ -240,18 +259,10 @@ export function createContentAwareFocusState(
     }
   }
 
-  // Everything else is margin
-  const marginNodeIds = new Set<string>();
-  for (const id of allNodeIds) {
-    if (!focusedNodeIds.has(id)) {
-      marginNodeIds.add(id);
-    }
-  }
-
   return {
     focusedKeywordId: selectedKeywordId,
     focusedNodeIds,
-    marginNodeIds,
+    marginNodeIds: computeMarginIds(allNodeIds, focusedNodeIds),
     keywordTiers,
   };
 }

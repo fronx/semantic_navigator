@@ -195,6 +195,9 @@ export function R3FTopicsScene({
   const primaryKeywordIdsRef = useRef<Set<string>>(new Set());
   const contentDrivenKeywordIdsRef = useRef<Set<string>>(new Set());
 
+  // Focused keyword ID ref (for edge highlighting in useFrame)
+  const focusedKeywordIdRef = useRef<string | null>(null);
+  focusedKeywordIdRef.current = focusState?.focusedKeywordId ?? null;
 
   // Calculate stable max content node count (available immediately from contentsByKeyword)
   const contentNodeCount = useMemo(() => {
@@ -497,6 +500,7 @@ export function R3FTopicsScene({
           pulledPositionsRef={labelRefs.pulledPositionsRef}
           focusPositionsRef={focusPositionsRef}
           keywordTiers={keywordTiers}
+          focusedKeywordIdRef={focusedKeywordIdRef}
         />
       )}
 
