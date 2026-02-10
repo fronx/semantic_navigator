@@ -26,6 +26,8 @@ export interface ContentEdgesProps {
   searchOpacities?: Map<string, number>;
   /** Hovered keyword ID ref — reaching edges only show for hovered node */
   hoveredKeywordIdRef?: React.RefObject<string | null>;
+  /** Hovered content node ID ref — for highlighting connected edges */
+  hoveredContentIdRef?: React.RefObject<string | null>;
   /** Pulled keyword positions (for position overrides when keyword is pulled to edge) */
   pulledPositionsRef?: React.RefObject<Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>>;
   /** Pulled content positions (for position overrides when content node is pulled to edge) */
@@ -51,6 +53,7 @@ export function ContentEdges({
   pcaTransform,
   searchOpacities,
   hoveredKeywordIdRef,
+  hoveredContentIdRef,
   pulledPositionsRef,
   pulledContentPositionsRef,
   focusPositionsRef,
@@ -83,6 +86,16 @@ export function ContentEdges({
     () => new Map([...simNodes, ...contentNodes].map((n) => [n.id, n])),
     [simNodes, contentNodes]
   );
+
+  // Merge keyword and content hover into a single ref for EdgeRenderer
+  // Highlights edges connected to either hovered keywords or hovered content
+  const combinedHoverRef = useMemo(() => {
+    return {
+      get current() {
+        return hoveredKeywordIdRef?.current ?? hoveredContentIdRef?.current ?? null;
+      }
+    };
+  }, [hoveredKeywordIdRef, hoveredContentIdRef]);
 
   // Merge keyword and content pulled positions into a single map for EdgeRenderer
   // This allows edges to use clamped positions for both pulled keywords and pulled content
@@ -138,6 +151,7 @@ export function ContentEdges({
     keywordTiers={keywordTiers}
     zoomRange={zoomRange}
     visibleSourceIdsRef={primaryKeywordIdsRef}
+    highlightConnectedToRef={combinedHoverRef}
   />
 );
 }

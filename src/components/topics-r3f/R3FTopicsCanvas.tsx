@@ -191,6 +191,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     const contentScreenRectsRef = useRef<Map<string, ContentScreenRect>>(new Map());
     const cursorWorldPosRef = useRef<{ x: number; y: number } | null>(null);
     const hoveredKeywordIdRef = useRef<string | null>(null);
+    const hoveredContentIdRef = useRef<string | null>(null);
     const pulledPositionsRef = useRef<Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>>(new Map());
     const pulledContentPositionsRef = useRef<Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>>(new Map());
     const focusPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
@@ -215,6 +216,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
       contentScreenRectsRef,
       cursorWorldPosRef,
       hoveredKeywordIdRef,
+      hoveredContentIdRef,
       pulledPositionsRef,
       pulledContentPositionsRef,
     }), []);

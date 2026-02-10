@@ -80,6 +80,7 @@ export function KeywordEdges({
       pulledPositionsRef={pulledPositionsRef}
       focusPositionsRef={focusPositionsRef}
       keywordTiers={keywordTiers}
+      highlightConnectedToRef={hoveredKeywordIdRef}
     />
   );
 }

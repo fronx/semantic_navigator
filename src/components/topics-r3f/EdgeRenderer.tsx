@@ -72,6 +72,8 @@ export interface EdgeRendererProps {
   zoomRange?: ZoomRange;
   /** Only show edges whose source is in this set (per-frame filtering) */
   visibleSourceIdsRef?: React.RefObject<Set<string>>;
+  /** Highlight edges connected to this node ID (brighter/more opaque when hovered) */
+  highlightConnectedToRef?: React.RefObject<string | null>;
 }
 
 export function EdgeRenderer({
@@ -95,11 +97,16 @@ export function EdgeRenderer({
   suppressEdgesFromMarginKeywords = false,
   zoomRange,
   visibleSourceIdsRef,
+  highlightConnectedToRef,
 }: EdgeRendererProps): React.JSX.Element | null {
   const lineRef = useRef<THREE.Line>(null);
   const tempColor = useRef(new THREE.Color());
   const sourceFadeRef = useFadingMembership(visibleSourceIdsRef);
   const { camera, size } = useThree();
+
+  // Animated brightness map for smooth hover highlighting (edge ID -> brightness)
+  const edgeBrightnessRef = useRef(new Map<string, number>());
+  const BRIGHTNESS_LERP_SPEED = 0.35;
 
   // Compute cluster colors if not provided
   const clusterColors = useMemo(() => {
@@ -164,6 +171,9 @@ export function EdgeRenderer({
 
     // Hovered node ID for revealing reaching edges on hover
     const hoveredId = hoveredKeywordIdRef?.current ?? null;
+
+    // Node ID for edge highlighting (show connected edges brighter)
+    const highlightNodeId = highlightConnectedToRef?.current ?? null;
 
     // Source fade map (animated by useFadingMembership hook)
     const sourceFade = visibleSourceIdsRef ? sourceFadeRef.current : null;
@@ -313,12 +323,31 @@ export function EdgeRenderer({
         }
       }
 
-      // Write RGBA color to all vertices (alpha = source fade * focus dim for transparent crossfade)
+      // Hover highlighting: brighten edges connected to hovered node (with smooth fade animation)
+      const edgeKey = `${sourceId}->${targetId}`;
+      const isConnected = highlightNodeId !== null && (sourceId === highlightNodeId || targetId === highlightNodeId);
+      const targetBrightness = isConnected ? 4.0 : 1.0;
+
+      // Animate brightness using lerp (same pattern as useFadingMembership)
+      const brightnessMap = edgeBrightnessRef.current;
+      const currentBrightness = brightnessMap.get(edgeKey) ?? 1.0;
+      const nextBrightness = currentBrightness + (targetBrightness - currentBrightness) * BRIGHTNESS_LERP_SPEED;
+      brightnessMap.set(edgeKey, nextBrightness);
+
+      // Write RGBA color to all vertices (alpha = source fade * focus dim * hover highlight)
       const colBaseOffset = edgeIndex * VERTICES_PER_EDGE * 4;
       for (let i = 0; i < VERTICES_PER_EDGE; i++) {
         const ci = colBaseOffset + i * 4;
-        tempColor.current.toArray(colArray, ci);
-        colArray[ci + 3] = sourceFadeOpacity * focusDimFactor;
+        // Apply animated brightness to RGB channels
+        const r = tempColor.current.r * nextBrightness;
+        const g = tempColor.current.g * nextBrightness;
+        const b = tempColor.current.b * nextBrightness;
+        colArray[ci] = r;
+        colArray[ci + 1] = g;
+        colArray[ci + 2] = b;
+        // Also boost alpha (opacity) for highlighted edges to make them more visible
+        const alphaBoost = isConnected ? Math.min(nextBrightness * 0.5, 2.0) : 1.0;
+        colArray[ci + 3] = sourceFadeOpacity * focusDimFactor * alphaBoost;
       }
     }
 

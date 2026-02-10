@@ -428,6 +428,7 @@ export function R3FTopicsScene({
           primaryKeywordIdsRef={primaryKeywordIdsRef}
           contentDrivenKeywordIdsRef={contentDrivenKeywordIdsRef}
           focusState={focusState}
+          hoveredContentIdRef={labelRefs.hoveredContentIdRef}
         />
       )}
 
@@ -470,6 +471,7 @@ export function R3FTopicsScene({
           pcaTransform={pcaTransform ?? undefined}
           searchOpacities={searchOpacities}
           hoveredKeywordIdRef={labelRefs.hoveredKeywordIdRef}
+          hoveredContentIdRef={labelRefs.hoveredContentIdRef}
           pulledPositionsRef={labelRefs.pulledPositionsRef}
           pulledContentPositionsRef={labelRefs.pulledContentPositionsRef}
           focusPositionsRef={focusPositionsRef}

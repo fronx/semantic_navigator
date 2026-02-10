@@ -62,6 +62,8 @@ export interface LabelRefs {
   cursorWorldPosRef: React.MutableRefObject<{ x: number; y: number } | null>;
   /** Currently hovered keyword ID (set by label overlay hover detection) */
   hoveredKeywordIdRef: React.MutableRefObject<string | null>;
+  /** Currently hovered content node ID (set by ContentNodes hover detection) */
+  hoveredContentIdRef: React.MutableRefObject<string | null>;
   /** Pulled (off-screen) keyword positions clamped to viewport edge (written by KeywordNodes, read by edges + labels) */
   pulledPositionsRef: React.MutableRefObject<Map<string, { x: number; y: number; connectedPrimaryIds: string[] }>>;
   /** Pulled (off-screen) content positions clamped to viewport edge (written by ContentNodes, read by content edges) */

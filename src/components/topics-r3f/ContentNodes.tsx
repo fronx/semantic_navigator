@@ -72,6 +72,10 @@ export interface ContentNodesProps {
   contentDrivenKeywordIdsRef?: React.MutableRefObject<Set<string>>;
   /** Focus state for applying fisheye compression to content with focused parents */
   focusState?: import("@/lib/focus-mode").FocusState | null;
+  /** Currently hovered content node ID (for edge highlighting) */
+  hoveredContentIdRef?: React.MutableRefObject<string | null>;
+  /** Handler for content node hover */
+  onContentHover?: (contentId: string | null) => void;
 }
 
 export function ContentNodes({
@@ -95,6 +99,8 @@ export function ContentNodes({
   primaryKeywordIdsRef,
   contentDrivenKeywordIdsRef,
   focusState,
+  hoveredContentIdRef,
+  onContentHover,
 }: ContentNodesProps) {
   const { camera, size, viewport } = useThree();
 
@@ -417,6 +423,27 @@ export function ContentNodes({
     }
   });
 
+  // Handle hover on content nodes
+  const handlePointerOver = (event: any) => {
+    event.stopPropagation();
+    const instanceId = event.instanceId;
+    if (instanceId === undefined || instanceId < 0 || instanceId >= contentNodes.length) return;
+
+    const node = contentNodes[instanceId];
+    if (hoveredContentIdRef) {
+      hoveredContentIdRef.current = node.id;
+    }
+    onContentHover?.(node.id);
+  };
+
+  const handlePointerOut = (event: any) => {
+    event.stopPropagation();
+    if (hoveredContentIdRef) {
+      hoveredContentIdRef.current = null;
+    }
+    onContentHover?.(null);
+  };
+
   if (contentNodes.length === 0) return null;
 
   return (
@@ -425,6 +452,8 @@ export function ContentNodes({
       ref={handleMeshRef}
       args={[geometry, undefined, stableCount]}
       frustumCulled={false}
+      onPointerOver={handlePointerOver}
+      onPointerOut={handlePointerOut}
     >
       {/* Important: do not reactivate the following line that is commented out. Doing so causes the dots to be black. */}
       {/* <meshBasicMaterial vertexColors transparent depthTest={false} /> */}
