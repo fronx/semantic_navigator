@@ -8,6 +8,7 @@ import type { SearchResult } from "@/components/SearchBar";
 import { useErrorNotification } from "@/hooks/useErrorNotification";
 import { useTopicsSettings } from "@/hooks/useTopicsSettings";
 import { useContentLoading } from "@/hooks/useContentLoading";
+import { useLocalStorageBackup } from "@/hooks/useLocalStorageBackup";
 import { ProjectSidebar, type Project as SidebarProject } from "@/components/ProjectSidebar";
 import { InlineTitleInput } from "@/components/InlineTitleInput";
 import { ControlSidebar } from "@/components/ControlSidebar";
@@ -50,6 +51,9 @@ export default function TopicsPage() {
 
   // Consolidated settings
   const { settings, isReady: settingsReady, update, updateZoomPhaseConfig, toggleSection } = useTopicsSettings();
+
+  // Automatic localStorage backup
+  useLocalStorageBackup({ enabled: settingsReady });
 
   // Sync global contrast to module-level state (synchronous so children read it during same render)
   if (typeof window !== "undefined") {

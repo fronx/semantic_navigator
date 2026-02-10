@@ -10,6 +10,7 @@ import type { SemanticFilter } from "@/lib/topics-filter";
 import type { KeywordNode } from "@/lib/graph-queries";
 import { CAMERA_Z_MIN, CAMERA_Z_MAX } from "@/lib/content-zoom-config";
 import { CAMERA_Z_SCALE_BASE } from "@/lib/rendering-utils/camera-controller";
+import { BackupManager } from "@/components/BackupManager";
 
 const LOG_Z_MIN = Math.log10(CAMERA_Z_MIN);
 const LOG_Z_MAX = Math.log10(CAMERA_Z_MAX);
@@ -207,6 +208,9 @@ export function ControlSidebar({
 
       {!settings.sidebarCollapsed && (
         <div className="overflow-y-auto h-[calc(100%-40px)]">
+          {/* Backup Controls */}
+          <BackupManager />
+
           {/* Semantic Filter Navigation */}
           {semanticFilter && (
             <div className="filter-navigation">
