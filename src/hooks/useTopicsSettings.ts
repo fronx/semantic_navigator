@@ -31,6 +31,8 @@ export interface TopicsSettings {
   keywordSizeMultiplier: number;
   /** Enable degree-based node sizing (default true) */
   scaleNodesByDegree: boolean;
+  /** What to count for degree-based sizing: keyword-keyword connections or keyword-content connections */
+  degreeSizeMode: 'keyword-connections' | 'content-connections';
   /** Minimum size multiplier for degree-based sizing (default 0.5) */
   degreeSizeMin: number;
   /** Maximum size multiplier for degree-based sizing (default 2.0) */
@@ -89,6 +91,7 @@ const DEFAULT_SETTINGS: TopicsSettings = {
   contentTextDepthScale: -15.0,
   keywordSizeMultiplier: 1.0,
   scaleNodesByDegree: true,
+  degreeSizeMode: 'keyword-connections',
   degreeSizeMin: 0.5,
   degreeSizeMax: 2.0,
   contentSizeMultiplier: 1.5,

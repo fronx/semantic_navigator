@@ -85,6 +85,8 @@ export interface TopicsViewProps {
   keywordSizeMultiplier?: number;
   /** Enable degree-based node sizing (default true) */
   scaleNodesByDegree?: boolean;
+  /** What to count for degree-based sizing: keyword-keyword connections or keyword-content connections */
+  degreeSizeMode?: 'keyword-connections' | 'content-connections';
   /** Minimum size multiplier for degree-based sizing (default 0.5) */
   degreeSizeMin?: number;
   /** Maximum size multiplier for degree-based sizing (default 2.0) */
@@ -169,6 +171,7 @@ export function TopicsView({
   contentTextDepthScale = -15.0,
   keywordSizeMultiplier = 1.0,
   scaleNodesByDegree = true,
+  degreeSizeMode = 'keyword-connections',
   degreeSizeMin = 0.5,
   degreeSizeMax = 2.0,
   contentSizeMultiplier = 1.5,
@@ -233,28 +236,6 @@ export function TopicsView({
   // Thickness ramps from 0 (no blur) to 20 (full blur) as camera approaches threshold
   const panelThickness = (cameraZ !== undefined ? calculatePanelThickness(cameraZ) : 0) * panelThicknessMultiplier;
 
-  // Calculate size multipliers based on node degree (number of connections)
-  const nodeSizeMultipliers = useMemo(() => {
-    // Only calculate if degree-based sizing is enabled
-    if (!scaleNodesByDegree) return undefined;
-
-    // Find max degree across all nodes
-    const maxDegree = Math.max(...keywordNodes.map(n => n.degree ?? 0), 1);
-
-    // Map each node to its size multiplier
-    const multipliers = new Map<string, number>();
-    for (const node of keywordNodes) {
-      const multiplier = calculateDegreeSizeMultiplier(
-        node.degree ?? 0,
-        maxDegree,
-        degreeSizeMin,
-        degreeSizeMax
-      );
-      multipliers.set(node.id, multiplier);
-    }
-    return multipliers;
-  }, [keywordNodes, scaleNodesByDegree, degreeSizeMin, degreeSizeMax]);
-
   // Client-side Leiden clustering (must come before useTopicsFilter)
   const { nodeToCluster, baseClusters, labels } = useClusterLabels(
     keywordNodes,
@@ -318,6 +299,50 @@ export function TopicsView({
     enabled: true,
     nodeType, // Load articles in article mode, chunks in chunk mode
   });
+
+  // Calculate size multipliers based on node degree (number of connections)
+  const nodeSizeMultipliers = useMemo(() => {
+    // Only calculate if degree-based sizing is enabled
+    if (!scaleNodesByDegree) return undefined;
+
+    // Map each node to its size multiplier
+    const multipliers = new Map<string, number>();
+
+    if (degreeSizeMode === 'content-connections') {
+      // Use content connection count (how many chunks are associated with each keyword)
+      let maxDegree = 1;
+      for (const node of keywordNodes) {
+        const contentCount = contentsByKeyword.get(node.id)?.length ?? 0;
+        if (contentCount > maxDegree) maxDegree = contentCount;
+      }
+
+      for (const node of keywordNodes) {
+        const degree = contentsByKeyword.get(node.id)?.length ?? 0;
+        const multiplier = calculateDegreeSizeMultiplier(
+          degree,
+          maxDegree,
+          degreeSizeMin,
+          degreeSizeMax
+        );
+        multipliers.set(node.id, multiplier);
+      }
+    } else {
+      // Use keyword-keyword connection count (from API)
+      const maxDegree = Math.max(...keywordNodes.map(n => n.degree ?? 0), 1);
+
+      for (const node of keywordNodes) {
+        const multiplier = calculateDegreeSizeMultiplier(
+          node.degree ?? 0,
+          maxDegree,
+          degreeSizeMin,
+          degreeSizeMax
+        );
+        multipliers.set(node.id, multiplier);
+      }
+    }
+
+    return multipliers;
+  }, [keywordNodes, scaleNodesByDegree, degreeSizeMode, degreeSizeMin, degreeSizeMax, contentsByKeyword]);
 
   // Cursor tracking for project creation (press 'N' to create)
   const { isHoveringRef, cursorWorldPosRef, cursorScreenPosRef } = useProjectCreation({

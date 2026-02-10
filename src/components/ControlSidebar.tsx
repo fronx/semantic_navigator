@@ -463,6 +463,17 @@ export function ControlSidebar({
             />
             {settings.scaleNodesByDegree && (
               <>
+                <div className="mt-2">
+                  <label className="text-[10px] text-zinc-500 block mb-1">Degree Mode</label>
+                  <select
+                    value={settings.degreeSizeMode}
+                    onChange={(e) => update("degreeSizeMode", e.target.value as 'keyword-connections' | 'content-connections')}
+                    className="w-full text-[11px] bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-2 py-1"
+                  >
+                    <option value="keyword-connections">Keyword connections</option>
+                    <option value="content-connections">Content connections</option>
+                  </select>
+                </div>
                 <Slider
                   label="Degree min"
                   value={settings.degreeSizeMin}

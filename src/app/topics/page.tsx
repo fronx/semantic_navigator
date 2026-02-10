@@ -543,6 +543,7 @@ export default function TopicsPage() {
             contentTextDepthScale={settings.contentTextDepthScale}
             keywordSizeMultiplier={settings.keywordSizeMultiplier}
             scaleNodesByDegree={settings.scaleNodesByDegree}
+            degreeSizeMode={settings.degreeSizeMode}
             degreeSizeMin={settings.degreeSizeMin}
             degreeSizeMax={settings.degreeSizeMax}
             contentSizeMultiplier={settings.contentSizeMultiplier}
