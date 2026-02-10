@@ -38,6 +38,88 @@ Additionally, visible nodes near the viewport edge "fall off a cliff" — they s
 
 Clicking any pulled node (cliff or off-screen) pans the camera to its real position.
 
+## Fisheye Compression for Focus Mode
+
+**Added**: 2026-02-10
+
+When focus mode is active (user clicks a keyword), focused keywords use **fisheye compression** instead of hard clamping to viewport edges. This creates a smoother, more continuous visual experience.
+
+### Fisheye vs Regular Clamping
+
+**Regular clamping** (used for non-focused keywords and content):
+- Off-screen nodes snap to exact viewport edge via ray-AABB intersection
+- Cliff-zone nodes snap outward to pull line
+- Discrete boundary behavior - nodes are either "in" or "pulled"
+
+**Fisheye compression** (used for focused keywords in focus mode):
+- Smooth radial compression from camera center
+- No snapping - continuous gradient of positions
+- Near center: nodes stay at natural positions
+- Farther out: nodes smoothly compress into an inner ring
+- Asymptotic function ensures nodes never exceed viewport bounds
+
+### How It Works
+
+```
+                viewport edge (25px from screen edge)
+                │
+maxRadius ──────┤
+            ····│····  ← asymptotic compression zone
+          ··    │    ··
+        ··      │      ··   Nodes compress smoothly
+      ··        │        ··  toward maxRadius but never
+    ··          │          ··  exceed it (asymptotic)
+   ·            │            ·
+   ·  compressionStartRadius  ·
+   ·    ┌───────┼───────┐    ·
+   ·    │       │       │    ·
+   ·    │       ●       │    ·  ← camera center
+   ·    │   (natural   │    ·
+   ·    │   positions) │    ·    No compression
+   ·    └───────┼───────┘    ·    in this zone
+   ·            │            ·
+    ··          │          ··
+      ··        │        ··
+        ··      │      ··
+          ··    │    ··
+            ····│····
+                │
+```
+
+**Key zones:**
+- **Inner zone** (r < compressionStartRadius = 80px from edge): No compression, nodes at natural positions
+- **Compression zone** (r >= compressionStartRadius): Smooth asymptotic compression toward maxRadius
+- **maxRadius** (25px from edge): Outer boundary, never exceeded
+
+### Implementation
+
+Fisheye compression is implemented in `src/lib/fisheye-viewport.ts`:
+
+```typescript
+const compressed = applyFisheyeCompression(
+  nodeX, nodeY,           // Natural position
+  camX, camY,             // Camera center
+  compressionStartRadius, // 80px from edge (focus pull zone)
+  maxRadius              // 25px from edge (regular pull zone)
+);
+```
+
+The asymptotic function `compressed = start + range * (excess / (excess + scale))` guarantees output stays within `maxRadius` for any input distance.
+
+After compression, positions are clamped to rectangular pull bounds (fisheye is radial, viewport is rectangular) to handle edge cases.
+
+### When Fisheye is Applied
+
+Fisheye compression is applied to:
+- ✅ **Focused keywords** when focus mode is active
+- ✅ **Content nodes** whose parent keywords are focused
+- ❌ Non-focused keywords (use regular clamping)
+- ❌ Content of non-focused keywords
+
+See `src/lib/keyword-pull-state.ts` and `src/lib/content-pull-state.ts` for usage.
+
+**Further reading:** See [Fisheye Compression Pattern](../patterns/fisheye-compression.md) for detailed explanation and usage patterns.
+
 ## Design Decisions
 
 | Decision                      | Choice                                                                   | Rationale                                                                                              |

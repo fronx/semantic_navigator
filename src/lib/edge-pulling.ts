@@ -1,9 +1,14 @@
 /**
  * Shared utilities for edge pulling (pulling off-screen nodes to viewport boundary).
  * Used by both KeywordNodes and ContentNodes.
+ *
+ * For fisheye compression (smooth radial compression for focus mode), see fisheye-viewport.ts
  */
 
 import type * as THREE from "three";
+
+// Re-export fisheye utilities for convenience
+export { applyFisheyeCompression, computeCompressionRadii } from "./fisheye-viewport";
 
 // Screen-pixel-based constants (consistent at all zoom levels)
 export const PULL_LINE_PX = 25;     // from viewport edge — where pulled nodes are placed
@@ -177,58 +182,4 @@ export function isInCliffZone(
     y < pullBounds.bottom ||
     y > pullBounds.top
   );
-}
-
-/**
- * Apply fisheye compression to a position in focus mode.
- * Maps positions smoothly: natural position near center, compressed toward edge as distance increases.
- *
- * @param nodeX - Node's natural x position
- * @param nodeY - Node's natural y position
- * @param camX - Camera center x
- * @param camY - Camera center y
- * @param compressionStartRadius - Distance from center where compression starts (world units)
- * @param maxRadius - Maximum allowed distance from center (world units, at viewport edge)
- * @returns Compressed position
- */
-export function applyFisheyeCompression(
-  nodeX: number,
-  nodeY: number,
-  camX: number,
-  camY: number,
-  compressionStartRadius: number,
-  maxRadius: number,
-): { x: number; y: number } {
-  const dx = nodeX - camX;
-  const dy = nodeY - camY;
-  const distance = Math.sqrt(dx * dx + dy * dy);
-
-  // No compression needed if within start radius
-  if (distance <= compressionStartRadius) {
-    return { x: nodeX, y: nodeY };
-  }
-
-  // Avoid division by zero
-  if (distance === 0) {
-    return { x: nodeX, y: nodeY };
-  }
-
-  // Asymptotic compression: smoothly maps [compressionStartRadius, infinity) → [compressionStartRadius, maxRadius]
-  // The farther the node is, the more it gets compressed toward maxRadius
-  const excess = distance - compressionStartRadius;
-  const compressionRange = maxRadius - compressionStartRadius;
-
-  // Asymptotic mapping: excess / (excess + scale)
-  // This guarantees compressedExcess ≤ compressionRange for all inputs
-  // Scale controls how aggressive the compression is (lower = more aggressive)
-  const scale = compressionRange * 0.5; // Tune this for desired compression curve
-  const compressedExcess = compressionRange * (excess / (excess + scale));
-  const compressedDistance = compressionStartRadius + compressedExcess;
-
-  // Preserve direction, apply compressed distance
-  const ratio = compressedDistance / distance;
-  return {
-    x: camX + dx * ratio,
-    y: camY + dy * ratio,
-  };
 }

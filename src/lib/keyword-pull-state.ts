@@ -5,9 +5,9 @@ import {
   clampToBounds,
   isInCliffZone,
   isInViewport,
-  applyFisheyeCompression,
   MAX_PULLED_NODES,
 } from "@/lib/edge-pulling";
+import { applyFisheyeCompression } from "@/lib/fisheye-viewport";
 
 export interface KeywordPulledNode {
   x: number;
