@@ -7,6 +7,7 @@ import type { KeywordNode } from "@/lib/graph-queries";
 export interface MatchedKeyword {
   keyword: string;
   similarity: number;
+  matchType?: 'exact' | 'fuzzy' | 'semantic' | 'both';
 }
 
 export interface SearchResult {

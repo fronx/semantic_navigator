@@ -4,7 +4,7 @@ import { generateEmbedding } from "@/lib/embeddings";
 
 export async function POST(request: NextRequest) {
   const startTotal = performance.now();
-  const { query, nodeType, limit = 10 } = await request.json();
+  const { query, nodeType, limit = 10, useHybrid = true } = await request.json();
 
   if (!query) {
     return NextResponse.json({ error: "Query required" }, { status: 400 });
@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
 
   const supabase = createServerClient();
 
-  console.log("[search] Query:", query, "limit:", limit, "nodeType:", nodeType);
+  console.log("[search] Query:", query, "limit:", limit, "nodeType:", nodeType, "hybrid:", useHybrid);
 
   const startEmbed = performance.now();
   const queryEmbedding = await generateEmbedding(query);
@@ -22,15 +22,17 @@ export async function POST(request: NextRequest) {
   const startRpc = performance.now();
   // Only include filter_node_type if provided - passing null explicitly causes slower query plans
   const rpcParams: Record<string, unknown> = {
+    query_text: query,
     query_embedding: queryEmbedding,
-    match_threshold: 0.1,
+    match_threshold: useHybrid ? 0.5 : 0.7,
     match_count: limit,
+    use_hybrid: useHybrid,
   };
   if (nodeType) {
     rpcParams.filter_node_type = nodeType;
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (supabase.rpc as any)("search_similar", rpcParams);
+  const { data, error } = await (supabase.rpc as any)("search_similar_hybrid", rpcParams);
   const rpcTime = performance.now() - startRpc;
   const totalTime = performance.now() - startTotal;
 

@@ -181,10 +181,17 @@ export function SearchBar({
                     {result.matched_keywords.map((kw) => (
                       <span
                         key={kw.keyword}
-                        className="text-xs px-2 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded"
-                        title={`${(kw.similarity * 100).toFixed(0)}% match`}
+                        className={`text-xs px-2 py-0.5 rounded ${
+                          kw.matchType === 'exact' || kw.matchType === 'both'
+                            ? 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300'
+                            : kw.matchType === 'fuzzy'
+                            ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300'
+                            : 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
+                        }`}
+                        title={`${kw.matchType || 'semantic'} match: ${(kw.similarity * 100).toFixed(0)}%`}
                       >
                         {kw.keyword}
+                        {(kw.matchType === 'exact' || kw.matchType === 'both') && ' ✓'}
                       </span>
                     ))}
                   </>
