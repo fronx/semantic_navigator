@@ -16,7 +16,6 @@ import type { ChunkEmbeddingData } from "@/app/api/chunks/embeddings/route";
 interface ChunksSceneProps {
   chunks: ChunkEmbeddingData[];
   positions: Float32Array;
-  isRunning: boolean;
 }
 
 const CARD_WIDTH = 30;
@@ -76,11 +75,8 @@ export function ChunksScene({ chunks, positions }: ChunksSceneProps) {
   const quat = useRef(new THREE.Quaternion());
   const scaleVec = useRef(new THREE.Vector3(1, 1, 1));
 
-  // Expose current scale for text labels to read
-  const currentScaleRef = useRef(CARD_SCALE);
-
-  // Track whether colors have been applied (only need to set once per chunk set)
-  const colorsAppliedRef = useRef(false);
+  // Track which chunks have had colors applied (reset when chunk data changes)
+  const colorChunksRef = useRef<ChunkEmbeddingData[] | null>(null);
 
   useFrame(() => {
     const mesh = meshRef.current;
@@ -102,13 +98,13 @@ export function ChunksScene({ chunks, positions }: ChunksSceneProps) {
       mesh.setMatrixAt(i, matrixRef.current);
     }
 
-    // Apply colors once (they don't change per frame)
-    if (!colorsAppliedRef.current && chunkColors.length > 0) {
+    // Apply colors once per chunk set (colorChunksRef tracks which data we've colored)
+    if (colorChunksRef.current !== chunks || !mesh.instanceColor) {
       for (let i = 0; i < Math.min(n, chunkColors.length); i++) {
         mesh.setColorAt(i, chunkColors[i]);
       }
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-      colorsAppliedRef.current = true;
+      colorChunksRef.current = chunks;
     }
 
     mesh.instanceMatrix.needsUpdate = true;
@@ -129,7 +125,7 @@ export function ChunksScene({ chunks, positions }: ChunksSceneProps) {
         positions={positions}
         cardWidth={CARD_WIDTH}
         cardHeight={CARD_HEIGHT}
-        currentScaleRef={currentScaleRef}
+        cardScale={CARD_SCALE}
       />
     </>
   );

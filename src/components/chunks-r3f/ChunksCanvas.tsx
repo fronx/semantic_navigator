@@ -13,10 +13,9 @@ import type { ChunkEmbeddingData } from "@/app/api/chunks/embeddings/route";
 interface ChunksCanvasProps {
   chunks: ChunkEmbeddingData[];
   positions: Float32Array;
-  isRunning: boolean;
 }
 
-export function ChunksCanvas({ chunks, positions, isRunning }: ChunksCanvasProps) {
+export function ChunksCanvas({ chunks, positions }: ChunksCanvasProps) {
   const [backgroundColor, setBackgroundColor] = useState(getBackgroundColor);
 
   useEffect(() => {
@@ -39,7 +38,7 @@ export function ChunksCanvas({ chunks, positions, isRunning }: ChunksCanvasProps
         style={{ width: "100%", height: "100%" }}
       >
         <color attach="background" args={[backgroundColor]} />
-        <ChunksScene chunks={chunks} positions={positions} isRunning={isRunning} />
+        <ChunksScene chunks={chunks} positions={positions} />
       </Canvas>
     </div>
   );

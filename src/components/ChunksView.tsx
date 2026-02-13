@@ -46,7 +46,7 @@ export function ChunksView({ chunks }: ChunksViewProps) {
 
       {/* Canvas area */}
       <main className="flex-1 relative overflow-hidden">
-        <ChunksCanvas chunks={chunks} positions={positions} isRunning={isRunning} />
+        <ChunksCanvas chunks={chunks} positions={positions} />
       </main>
     </div>
   );

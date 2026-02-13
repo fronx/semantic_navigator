@@ -4,7 +4,7 @@
  * Only renders labels for the nearest ~50 chunks to the camera center.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useMemo, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { useThreeTextGeometry } from "@/hooks/useThreeTextGeometry";
@@ -27,7 +27,7 @@ interface ChunkTextLabelsProps {
   positions: Float32Array;
   cardWidth: number;
   cardHeight: number;
-  currentScaleRef: React.RefObject<number>;
+  cardScale: number;
 }
 
 interface ChunkLabelRegistration {
@@ -54,7 +54,7 @@ export function ChunkTextLabels({
   positions,
   cardWidth,
   cardHeight,
-  currentScaleRef,
+  cardScale,
 }: ChunkTextLabelsProps) {
   const { camera } = useThree();
   const labelRegistry = useRef(new Map<number, ChunkLabelRegistration>());
@@ -63,11 +63,9 @@ export function ChunkTextLabels({
   // Updated each frame imperatively; the React render only creates label components
   // for chunks that have recently been visible.
   const [visibleIndices, setVisibleIndices] = useState<number[]>([]);
-  const visibleIndicesRef = useRef<number[]>([]);
 
-  // Reusable vectors for projection
+  // Reusable vector for projection
   const tempVec = useMemo(() => new THREE.Vector3(), []);
-  const cameraPos = useMemo(() => new THREE.Vector3(), []);
 
   // Inner text area dimensions (used for maxWidth in text geometry)
   const innerWidth = cardWidth * (1 - 2 * MARGIN_RATIO);
@@ -83,7 +81,6 @@ export function ChunkTextLabels({
 
   useFrame(() => {
     const cameraZ = camera.position.z;
-    const scale = currentScaleRef.current ?? 1;
 
     // Zoom-based opacity: invisible when far, opaque when close
     const zoomOpacity = cameraZ <= FULL_OPACITY_Z
@@ -97,11 +94,9 @@ export function ChunkTextLabels({
       labelRegistry.current.forEach((entry) => {
         if (entry.group) entry.group.visible = false;
       });
-      // Clear visible indices if needed
-      if (visibleIndicesRef.current.length > 0) {
-        visibleIndicesRef.current = [];
-        setVisibleIndices([]);
+      if (prevVisibleSetRef.current.size > 0) {
         prevVisibleSetRef.current.clear();
+        setVisibleIndices([]);
       }
       return;
     }
@@ -135,7 +130,6 @@ export function ChunkTextLabels({
     const prev = prevVisibleSetRef.current;
     if (newSet.size !== prev.size || newVisible.some((idx) => !prev.has(idx))) {
       prevVisibleSetRef.current = newSet;
-      visibleIndicesRef.current = newVisible;
       setVisibleIndices(newVisible);
     }
 
@@ -155,9 +149,9 @@ export function ChunkTextLabels({
       group.position.set(x, y, 0.1); // slightly above cards
 
       // Scale text to fit within card bounds
-      const cardWorldWidth = cardWidth * scale;
+      const cardWorldWidth = cardWidth * cardScale;
       const usableWidth = cardWorldWidth * (1 - 2 * MARGIN_RATIO);
-      const textScale = geometryWidth > 0 ? usableWidth / geometryWidth : scale;
+      const textScale = geometryWidth > 0 ? usableWidth / geometryWidth : cardScale;
       group.scale.setScalar(textScale);
 
       // Set opacity

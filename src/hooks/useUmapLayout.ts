@@ -6,7 +6,7 @@
  * centered on origin for direct use in Three.js/R3F instanced mesh buffers.
  */
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import { UMAP } from "umap-js";
 
 export interface UmapLayoutResult {
@@ -123,21 +123,6 @@ export function useUmapLayout(
     totalEpochs: 0,
   });
 
-  // Snapshot current state into a result object
-  const snapshotResult = useCallback(
-    (running: boolean): UmapLayoutResult => ({
-      positions: positionsRef.current,
-      progress:
-        totalEpochsRef.current > 0
-          ? epochRef.current / totalEpochsRef.current
-          : 0,
-      isRunning: running,
-      epoch: epochRef.current,
-      totalEpochs: totalEpochsRef.current,
-    }),
-    []
-  );
-
   // Track embeddings identity to avoid re-running on referential changes
   const prevKeyRef = useRef("");
 
@@ -145,6 +130,19 @@ export function useUmapLayout(
     const key = embeddingsKey(embeddings);
     if (key === prevKeyRef.current) return;
     prevKeyRef.current = key;
+
+    function snapshotResult(running: boolean): UmapLayoutResult {
+      return {
+        positions: positionsRef.current,
+        progress:
+          totalEpochsRef.current > 0
+            ? epochRef.current / totalEpochsRef.current
+            : 0,
+        isRunning: running,
+        epoch: epochRef.current,
+        totalEpochs: totalEpochsRef.current,
+      };
+    }
 
     // Cancel any in-progress run
     if (rafIdRef.current) {
@@ -245,19 +243,7 @@ export function useUmapLayout(
     stepsPerFrame,
     renderInterval,
     targetRadius,
-    snapshotResult,
   ]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (rafIdRef.current) {
-        cancelAnimationFrame(rafIdRef.current);
-        rafIdRef.current = 0;
-      }
-      isRunningRef.current = false;
-    };
-  }, []);
 
   return result;
 }
