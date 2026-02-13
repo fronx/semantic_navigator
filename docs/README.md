@@ -44,6 +44,7 @@
 - [Keyword Node Clicks Broken](investigations/keyword-node-clicks-broken-2026-02-06.md) - R3F silently drops onClick handlers when instancedMesh `args` change during data loading + React Strict Mode remount (resolved: 50% over-allocation buffer, stable ref callback)
 - [Content Node Deduplication](investigations/content-node-deduplication-2026-02-07.md) - **NEEDS REVIEW** - Eliminated duplicate content nodes (one per chunk with multiple parent keywords), added spring force slider, multi-parent force simulation (potential issues with force balance, collision performance, label system)
 - [Topics Loading Optimization](investigations/topics-loading-optimization-2026-02-08.md) - **IN PROGRESS** - Reducing `getKeywordBackbone()` from ~9s to ~2s via lean SQL, parallel queries, and fixing 1000-row PostgREST truncation
+- [Content Card Spacing](investigations/content-card-spacing.md) - Problem space analysis: simulation uses static world-space heuristics but correct spacing depends on zoom, viewport, and fisheye state
 
 ### Architecture Decision Records (ADRs)
 
