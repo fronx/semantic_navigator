@@ -58,12 +58,14 @@ const isVisible = (hasVisibleParent || isContentDriven) && !allParentsPushed;
 
 Invisible cards still participate in collision, pushing visible cards further from their parent.
 
+**Planned fix**: Collapse off-screen content nodes to their parent keyword centroid with zero collision radius, so they take up no space. See "Off-Screen Collapse" section below.
+
 ### B. Card size changes but spacing doesn't
 
 As you zoom in, `contentScale` goes from ~0 to 0.3 (capped in `content-scale.ts:69`). The collision radius stays at `contentRadius * 1.2` regardless.
 
-- **Far zoom**: Cards are tiny on screen but spaced as if full-size → too much empty space around keywords
-- **Close zoom**: Cards are at max visual size but spacing was set for a "one size fits all" → can feel cramped when many cards are large
+- **Far zoom**: Cards are tiny on screen but spaced as if full-size — too much empty space around keywords
+- **Close zoom**: Cards are at max visual size but spacing was set for a "one size fits all" — can feel cramped when many cards are large
 
 ### C. Fisheye creates a separate geometry
 
@@ -71,50 +73,75 @@ In focus mode, `fisheye-viewport.ts` applies asymptotic radial compression AFTER
 
 The simulation has no awareness of this compression, so cards that had no overlap in natural space may overlap in compressed space.
 
-## The Fundamental Tension
+## Key Insight: Spacing Should Be Emergent, Not Prescribed
 
-The simulation runs in **world space** with fixed parameters. The "right amount of space" is a **screen-space** question that depends on:
+The current system prescribes a max distance envelope based on content count:
+```
+maxDistance = keywordRadius * 2.5 + sqrt(contentCount) * contentRadius * 1.5
+```
 
-1. **What's visible** — viewport position + zoom level determine which cards need spacing
-2. **How big they appear** — zoom → `contentScale` → visual card size in screen pixels
-3. **Available room** — viewport bounds, neighboring keywords, fisheye compression zone
-4. **Mode** — normal (natural positions) vs. focus (fisheye-compressed positions)
+This is wrong in principle. The correct distance between a card and its keyword is not determined by the number of cards or the zoom level as abstract parameters. It's determined by **how much physical space is needed to pack the visible cards at their current rendered size around the keyword dot**.
 
-## Possible Approaches (not yet evaluated)
+This means:
+- **No max distance formula** — remove the `maxDistance` constraint entirely
+- **No count-based heuristics** — `sqrt(N)` doesn't belong in spacing logic
+- **Collision radius = actual visual size** — scale collision with `contentScale` so the simulation matches what's rendered
+- **Strong attraction** — cards are pulled toward keyword; the only thing stopping them from overlapping is their physical size and each other
 
-### I. Zoom-aware simulation parameters
+The equilibrium distance emerges naturally:
+- Few visible cards at close zoom (large) → cards orbit close, spread by their own size
+- Many visible cards at close zoom → cards pack tighter, overflow into a second ring
+- Far zoom (tiny cards) → collision radius is tiny, cards cluster tight around keyword
+- Isolated keyword with lots of room → cards spread slightly more (no neighbor pressure)
 
-Scale `contentRadius` and `maxDistance` by something derived from `contentScale`, so the simulation matches what's actually rendered. The simulation already receives `cameraZ` in `UnifiedSimulation` (for alpha/velocity tuning) — could extend this to collision radii.
+### What This Looks Like in the Simulation
 
-**Tension**: Changing collision radii causes simulation instability (nodes suddenly overlap or fly apart). Would need careful damping.
+The tether force simplifies to:
+1. **Spring attraction** toward parent keyword (existing, keep)
+2. **No max distance enforcement** (remove the `closestDist > maxDistance` block)
 
-### II. Viewport-filtered simulation input
+The collision force changes to:
+1. **Radius = `contentRadius * contentScale`** instead of fixed `contentRadius`
+2. Where `contentScale` is read from a ref updated per-frame from `calculateScales(cameraZ)`
 
-Only feed content nodes that are (or will be) on-screen to the simulation. Off-screen nodes get no collision space.
+This is a cleaner separation: attraction pulls cards in, collision at the right size pushes them apart, and the equilibrium is exactly right for the current zoom and visible count.
 
-**Tension**: Nodes pop in/out as you pan. Need hysteresis or fade-in to avoid jarring transitions. Also, the simulation needs time to converge after nodes enter.
+## Planned Changes
 
-### III. Post-simulation screen-space constraint pass
+### 1. Off-Screen Collapse (Problem A)
 
-Keep the simulation for organic spread, but apply a second pass in `useFrame` (during render) that checks actual screen-space overlap and resolves it. Like a screen-space collision pass.
+**Status**: Architecture designed, ready for implementation.
 
-**Tension**: Runs every frame, could be expensive with many nodes. Also, corrections fight the simulation — nodes bounce between two systems.
+Extract `computePrimaryKeywordIds()` from ContentNodes render loop into a shared utility. Compute in R3FTopicsScene's useFrame before simulation tick. In the custom tether force, content nodes with no visible parent collapse to parent centroid with zero velocity and zero collision radius.
 
-### IV. Replace simulation with direct placement
+Files:
+- `src/lib/content-primary-keywords.ts` (new — extract primary keyword computation)
+- `src/hooks/useContentSimulation.ts` (modify — read primaryKeywordIdsRef, collapse off-screen nodes)
+- `src/components/topics-r3f/UnifiedSimulation.tsx` (modify — same treatment)
+- `src/components/topics-r3f/R3FTopicsScene.tsx` (modify — compute primary keywords before tick)
+- `src/components/topics-r3f/ContentNodes.tsx` (modify — read from ref instead of computing locally)
 
-Don't use D3 force simulation at all. Instead, compute positions analytically: arrange visible cards in a grid/spiral/ring around their parent keyword, sized to match current zoom. Recompute on zoom/pan changes.
+### 2. Zoom-Proportional Collision (Problem B)
 
-**Tension**: Loses the organic feel of force-directed layout. Transitions between zoom levels would need explicit animation.
+Make collision radius track actual visual size by scaling with `contentScale`.
 
-### V. Hybrid: simulation for topology, constraints for geometry
+- Pass `cameraZ` (or a `contentScaleRef`) to the simulation
+- Collision radius function: `contentRadius * contentScale` (instead of fixed `contentRadius`)
+- This means: at far zoom, collision is tiny (cards cluster tight); at close zoom, collision matches card size (correct spacing)
+- The `maxDistance` constraint in tetherToParent is removed — distance emerges from packing
 
-Use the simulation only to determine relative ordering/clustering of cards (which card is near which). Then, in the render pass, apply screen-space-aware scaling to spread them by the right amount given current zoom and viewport.
+**Tension**: `contentScale` changes every frame during zoom. D3's `forceCollide` caches radii; would need to call `.radius(fn)` each time contentScale changes significantly, or use a custom collision force that reads a ref.
 
-**Tension**: Two-phase system is more complex but separates concerns cleanly.
+### 3. Fisheye-Aware Spacing (Problem C)
+
+Still open. Options:
+- Run a second collision pass after fisheye compression
+- Make fisheye aware of card sizes and adjust compression to preserve spacing
+- Accept some overlap in fisheye mode as a visual trade-off
 
 ## Open Questions
 
-1. Should content cards that are off-screen still exist in the simulation at all? Or should they be removed and re-added as they scroll into view?
-2. Is the fisheye case different enough from normal mode to need its own spacing logic?
-3. How much does simulation instability matter? (Users see it as "cards jittering" during zoom.)
-4. Is analytical placement (Approach IV) worth the loss of organic layout?
+1. How to handle the transition when zooming: collision radius changing means the simulation re-heats. How much jitter is acceptable during zoom?
+2. Should `contentScale` feed directly into D3's collision, or should we use a custom collision force that reads a ref? (D3's forceCollide caches radii — updating requires `.radius(fn)` call which reinitializes.)
+3. Is fisheye overlap acceptable, or does it need its own spacing solution?
+4. With emergent spacing, is the spring strength the right tuning knob? (Stronger spring = tighter packing, weaker = more spread.)
