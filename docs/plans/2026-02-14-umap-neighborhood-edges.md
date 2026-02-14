@@ -194,6 +194,40 @@ git add src/hooks/useUmapLayout.ts
 git commit -m "Extract UMAP neighborhood graph edges above sampling threshold"
 ```
 
+**Step 9: Fix parameter invalidation bug**
+
+The `embeddingsKey` function only fingerprints embeddings data, not UMAP parameters. This causes parameter changes (nNeighbors, minDist, spread) to be ignored.
+
+Update `embeddingsKey` function signature and implementation (lines 88-99):
+
+```typescript
+function embeddingsKey(
+  embeddings: number[][],
+  nNeighbors: number,
+  minDist: number,
+  spread: number
+): string {
+  if (embeddings.length === 0) return "empty";
+  const first = embeddings[0];
+  const last = embeddings[embeddings.length - 1];
+  // Sample a few values for fingerprinting + include parameters
+  return `${embeddings.length}:${first[0]}:${first[first.length - 1]}:${last[0]}:${last[last.length - 1]}:${nNeighbors}:${minDist}:${spread}`;
+}
+```
+
+Update the call site (line 132):
+
+```typescript
+const key = embeddingsKey(embeddings, nNeighbors, minDist, spread);
+```
+
+**Step 10: Commit parameter fix**
+
+```bash
+git add src/hooks/useUmapLayout.ts
+git commit -m "Fix parameter invalidation: include UMAP options in cache key"
+```
+
 ---
 
 ## Task 3: Create ChunkEdges component scaffold
