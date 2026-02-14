@@ -16,6 +16,7 @@ import type { ChunkEmbeddingData } from "@/app/api/chunks/embeddings/route";
 interface ChunksSceneProps {
   chunks: ChunkEmbeddingData[];
   positions: Float32Array;
+  searchOpacities: Map<string, number>;
 }
 
 const CARD_WIDTH = 30;
@@ -35,7 +36,7 @@ function hashToHue(str: string): number {
   return (((hash % 360) + 360) % 360) / 360;
 }
 
-export function ChunksScene({ chunks, positions }: ChunksSceneProps) {
+export function ChunksScene({ chunks, positions, searchOpacities }: ChunksSceneProps) {
   const count = chunks.length;
   const { stableCount, meshKey } = useStableInstanceCount(count);
   const { meshRef, handleMeshRef } = useInstancedMeshMaterial(stableCount);
@@ -77,6 +78,14 @@ export function ChunksScene({ chunks, positions }: ChunksSceneProps) {
 
   // Track which chunks have had colors applied (reset when chunk data changes)
   const colorChunksRef = useRef<ChunkEmbeddingData[] | null>(null);
+  const searchOpacitiesRef = useRef(searchOpacities);
+  const colorDirtyRef = useRef(false);
+  if (searchOpacitiesRef.current !== searchOpacities) {
+    searchOpacitiesRef.current = searchOpacities;
+    colorDirtyRef.current = true;
+  }
+
+  const tempColor = useRef(new THREE.Color());
 
   useFrame(() => {
     const mesh = meshRef.current;
@@ -98,13 +107,20 @@ export function ChunksScene({ chunks, positions }: ChunksSceneProps) {
       mesh.setMatrixAt(i, matrixRef.current);
     }
 
-    // Apply colors once per chunk set (colorChunksRef tracks which data we've colored)
-    if (colorChunksRef.current !== chunks || !mesh.instanceColor) {
+    // Apply colors when chunk data or search opacities change
+    if (colorChunksRef.current !== chunks || colorDirtyRef.current || !mesh.instanceColor) {
+      const searchActive = searchOpacitiesRef.current.size > 0;
       for (let i = 0; i < Math.min(n, chunkColors.length); i++) {
-        mesh.setColorAt(i, chunkColors[i]);
+        tempColor.current.copy(chunkColors[i]);
+        if (searchActive) {
+          const opacity = searchOpacitiesRef.current.get(chunks[i].id) ?? 1.0;
+          tempColor.current.multiplyScalar(opacity);
+        }
+        mesh.setColorAt(i, tempColor.current);
       }
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
       colorChunksRef.current = chunks;
+      colorDirtyRef.current = false;
     }
 
     mesh.instanceMatrix.needsUpdate = true;
@@ -126,6 +142,7 @@ export function ChunksScene({ chunks, positions }: ChunksSceneProps) {
         cardWidth={CARD_WIDTH}
         cardHeight={CARD_HEIGHT}
         cardScale={CARD_SCALE}
+        searchOpacities={searchOpacities}
       />
     </>
   );

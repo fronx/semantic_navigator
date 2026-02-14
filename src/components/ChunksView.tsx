@@ -3,10 +3,11 @@
  * Extracts embeddings from chunk data, runs UMAP, and renders the canvas.
  */
 
-import { useMemo } from "react";
+import { useState, useMemo } from "react";
 import type { ChunkEmbeddingData } from "@/app/api/chunks/embeddings/route";
 import { useUmapLayout } from "@/hooks/useUmapLayout";
 import { usePersistedStore } from "@/hooks/usePersistedStore";
+import { useSearch } from "@/hooks/useSearch";
 import { Slider } from "@/components/Slider";
 import { ChunksCanvas } from "./chunks-r3f/ChunksCanvas";
 
@@ -16,12 +17,15 @@ const UMAP_DEFAULTS = {
   spread: 1.0,
 };
 
+const MIN_SEARCH_OPACITY = 0.1;
+
 interface ChunksViewProps {
   chunks: ChunkEmbeddingData[];
 }
 
 export function ChunksView({ chunks }: ChunksViewProps) {
   const store = usePersistedStore("chunks-umap-v1", UMAP_DEFAULTS, 300);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const embeddings = useMemo(
     () => chunks.map((c) => c.embedding),
@@ -34,14 +38,53 @@ export function ChunksView({ chunks }: ChunksViewProps) {
     spread: store.debounced.spread,
   });
 
+  const { results: searchResults, loading: searchLoading } = useSearch(
+    searchQuery,
+    { limit: 100, nodeType: "chunk" }
+  );
+
+  const searchOpacities = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!searchQuery.trim() || searchResults.length === 0) return map;
+
+    const matched = new Map<string, number>();
+    for (const r of searchResults) matched.set(r.id, r.similarity);
+
+    // Find min similarity among matches to ensure all matches are brighter than non-matches
+    const minMatchSimilarity = Math.min(...searchResults.map(r => r.similarity));
+    // Remap: matches keep original similarity, non-matches get scaled below the minimum match
+    const nonMatchOpacity = Math.min(MIN_SEARCH_OPACITY, minMatchSimilarity * 0.8);
+
+    for (const chunk of chunks) {
+      const sim = matched.get(chunk.id);
+      map.set(chunk.id, sim !== undefined ? sim : nonMatchOpacity);
+    }
+    return map;
+  }, [searchQuery, searchResults, chunks]);
+
   const progressPercent = Math.round(progress * 100);
+  const matchCount = searchResults.length;
 
   return (
     <div className="flex flex-col h-screen bg-zinc-50 dark:bg-zinc-950">
       {/* Header bar */}
       <header className="flex-shrink-0 px-3 py-1.5 flex items-center gap-4 border-b bg-white dark:bg-zinc-900 dark:border-zinc-800">
+        <input
+          type="text"
+          placeholder="Search chunks..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="flex-1 max-w-md px-3 py-1 text-sm rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        />
+
+        {searchLoading && (
+          <span className="text-xs text-zinc-400">Searching...</span>
+        )}
+
         <span className="text-sm text-zinc-600 dark:text-zinc-400">
-          {chunks.length} chunks
+          {searchOpacities.size > 0
+            ? `${matchCount} / ${chunks.length} chunks`
+            : `${chunks.length} chunks`}
         </span>
 
         <Slider
@@ -82,7 +125,7 @@ export function ChunksView({ chunks }: ChunksViewProps) {
 
       {/* Canvas area */}
       <main className="flex-1 relative overflow-hidden">
-        <ChunksCanvas chunks={chunks} positions={positions} />
+        <ChunksCanvas chunks={chunks} positions={positions} searchOpacities={searchOpacities} />
       </main>
     </div>
   );
