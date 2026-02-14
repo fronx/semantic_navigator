@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useMemo, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { useThreeTextGeometry } from "@/hooks/useThreeTextGeometry";
+import { useTextClippingPlane, type ClippingPlaneUpdater } from "@/hooks/useTextClippingPlane";
 import type { ChunkEmbeddingData } from "@/app/api/chunks/embeddings/route";
 
 const MAX_VISIBLE_LABELS = 50;
@@ -34,7 +35,7 @@ interface ChunkLabelRegistration {
   group: THREE.Group | null;
   material: THREE.MeshBasicMaterial;
   geometryWidth: number;
-  clippingPlane: THREE.Plane;
+  clippingUpdater: ClippingPlaneUpdater;
 }
 
 export function ChunkTextLabels({
@@ -128,7 +129,7 @@ export function ChunkTextLabels({
 
     // Update registered labels imperatively
     labelRegistry.current.forEach((entry) => {
-      const { index, group, material, geometryWidth, clippingPlane } = entry;
+      const { index, group, material, geometryWidth, clippingUpdater } = entry;
       if (!group) return;
 
       const isVisible = newSet.has(index);
@@ -149,12 +150,7 @@ export function ChunkTextLabels({
 
       // Update clipping plane to clip at bottom edge of card
       const cardWorldHeight = cardHeight * cardScale;
-      const bottomEdgeY = y - cardWorldHeight / 2;
-      // Plane with normal pointing up (0, 1, 0) clips below the bottom edge
-      clippingPlane.setFromNormalAndCoplanarPoint(
-        new THREE.Vector3(0, 1, 0),
-        new THREE.Vector3(0, bottomEdgeY, 0)
-      );
+      clippingUpdater.setBottomClip(y, cardWorldHeight);
 
       // Set opacity (zoom only - search dims backgrounds, not text)
       const clamped = THREE.MathUtils.clamp(zoomOpacity, 0, 1);
@@ -237,7 +233,7 @@ function ChunkLabel({
   }, [geometryEntry, cardWidth, cardHeight]);
 
   // Clipping plane for this label (clips text below card bottom edge)
-  const clippingPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
+  const [clippingPlane, clippingUpdater] = useTextClippingPlane();
 
   const material = useMemo(
     () =>
@@ -270,7 +266,7 @@ function ChunkLabel({
       group: groupRef.current,
       material,
       geometryWidth,
-      clippingPlane,
+      clippingUpdater,
     };
     registrationRef.current = registration;
     registerLabel(chunkIndex, registration);
@@ -279,7 +275,7 @@ function ChunkLabel({
       registerLabel(chunkIndex, null);
       registrationRef.current = null;
     };
-  }, [geometryEntry, chunkIndex, material, clippingPlane, registerLabel]);
+  }, [geometryEntry, chunkIndex, material, clippingUpdater, registerLabel]);
 
   const setGroupRef = useCallback((instance: THREE.Group | null) => {
     groupRef.current = instance;

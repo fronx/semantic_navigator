@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { MutableRefObject } from "react";
-import { Mask, useMask } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import type { ContentSimNode } from "@/lib/content-layout";
@@ -9,6 +8,7 @@ import { BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/rendering-utils/node-re
 import type { ZoomRange } from "@/lib/zoom-phase-config";
 import { computeUnitsPerPixel, smoothstep } from "@/lib/three-text-utils";
 import { useThreeTextGeometry } from "@/hooks/useThreeTextGeometry";
+import { useTextClippingPlane, type ClippingPlaneUpdater } from "@/hooks/useTextClippingPlane";
 import { renderMarkdownToSegments, readContentTextColors, type MarkdownSegment, type ContentTextColors } from "@/lib/r3f-markdown";
 import type { ContentScreenRect } from "./R3FLabelContext";
 
@@ -21,6 +21,7 @@ interface ContentLabelRegistration {
   baseOpacity: number;
   geometryWidth: number;
   geometryHeight: number;
+  clippingUpdater: ClippingPlaneUpdater;
   updateLayout?: (layout: { worldWidth: number; worldHeight: number }) => void;
 }
 
@@ -31,8 +32,9 @@ const DEFAULT_MIN_SCREEN_PX = 0.2;
 const DEFAULT_BASE_FONT_SIZE = 1;
 const FADE_START_PX = 160;
 const FADE_END_PX = 320;
-// Maximum characters to show before truncation (increase to show more text per card)
-const PREVIEW_CHAR_LIMIT = 700;
+// Text is visually clipped at card bottom, not character-truncated
+// This limit prevents extremely long texts from consuming excessive geometry memory
+const PREVIEW_CHAR_LIMIT = 5000;
 const MIN_SCREEN_WIDTH_PX = 40;
 const CONTENT_LINE_HEIGHT = 1.3;
 const CONTENT_FONT_DEFAULT = "/fonts/source-code-pro-regular.woff2";
@@ -89,13 +91,18 @@ export function ContentTextLabels3D({
   baseFontSize = DEFAULT_BASE_FONT_SIZE,
   contentScreenRectsRef,
 }: ContentTextLabels3DProps) {
-  const { camera, size } = useThree();
+  const { camera, size, gl } = useThree();
   const labelRegistry = useRef(new Map<string, ContentLabelRegistration>());
   const tempVec = useMemo(() => new THREE.Vector3(), []);
   const cameraPos = useMemo(() => new THREE.Vector3(), []);
   const scaleVec = useMemo(() => new THREE.Vector3(), []);
   const contentColors = useMemo(() => readContentTextColors(), []);
   const defaultTextColor = contentColors.text;
+
+  // Enable local clipping planes on the renderer
+  useEffect(() => {
+    gl.localClippingEnabled = true;
+  }, [gl]);
 
   const textFrontZ = useMemo(() => {
     const physicalThickness = panelThickness * contentTextDepthScale;
@@ -138,7 +145,7 @@ export function ContentTextLabels3D({
     const contentScale = contentScales.contentScale;
 
     labelRegistry.current.forEach((entry) => {
-      const { id, node, billboard, material, baseFontSize: fontSize, baseOpacity } = entry;
+      const { id, node, billboard, material, baseFontSize: fontSize, baseOpacity, clippingUpdater } = entry;
       if (!billboard) return;
 
       const isVisible = visibleContentIds ? visibleContentIds.has(id) : true;
@@ -183,6 +190,9 @@ export function ContentTextLabels3D({
       const worldWidth = Math.max(1e-3, screenRect.width * unitsPerPixel);
       const worldHeight = Math.max(1e-3, screenRect.height * unitsPerPixel);
       entry.updateLayout?.({ worldWidth: worldWidth / desiredScale, worldHeight: worldHeight / desiredScale });
+
+      // Update clipping plane to clip text at bottom of card
+      clippingUpdater.setBottomClip(y, worldHeight);
 
       const pixelSize = (fontSize * desiredScale) / unitsPerPixel;
       const fadeFactor = smoothstep((pixelSize - FADE_START_PX) / (FADE_END_PX - FADE_START_PX));
@@ -249,7 +259,6 @@ function ContentTextLabel({
   labelZ,
   registerLabel,
 }: ContentTextLabelProps) {
-  const maskId = useMemo(() => hashId(node.id), [node.id]);
   const colorOption = useMemo(() => buildColorOption(preview), [preview]);
   const geometryEntry = useThreeTextGeometry({
     text: preview.text,
@@ -263,8 +272,9 @@ function ContentTextLabel({
   const groupRef = useRef<THREE.Group>(null);
   const registrationRef = useRef<ContentLabelRegistration | null>(null);
   const textRef = useRef<THREE.Mesh>(null);
-  const maskRef = useRef<THREE.Mesh>(null);
-  const clipGeometry = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
+
+  // Clipping plane for this label (clips text below card bottom edge)
+  const [clippingPlane, clippingUpdater] = useTextClippingPlane();
 
   const material = useMemo(
     () =>
@@ -276,26 +286,18 @@ function ContentTextLabel({
         depthWrite: false,
         opacity: 1,
         vertexColors: true,
+        clippingPlanes: [clippingPlane],
       }),
-    []
+    [clippingPlane]
   );
 
-  const maskConfig = useMask(maskId);
-
   useEffect(() => () => material.dispose(), [material]);
-  useEffect(() => () => clipGeometry.dispose(), [clipGeometry]);
-
-  useEffect(() => {
-    Object.assign(material, maskConfig);
-  }, [material, maskConfig]);
 
   const applyLayout = useCallback(
     ({ worldWidth, worldHeight }: { worldWidth: number; worldHeight: number }) => {
       if (!geometryEntry) return;
       const horizontalPadding = worldWidth * H_MARGIN_RATIO;
       const verticalPadding = worldHeight * V_MARGIN_RATIO;
-      const innerWidth = Math.max(1e-3, worldWidth - 2 * horizontalPadding);
-      const innerHeight = Math.max(1e-3, worldHeight - 2 * verticalPadding);
       const { min, max } = geometryEntry.planeBounds;
       const targetLeft = -worldWidth / 2 + horizontalPadding;
       const targetTop = worldHeight / 2 - verticalPadding;
@@ -303,9 +305,6 @@ function ContentTextLabel({
       const offsetY = targetTop - max.y;
       if (textRef.current) {
         textRef.current.position.set(offsetX, offsetY, 0);
-      }
-      if (maskRef.current) {
-        maskRef.current.scale.set(innerWidth, innerHeight, 1);
       }
     },
     [geometryEntry]
@@ -330,6 +329,7 @@ function ContentTextLabel({
       baseOpacity: 1,
       geometryWidth,
       geometryHeight,
+      clippingUpdater,
       updateLayout: applyLayout,
     };
     registrationRef.current = registration;
@@ -341,7 +341,7 @@ function ContentTextLabel({
       registerLabel(node.id, null);
       registrationRef.current = null;
     };
-  }, [geometryEntry, node, material, preview.fontSize, registerLabel, applyLayout, baseCardWidth, baseCardHeight]);
+  }, [geometryEntry, node, material, preview.fontSize, clippingUpdater, registerLabel, applyLayout, baseCardWidth, baseCardHeight]);
 
   const setGroupRef = useCallback((instance: THREE.Group | null) => {
     groupRef.current = instance;
@@ -356,9 +356,6 @@ function ContentTextLabel({
 
   return (
     <group ref={setGroupRef} position={[node.x ?? 0, node.y ?? 0, labelZ]}>
-      <Mask ref={maskRef} id={maskId} position={[0, 0, -0.001]} geometry={clipGeometry}>
-        <meshBasicMaterial />
-      </Mask>
       <mesh
         ref={textRef}
         geometry={geometryEntry.geometry}
@@ -522,10 +519,3 @@ function buildColorOption(preview: LabelPreview): [number, number, number] | {
   };
 }
 
-function hashId(id: string): number {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = (hash * 131 + id.charCodeAt(i)) >>> 0;
-  }
-  return (hash % 0xfffe) + 1;
-}
