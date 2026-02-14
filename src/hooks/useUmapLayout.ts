@@ -95,13 +95,19 @@ function normalizePositions(
  * Compute a stable identity key for an embeddings array.
  * Uses length + a sample of values to detect when data actually changes,
  * avoiding deep comparison on every render.
+ * Includes tunable parameters so changing them invalidates the cache.
  */
-function embeddingsKey(embeddings: number[][]): string {
+function embeddingsKey(
+  embeddings: number[][],
+  nNeighbors: number,
+  minDist: number,
+  spread: number
+): string {
   if (embeddings.length === 0) return "empty";
   const first = embeddings[0];
   const last = embeddings[embeddings.length - 1];
-  // Sample a few values for fingerprinting
-  return `${embeddings.length}:${first[0]}:${first[first.length - 1]}:${last[0]}:${last[last.length - 1]}`;
+  // Sample a few values for fingerprinting + include parameters
+  return `${embeddings.length}:${first[0]}:${first[first.length - 1]}:${last[0]}:${last[last.length - 1]}:${nNeighbors}:${minDist}:${spread}`;
 }
 
 export function useUmapLayout(
@@ -141,7 +147,7 @@ export function useUmapLayout(
   const prevKeyRef = useRef("");
 
   useEffect(() => {
-    const key = embeddingsKey(embeddings);
+    const key = embeddingsKey(embeddings, nNeighbors, minDist, spread);
     if (key === prevKeyRef.current) return;
     prevKeyRef.current = key;
 
