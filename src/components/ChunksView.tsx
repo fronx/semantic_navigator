@@ -32,7 +32,13 @@ export function ChunksView({ chunks }: ChunksViewProps) {
     [chunks]
   );
 
-  const { positions, progress, isRunning } = useUmapLayout(embeddings, {
+  const {
+    positions,
+    progress,
+    isRunning,
+    neighborhoodEdges,
+    neighborhoodEdgesVersion,
+  } = useUmapLayout(embeddings, {
     nNeighbors: store.debounced.nNeighbors,
     minDist: store.debounced.minDist,
     spread: store.debounced.spread,
@@ -125,7 +131,14 @@ export function ChunksView({ chunks }: ChunksViewProps) {
 
       {/* Canvas area */}
       <main className="flex-1 relative overflow-hidden">
-        <ChunksCanvas chunks={chunks} positions={positions} searchOpacities={searchOpacities} />
+        <ChunksCanvas
+          chunks={chunks}
+          positions={positions}
+          searchOpacities={searchOpacities}
+          neighborhoodEdges={neighborhoodEdges}
+          neighborhoodEdgesVersion={neighborhoodEdgesVersion}
+          isRunning={isRunning}
+        />
       </main>
     </div>
   );

@@ -32,6 +32,8 @@ export interface UmapLayoutResult {
   totalEpochs: number;
   /** Neighborhood graph edges that influence the layout */
   neighborhoodEdges: UmapEdge[];
+  /** Monotonic counter incremented whenever neighborhoodEdges changes */
+  neighborhoodEdgesVersion: number;
 }
 
 export interface UmapLayoutOptions {
@@ -50,6 +52,31 @@ export interface UmapLayoutOptions {
 }
 
 const EMPTY_POSITIONS = new Float32Array(0);
+
+function extractNeighborhoodEdges(
+  graph: SparseMatrix,
+  cutoff: number
+): UmapEdge[] {
+  const deduped = new Map<string, UmapEdge>();
+  const entries = graph.getAll();
+
+  for (const entry of entries) {
+    const { row, col, value } = entry;
+    if (row === col) continue;
+    if (value < cutoff) continue;
+
+    const source = Math.min(row, col);
+    const target = Math.max(row, col);
+    const key = `${source}-${target}`;
+
+    const existing = deduped.get(key);
+    if (!existing || value > existing.weight) {
+      deduped.set(key, { source, target, weight: value });
+    }
+  }
+
+  return Array.from(deduped.values());
+}
 
 /**
  * Normalize raw UMAP positions: center on origin and scale to targetRadius.
@@ -132,6 +159,12 @@ export function useUmapLayout(
   const stepsSinceRenderRef = useRef(0);
   const isRunningRef = useRef(false);
   const neighborhoodEdgesRef = useRef<UmapEdge[]>([]);
+  const neighborhoodEdgesVersionRef = useRef(0);
+
+  const updateNeighborhoodEdges = (edges: UmapEdge[]) => {
+    neighborhoodEdgesRef.current = edges;
+    neighborhoodEdgesVersionRef.current += 1;
+  };
 
   // React state (triggers re-renders on periodic updates)
   const [result, setResult] = useState<UmapLayoutResult>({
@@ -141,6 +174,7 @@ export function useUmapLayout(
     epoch: 0,
     totalEpochs: 0,
     neighborhoodEdges: [],
+    neighborhoodEdgesVersion: 0,
   });
 
   // Track embeddings identity to avoid re-running on referential changes
@@ -162,6 +196,7 @@ export function useUmapLayout(
         epoch: epochRef.current,
         totalEpochs: totalEpochsRef.current,
         neighborhoodEdges: neighborhoodEdgesRef.current,
+        neighborhoodEdgesVersion: neighborhoodEdgesVersionRef.current,
       };
     }
 
@@ -176,7 +211,7 @@ export function useUmapLayout(
       positionsRef.current = EMPTY_POSITIONS;
       epochRef.current = 0;
       totalEpochsRef.current = 0;
-      neighborhoodEdgesRef.current = [];
+      updateNeighborhoodEdges([]);
       isRunningRef.current = false;
       setResult(snapshotResult(false));
       return;
@@ -198,21 +233,22 @@ export function useUmapLayout(
     isRunningRef.current = true;
 
     // Extract neighborhood graph edges that will influence optimization
-    const graph = (umap as unknown as { graph: SparseMatrix }).graph;
-    const values = graph.getValues();
-    const graphMax = Math.max(...values);
-    const cutoff = graphMax / nEpochs;
-
-    const neighborhoodEdges: UmapEdge[] = graph
-      .getAll()
-      .filter(({ value }) => value >= cutoff)
-      .map(({ row, col, value }) => ({
-        source: row,
-        target: col,
-        weight: value,
-      }));
-
-    neighborhoodEdgesRef.current = neighborhoodEdges;
+    const graphContainer = umap as unknown as { graph?: SparseMatrix };
+    const graph = graphContainer.graph;
+    if (graph) {
+      const values = graph.getValues();
+      if (values.length > 0) {
+        const graphMax = Math.max(...values);
+        const safeEpochs = Math.max(nEpochs, 1);
+        const cutoff = graphMax / safeEpochs;
+        const edges = extractNeighborhoodEdges(graph, cutoff);
+        updateNeighborhoodEdges(edges);
+      } else {
+        updateNeighborhoodEdges([]);
+      }
+    } else {
+      updateNeighborhoodEdges([]);
+    }
 
     // Allocate output buffer
     positionsRef.current = new Float32Array(embeddings.length * 2);

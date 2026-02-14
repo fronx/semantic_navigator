@@ -9,14 +9,25 @@ import { getBackgroundColor, watchThemeChanges } from "@/lib/theme";
 import { CAMERA_FOV_DEGREES } from "@/lib/rendering-utils/zoom-to-cursor";
 import { ChunksScene } from "./ChunksScene";
 import type { ChunkEmbeddingData } from "@/app/api/chunks/embeddings/route";
+import type { UmapEdge } from "@/hooks/useUmapLayout";
 
 interface ChunksCanvasProps {
   chunks: ChunkEmbeddingData[];
   positions: Float32Array;
   searchOpacities: Map<string, number>;
+  neighborhoodEdges: UmapEdge[];
+  neighborhoodEdgesVersion: number;
+  isRunning: boolean;
 }
 
-export function ChunksCanvas({ chunks, positions, searchOpacities }: ChunksCanvasProps) {
+export function ChunksCanvas({
+  chunks,
+  positions,
+  searchOpacities,
+  neighborhoodEdges,
+  neighborhoodEdgesVersion,
+  isRunning,
+}: ChunksCanvasProps) {
   const [backgroundColor, setBackgroundColor] = useState(getBackgroundColor);
 
   useEffect(() => {
@@ -39,7 +50,14 @@ export function ChunksCanvas({ chunks, positions, searchOpacities }: ChunksCanva
         style={{ width: "100%", height: "100%" }}
       >
         <color attach="background" args={[backgroundColor]} />
-        <ChunksScene chunks={chunks} positions={positions} searchOpacities={searchOpacities} />
+        <ChunksScene
+          chunks={chunks}
+          positions={positions}
+          searchOpacities={searchOpacities}
+          neighborhoodEdges={neighborhoodEdges}
+          neighborhoodEdgesVersion={neighborhoodEdgesVersion}
+          isRunning={isRunning}
+        />
       </Canvas>
     </div>
   );

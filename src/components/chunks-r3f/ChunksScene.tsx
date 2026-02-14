@@ -4,7 +4,7 @@
  * colored by source article. Zoom-based scaling: dots when far, cards when close.
  */
 
-import { useRef, useMemo } from "react";
+import { useRef, useMemo, useState, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { CameraController } from "@/components/topics-r3f/CameraController";
@@ -12,11 +12,16 @@ import { useStableInstanceCount } from "@/hooks/useStableInstanceCount";
 import { useInstancedMeshMaterial } from "@/hooks/useInstancedMeshMaterial";
 import { ChunkTextLabels } from "./ChunkTextLabels";
 import type { ChunkEmbeddingData } from "@/app/api/chunks/embeddings/route";
+import type { UmapEdge } from "@/hooks/useUmapLayout";
+import { ChunkEdges } from "./ChunkEdges";
 
 interface ChunksSceneProps {
   chunks: ChunkEmbeddingData[];
   positions: Float32Array;
   searchOpacities: Map<string, number>;
+  neighborhoodEdges: UmapEdge[];
+  neighborhoodEdgesVersion: number;
+  isRunning: boolean;
 }
 
 const CARD_WIDTH = 30;
@@ -36,7 +41,14 @@ function hashToHue(str: string): number {
   return (((hash % 360) + 360) % 360) / 360;
 }
 
-export function ChunksScene({ chunks, positions, searchOpacities }: ChunksSceneProps) {
+export function ChunksScene({
+  chunks,
+  positions,
+  searchOpacities,
+  neighborhoodEdges,
+  neighborhoodEdgesVersion,
+  isRunning,
+}: ChunksSceneProps) {
   const count = chunks.length;
   const { stableCount, meshKey } = useStableInstanceCount(count);
   const { meshRef, handleMeshRef } = useInstancedMeshMaterial(stableCount);
@@ -87,6 +99,37 @@ export function ChunksScene({ chunks, positions, searchOpacities }: ChunksSceneP
 
   const tempColor = useRef(new THREE.Color());
 
+  const [edgeOpacity, setEdgeOpacity] = useState(0);
+
+  useEffect(() => {
+    let raf: number | null = null;
+
+    if (isRunning) {
+      setEdgeOpacity(0);
+      return () => {
+        if (raf) cancelAnimationFrame(raf);
+      };
+    }
+
+    const duration = 500;
+    const start = performance.now();
+
+    const tick = () => {
+      const elapsed = performance.now() - start;
+      const progress = Math.min(elapsed / duration, 1);
+      setEdgeOpacity(progress);
+      if (progress < 1) {
+        raf = requestAnimationFrame(tick);
+      }
+    };
+
+    raf = requestAnimationFrame(tick);
+
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [isRunning]);
+
   useFrame(() => {
     const mesh = meshRef.current;
     if (!mesh || positions.length === 0) return;
@@ -129,6 +172,14 @@ export function ChunksScene({ chunks, positions, searchOpacities }: ChunksSceneP
 
   return (
     <>
+      {!isRunning && neighborhoodEdges.length > 0 && edgeOpacity > 0 && (
+        <ChunkEdges
+          edges={neighborhoodEdges}
+          edgesVersion={neighborhoodEdgesVersion}
+          positions={positions}
+          opacity={edgeOpacity * 0.35}
+        />
+      )}
       <CameraController maxDistance={10000} />
       <instancedMesh
         key={meshKey}
