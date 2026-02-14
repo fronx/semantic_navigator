@@ -9,6 +9,15 @@
 import { useEffect, useRef, useState } from "react";
 import { UMAP } from "umap-js";
 
+export interface UmapEdge {
+  /** Source node index (maps to chunks array) */
+  source: number;
+  /** Target node index (maps to chunks array) */
+  target: number;
+  /** Edge weight from fuzzy simplicial set */
+  weight: number;
+}
+
 export interface UmapLayoutResult {
   /** Interleaved [x0,y0,x1,y1,...] positions centered on origin */
   positions: Float32Array;
@@ -20,6 +29,8 @@ export interface UmapLayoutResult {
   epoch: number;
   /** Total number of epochs */
   totalEpochs: number;
+  /** Neighborhood graph edges that influence the layout */
+  neighborhoodEdges: UmapEdge[];
 }
 
 export interface UmapLayoutOptions {
@@ -121,6 +132,7 @@ export function useUmapLayout(
     isRunning: false,
     epoch: 0,
     totalEpochs: 0,
+    neighborhoodEdges: [],
   });
 
   // Track embeddings identity to avoid re-running on referential changes
@@ -141,6 +153,7 @@ export function useUmapLayout(
         isRunning: running,
         epoch: epochRef.current,
         totalEpochs: totalEpochsRef.current,
+        neighborhoodEdges: [], // TODO: Extract from UMAP graph in Task 2
       };
     }
 
