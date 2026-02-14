@@ -8,31 +8,13 @@ import type { RendererType } from "@/components/TopicsView";
 import type { TopicsSettings } from "@/hooks/useTopicsSettings";
 import type { SemanticFilter } from "@/lib/topics-filter";
 import type { KeywordNode } from "@/lib/graph-queries";
-import { CAMERA_Z_MIN, CAMERA_Z_MAX } from "@/lib/content-zoom-config";
 import { CAMERA_Z_SCALE_BASE } from "@/lib/rendering-utils/camera-controller";
 import { BackupManager } from "@/components/BackupManager";
+import { Section } from "@/components/Section";
 import { Slider } from "@/components/Slider";
 import { Checkbox } from "@/components/Checkbox";
-
-const LOG_Z_MIN = Math.log10(CAMERA_Z_MIN);
-const LOG_Z_MAX = Math.log10(CAMERA_Z_MAX);
-
-function cameraZToSliderValue(z: number): number {
-  const clamped = Math.max(CAMERA_Z_MIN, Math.min(CAMERA_Z_MAX, z));
-  const ratio = (Math.log10(clamped) - LOG_Z_MIN) / (LOG_Z_MAX - LOG_Z_MIN);
-  return Math.round(ratio * 100);
-}
-
-function sliderValueToCameraZ(value: number): number {
-  const ratio = Math.max(0, Math.min(1, value / 100));
-  return Math.pow(10, LOG_Z_MIN + (LOG_Z_MAX - LOG_Z_MIN) * ratio);
-}
-
-function formatZoomMarker(z: number): string {
-  const zoomValue = Math.round(z).toLocaleString();
-  const kValue = (CAMERA_Z_SCALE_BASE / z).toFixed(2);
-  return `${zoomValue} (k=${kValue}x)`;
-}
+import { ZoomSlider } from "@/components/ZoomSlider";
+import { SelectField } from "@/components/SelectField";
 
 function sliderToStrength(value: number): number {
   if (value === 0) return 0;
@@ -42,54 +24,6 @@ function sliderToStrength(value: number): number {
 function strengthToSlider(strength: number): number {
   if (strength === 0) return 0;
   return Math.log10(strength) * 50 + 50;
-}
-
-interface SectionProps {
-  title: string;
-  isOpen: boolean;
-  onToggle: () => void;
-  children: React.ReactNode;
-}
-
-function Section({ title, isOpen, onToggle, children }: SectionProps) {
-  return (
-    <div className="border-b border-zinc-200 dark:border-zinc-700">
-      <button
-        onClick={onToggle}
-        className="w-full px-3 py-2 text-left text-[11px] uppercase tracking-wider font-semibold text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center justify-between"
-      >
-        <span>{title}</span>
-        <span className="text-[10px]">{isOpen ? "−" : "+"}</span>
-      </button>
-      {isOpen && <div className="px-3 pb-3 space-y-2">{children}</div>}
-    </div>
-  );
-}
-
-interface ZoomSliderProps {
-  label: string;
-  value: number;
-  onChange: (cameraZ: number) => void;
-}
-
-function ZoomSlider({ label, value, onChange }: ZoomSliderProps) {
-  return (
-    <label className="flex items-center gap-2 text-[11px]">
-      <span className="w-16 text-zinc-500 shrink-0">{label}</span>
-      <input
-        type="range"
-        min={0}
-        max={100}
-        step={1}
-        value={cameraZToSliderValue(value)}
-        onChange={(e) => onChange(sliderValueToCameraZ(parseFloat(e.target.value)))}
-        className="flex-1 h-2"
-      />
-      <span className="w-28 text-right tabular-nums text-zinc-500 text-[10px]">
-        {formatZoomMarker(value)}
-      </span>
-    </label>
-  );
 }
 
 export interface ControlSidebarProps {
@@ -207,25 +141,25 @@ export function ControlSidebar({
 
           {/* Renderer */}
           <Section {...section("Renderer")}>
-            <select
+            <SelectField
               value={settings.rendererType}
-              onChange={(e) => update("rendererType", e.target.value as RendererType)}
-              className="w-full text-[11px] bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-2 py-1"
-            >
-              <option value="d3">D3/SVG</option>
-              <option value="r3f">R3F/drei</option>
-            </select>
+              onChange={(v) => update("rendererType", v as RendererType)}
+              options={[
+                { value: "d3", label: "D3/SVG" },
+                { value: "r3f", label: "R3F/drei" },
+              ]}
+            />
 
             <div className="mt-2">
-              <label className="text-[10px] text-zinc-500 block mb-1">Focus Mode Strategy</label>
-              <select
+              <SelectField
+                label="Focus Mode Strategy"
                 value={settings.focusStrategy}
-                onChange={(e) => update("focusStrategy", e.target.value as 'direct' | 'content-aware')}
-                className="w-full text-[11px] bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-2 py-1"
-              >
-                <option value="direct">Direct (keyword→keyword)</option>
-                <option value="content-aware">Content-aware (keyword→content→keyword)</option>
-              </select>
+                onChange={(v) => update("focusStrategy", v as 'direct' | 'content-aware')}
+                options={[
+                  { value: "direct", label: "Direct (keyword\u2192keyword)" },
+                  { value: "content-aware", label: "Content-aware (keyword\u2192content\u2192keyword)" },
+                ]}
+              />
             </div>
 
             <Slider
@@ -420,15 +354,15 @@ export function ControlSidebar({
             {settings.scaleNodesByDegree && (
               <>
                 <div className="mt-2">
-                  <label className="text-[10px] text-zinc-500 block mb-1">Degree Mode</label>
-                  <select
+                  <SelectField
+                    label="Degree Mode"
                     value={settings.degreeSizeMode}
-                    onChange={(e) => update("degreeSizeMode", e.target.value as 'keyword-connections' | 'content-connections')}
-                    className="w-full text-[11px] bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-2 py-1"
-                  >
-                    <option value="keyword-connections">Keyword connections</option>
-                    <option value="content-connections">Content connections</option>
-                  </select>
+                    onChange={(v) => update("degreeSizeMode", v as 'keyword-connections' | 'content-connections')}
+                    options={[
+                      { value: "keyword-connections", label: "Keyword connections" },
+                      { value: "content-connections", label: "Content connections" },
+                    ]}
+                  />
                 </div>
                 <Slider
                   label="Degree min"
