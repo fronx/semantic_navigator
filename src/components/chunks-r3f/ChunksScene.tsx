@@ -15,6 +15,7 @@ import type { ChunkEmbeddingData } from "@/app/api/chunks/embeddings/route";
 import type { UmapEdge } from "@/hooks/useUmapLayout";
 import { ChunkEdges } from "./ChunkEdges";
 import { useChunkForceLayout } from "@/hooks/useChunkForceLayout";
+import { useInstancedMeshDrag } from "@/hooks/useInstancedMeshDrag";
 
 interface ChunksSceneProps {
   chunks: ChunkEmbeddingData[];
@@ -99,7 +100,6 @@ export function ChunksScene({
   }
 
   const tempColor = useRef(new THREE.Color());
-  const dragStateRef = useRef<{ index: number; pointerId: number } | null>(null);
 
   const {
     positions: layoutPositions,
@@ -114,56 +114,21 @@ export function ChunksScene({
   });
 
   const pickInstance = useCallback(
-    (event: ThreeEvent<PointerEvent>) => {
-      const mesh = meshRef.current;
-      if (!mesh) return null;
+    (event: ThreeEvent<PointerEvent>): number | null => {
       const instanceId = event.instanceId;
-      if (instanceId === undefined || instanceId === null) return null;
-      if (instanceId < 0 || instanceId >= chunks.length) return null;
+      if (instanceId == null || instanceId < 0 || instanceId >= chunks.length) return null;
       return instanceId;
     },
     [chunks.length]
   );
 
-  const handlePointerDown = useCallback(
-    (event: ThreeEvent<PointerEvent>) => {
-      event.stopPropagation();
-      const index = pickInstance(event);
-      if (index === null) return;
-      dragStateRef.current = { index, pointerId: event.pointerId };
-      startDrag(index);
-      (event.target as HTMLElement).setPointerCapture?.(event.pointerId);
-    },
-    [pickInstance, startDrag]
-  );
-
-  const handlePointerMove = useCallback(
-    (event: ThreeEvent<PointerEvent>) => {
-      const state = dragStateRef.current;
-      if (!state || state.pointerId !== event.pointerId) return;
-      const index = state.index;
-      const mesh = meshRef.current;
-      if (!mesh) return;
-
-      const ndc = new THREE.Vector3(event.point.x, event.point.y, 0);
-      drag(index, ndc.x, ndc.y);
-    },
-    [drag]
-  );
-
-  const endDragForPointer = useCallback(
-    (event: ThreeEvent<PointerEvent>) => {
-      const state = dragStateRef.current;
-      if (!state || state.pointerId !== event.pointerId) return;
-      endDrag(state.index);
-      (event.target as HTMLElement).releasePointerCapture?.(event.pointerId);
-      dragStateRef.current = null;
-    },
-    [endDrag]
-  );
-
-  const handlePointerUp = endDragForPointer;
-  const handlePointerCancel = endDragForPointer;
+  const dragHandlers = useInstancedMeshDrag({
+    pickInstance,
+    onDragStart: startDrag,
+    onDrag: drag,
+    onDragEnd: endDrag,
+    enabled: !isRunning,
+  });
 
   const [edgeOpacity, setEdgeOpacity] = useState(0);
 
@@ -246,16 +211,13 @@ export function ChunksScene({
           opacity={edgeOpacity * 0.35}
         />
       )}
-      <CameraController maxDistance={10000} />
+      <CameraController maxDistance={10000} enableDragPan={false} />
       <instancedMesh
         key={meshKey}
         ref={handleMeshRef}
         args={[geometry, undefined, stableCount]}
         frustumCulled={false}
-        onPointerDown={!isRunning ? handlePointerDown : undefined}
-        onPointerMove={!isRunning ? handlePointerMove : undefined}
-        onPointerUp={!isRunning ? handlePointerUp : undefined}
-        onPointerCancel={!isRunning ? handlePointerCancel : undefined}
+        {...dragHandlers}
       />
       <ChunkTextLabels
         chunks={chunks}

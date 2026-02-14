@@ -22,6 +22,8 @@ export interface CameraControllerProps {
   maxDistance?: number;
   /** Ref that will be populated with a flyTo(x, y) function for animated camera pan */
   flyToRef?: React.MutableRefObject<((x: number, y: number) => void) | null>;
+  /** Enable drag-panning (default: true). Set to false to rely on scroll-panning only. */
+  enableDragPan?: boolean;
 }
 
 /**
@@ -32,9 +34,12 @@ function usePanHandler(
   camera: Camera,
   gl: WebGLRenderer,
   controlsRef: RefObject<OrbitControlsType | null>,
-  onZoomChange?: (zoomScale: number) => void
+  onZoomChange?: (zoomScale: number) => void,
+  enabled: boolean = true
 ) {
   useEffect(() => {
+    if (!enabled) return;
+
     const canvas = gl.domElement;
 
     const cleanupPanHandler = createPanHandler({
@@ -60,10 +65,10 @@ function usePanHandler(
     });
 
     return cleanupPanHandler;
-  }, [camera, gl, controlsRef, onZoomChange]);
+  }, [camera, gl, controlsRef, onZoomChange, enabled]);
 }
 
-export function CameraController({ onZoomChange, maxDistance = CAMERA_Z_MAX, flyToRef }: CameraControllerProps) {
+export function CameraController({ onZoomChange, maxDistance = CAMERA_Z_MAX, flyToRef, enableDragPan = true }: CameraControllerProps) {
   const controlsRef = useRef<OrbitControlsType>(null);
   const { camera, gl, size } = useThree();
 
@@ -134,8 +139,8 @@ export function CameraController({ onZoomChange, maxDistance = CAMERA_Z_MAX, fly
     }
   };
 
-  // Handle pan events with shared handler
-  usePanHandler(camera, gl, controlsRef, onZoomChange);
+  // Handle pan events with shared handler (only if drag panning is enabled)
+  usePanHandler(camera, gl, controlsRef, onZoomChange, enableDragPan);
 
   // Implement unified gesture handling: scroll-to-pan, pinch/modifier-to-zoom
   useEffect(() => {
