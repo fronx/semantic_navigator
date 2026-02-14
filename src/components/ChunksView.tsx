@@ -10,6 +10,7 @@ import { usePersistedStore } from "@/hooks/usePersistedStore";
 import { useSearch } from "@/hooks/useSearch";
 import { Slider } from "@/components/Slider";
 import { ChunksCanvas } from "./chunks-r3f/ChunksCanvas";
+import { exportUmapGraph } from "@/lib/export-umap-graph";
 
 const UMAP_DEFAULTS = {
   nNeighbors: 15,
@@ -71,6 +72,15 @@ export function ChunksView({ chunks }: ChunksViewProps) {
   const progressPercent = Math.round(progress * 100);
   const matchCount = searchResults.length;
 
+  const handleExport = useCallback(() => {
+    if (positions.length === 0) {
+      alert("No graph data to export. Wait for UMAP to complete.");
+      return;
+    }
+    exportUmapGraph(chunks, positions, neighborhoodEdges);
+  }, [chunks, positions, neighborhoodEdges]);
+
+
   return (
     <div className="flex flex-col h-screen bg-zinc-50 dark:bg-zinc-950">
       {/* Header bar */}
@@ -127,6 +137,15 @@ export function ChunksView({ chunks }: ChunksViewProps) {
             </span>
           </div>
         )}
+
+        <button
+          onClick={handleExport}
+          disabled={positions.length === 0}
+          className="px-3 py-1 text-sm rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Export graph to JSON file"
+        >
+          Export Graph
+        </button>
       </header>
 
       {/* Canvas area */}
