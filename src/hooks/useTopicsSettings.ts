@@ -1,11 +1,12 @@
 /**
  * Consolidated settings hook for TopicsView.
- * Persists all settings to localStorage as a single object.
+ * Built on usePersistedStore — adds convenience methods for zoom config and sections.
  */
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import type { RendererType } from "@/components/TopicsView";
 import { DEFAULT_ZOOM_PHASE_CONFIG, sanitizeZoomPhaseConfig, type ZoomPhaseConfig } from "@/lib/zoom-phase-config";
+import { usePersistedStore } from "@/hooks/usePersistedStore";
 
 export interface TopicsSettings {
   // Graph layout
@@ -124,71 +125,35 @@ const DEFAULT_SETTINGS: TopicsSettings = {
   zoomPhaseConfig: DEFAULT_ZOOM_PHASE_CONFIG,
 };
 
-const STORAGE_KEY = "topics-settings-v2";
-
 export interface UseTopicsSettingsResult {
   settings: TopicsSettings;
-  isReady: boolean;
   update: <K extends keyof TopicsSettings>(key: K, value: TopicsSettings[K]) => void;
   updateZoomPhaseConfig: (mutator: (prev: ZoomPhaseConfig) => ZoomPhaseConfig) => void;
   toggleSection: (section: string) => void;
 }
 
 export function useTopicsSettings(): UseTopicsSettingsResult {
-  const [settings, setSettings] = useState<TopicsSettings>(DEFAULT_SETTINGS);
-  const [isReady, setIsReady] = useState(false);
+  const store = usePersistedStore("topics-settings-v2", DEFAULT_SETTINGS);
 
-  // Load from localStorage on mount
-  useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored) as Partial<TopicsSettings>;
-        // Merge with defaults to handle new settings added over time
-        const merged = { ...DEFAULT_SETTINGS, ...parsed };
-        // Sanitize zoom phase config
-        merged.zoomPhaseConfig = sanitizeZoomPhaseConfig(merged.zoomPhaseConfig);
-        setSettings(merged);
-      } catch {
-        // Keep defaults
-      }
-    }
-    setIsReady(true);
-  }, []);
+  // Sanitize zoom config on load (store merges with defaults but doesn't validate)
+  const settings = useMemo(() => ({
+    ...store.values,
+    zoomPhaseConfig: sanitizeZoomPhaseConfig(store.values.zoomPhaseConfig),
+  }), [store.values]);
 
-  // Save to localStorage when settings change (after initial load)
-  useEffect(() => {
-    if (isReady) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-    }
-  }, [settings, isReady]);
-
-  // Type-safe updater for individual settings
-  const update = useCallback(<K extends keyof TopicsSettings>(key: K, value: TopicsSettings[K]) => {
-    setSettings((prev) => ({ ...prev, [key]: value }));
-  }, []);
-
-  // Special updater for zoom phase config with sanitization
   const updateZoomPhaseConfig = useCallback((mutator: (prev: ZoomPhaseConfig) => ZoomPhaseConfig) => {
-    setSettings((prev) => ({
-      ...prev,
-      zoomPhaseConfig: sanitizeZoomPhaseConfig(mutator(prev.zoomPhaseConfig)),
-    }));
-  }, []);
+    store.update("zoomPhaseConfig", sanitizeZoomPhaseConfig(mutator(settings.zoomPhaseConfig)));
+  }, [store, settings.zoomPhaseConfig]);
 
-  // Convenience method for toggling sections
   const toggleSection = useCallback((section: string) => {
-    setSettings((prev) => ({
-      ...prev,
-      sectionStates: {
-        ...prev.sectionStates,
-        [section]: !prev.sectionStates[section],
-      },
-    }));
-  }, []);
+    store.update("sectionStates", {
+      ...settings.sectionStates,
+      [section]: !settings.sectionStates[section],
+    });
+  }, [store, settings.sectionStates]);
 
   return useMemo(
-    () => ({ settings, isReady, update, updateZoomPhaseConfig, toggleSection }),
-    [settings, isReady, update, updateZoomPhaseConfig, toggleSection]
+    () => ({ settings, update: store.update, updateZoomPhaseConfig, toggleSection }),
+    [settings, store.update, updateZoomPhaseConfig, toggleSection]
   );
 }

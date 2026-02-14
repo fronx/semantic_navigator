@@ -11,6 +11,8 @@ import type { KeywordNode } from "@/lib/graph-queries";
 import { CAMERA_Z_MIN, CAMERA_Z_MAX } from "@/lib/content-zoom-config";
 import { CAMERA_Z_SCALE_BASE } from "@/lib/rendering-utils/camera-controller";
 import { BackupManager } from "@/components/BackupManager";
+import { Slider } from "@/components/Slider";
+import { Checkbox } from "@/components/Checkbox";
 
 const LOG_Z_MIN = Math.log10(CAMERA_Z_MIN);
 const LOG_Z_MAX = Math.log10(CAMERA_Z_MAX);
@@ -64,36 +66,6 @@ function Section({ title, isOpen, onToggle, children }: SectionProps) {
   );
 }
 
-interface SliderProps {
-  label: string;
-  value: number;
-  onChange: (value: number) => void;
-  min: number;
-  max: number;
-  step: number;
-  format?: (value: number) => string;
-}
-
-function Slider({ label, value, onChange, min, max, step, format }: SliderProps) {
-  return (
-    <label className="flex items-center gap-2 text-[11px]">
-      <span className="w-20 text-zinc-500 shrink-0">{label}</span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="flex-1 h-2"
-      />
-      <span className="w-16 text-right tabular-nums text-zinc-500">
-        {format ? format(value) : value.toFixed(2)}
-      </span>
-    </label>
-  );
-}
-
 interface ZoomSliderProps {
   label: string;
   value: number;
@@ -116,26 +88,6 @@ function ZoomSlider({ label, value, onChange }: ZoomSliderProps) {
       <span className="w-28 text-right tabular-nums text-zinc-500 text-[10px]">
         {formatZoomMarker(value)}
       </span>
-    </label>
-  );
-}
-
-interface CheckboxProps {
-  label: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-}
-
-function Checkbox({ label, checked, onChange }: CheckboxProps) {
-  return (
-    <label className="flex items-center gap-2 text-[11px] cursor-pointer">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="cursor-pointer"
-      />
-      <span className="text-zinc-600 dark:text-zinc-400">{label}</span>
     </label>
   );
 }

@@ -50,10 +50,10 @@ export default function TopicsPage() {
   const [started, setStarted] = useState(false);
 
   // Consolidated settings
-  const { settings, isReady: settingsReady, update, updateZoomPhaseConfig, toggleSection } = useTopicsSettings();
+  const { settings, update, updateZoomPhaseConfig, toggleSection } = useTopicsSettings();
 
   // Automatic localStorage backup
-  useLocalStorageBackup({ enabled: settingsReady });
+  useLocalStorageBackup({ enabled: true });
 
   // Sync global contrast to module-level state (synchronous so children read it during same render)
   if (typeof window !== "undefined") {
@@ -413,7 +413,7 @@ export default function TopicsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.nodeType]); // debouncedClusterResolution intentionally excluded - only need initial value
 
-  if (loading || !settingsReady) {
+  if (loading) {
     return (
       <div className="h-screen flex items-center justify-center bg-white dark:bg-zinc-900">
         <span className="text-zinc-500">Loading topics...</span>
