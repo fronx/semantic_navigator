@@ -237,7 +237,7 @@ function ChunkLabel({
   const material = useMemo(
     () =>
       new THREE.MeshBasicMaterial({
-        color: 0xffffff,
+        color: 0x000000,
         transparent: true,
         toneMapped: false,
         depthTest: false,
