@@ -4,8 +4,8 @@
  * colored by source article. Zoom-based scaling: dots when far, cards when close.
  */
 
-import { useRef, useMemo, useState, useEffect } from "react";
-import { useFrame } from "@react-three/fiber";
+import { useRef, useMemo, useState, useEffect, useCallback } from "react";
+import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 import { CameraController } from "@/components/topics-r3f/CameraController";
 import { useStableInstanceCount } from "@/hooks/useStableInstanceCount";
@@ -14,10 +14,11 @@ import { ChunkTextLabels } from "./ChunkTextLabels";
 import type { ChunkEmbeddingData } from "@/app/api/chunks/embeddings/route";
 import type { UmapEdge } from "@/hooks/useUmapLayout";
 import { ChunkEdges } from "./ChunkEdges";
+import { useChunkForceLayout } from "@/hooks/useChunkForceLayout";
 
 interface ChunksSceneProps {
   chunks: ChunkEmbeddingData[];
-  positions: Float32Array;
+  umapPositions: Float32Array;
   searchOpacities: Map<string, number>;
   neighborhoodEdges: UmapEdge[];
   neighborhoodEdgesVersion: number;
@@ -43,7 +44,7 @@ function hashToHue(str: string): number {
 
 export function ChunksScene({
   chunks,
-  positions,
+  umapPositions,
   searchOpacities,
   neighborhoodEdges,
   neighborhoodEdgesVersion,
@@ -98,6 +99,71 @@ export function ChunksScene({
   }
 
   const tempColor = useRef(new THREE.Color());
+  const dragStateRef = useRef<{ index: number; pointerId: number } | null>(null);
+
+  const {
+    positions: layoutPositions,
+    startDrag,
+    drag,
+    endDrag,
+  } = useChunkForceLayout({
+    basePositions: umapPositions,
+    edges: neighborhoodEdges,
+    edgesVersion: neighborhoodEdgesVersion,
+    isRunning,
+  });
+
+  const pickInstance = useCallback(
+    (event: ThreeEvent<PointerEvent>) => {
+      const mesh = meshRef.current;
+      if (!mesh) return null;
+      const instanceId = event.instanceId;
+      if (instanceId === undefined || instanceId === null) return null;
+      if (instanceId < 0 || instanceId >= chunks.length) return null;
+      return instanceId;
+    },
+    [chunks.length]
+  );
+
+  const handlePointerDown = useCallback(
+    (event: ThreeEvent<PointerEvent>) => {
+      event.stopPropagation();
+      const index = pickInstance(event);
+      if (index === null) return;
+      dragStateRef.current = { index, pointerId: event.pointerId };
+      startDrag(index);
+      (event.target as HTMLElement).setPointerCapture?.(event.pointerId);
+    },
+    [pickInstance, startDrag]
+  );
+
+  const handlePointerMove = useCallback(
+    (event: ThreeEvent<PointerEvent>) => {
+      const state = dragStateRef.current;
+      if (!state || state.pointerId !== event.pointerId) return;
+      const index = state.index;
+      const mesh = meshRef.current;
+      if (!mesh) return;
+
+      const ndc = new THREE.Vector3(event.point.x, event.point.y, 0);
+      drag(index, ndc.x, ndc.y);
+    },
+    [drag]
+  );
+
+  const endDragForPointer = useCallback(
+    (event: ThreeEvent<PointerEvent>) => {
+      const state = dragStateRef.current;
+      if (!state || state.pointerId !== event.pointerId) return;
+      endDrag(state.index);
+      (event.target as HTMLElement).releasePointerCapture?.(event.pointerId);
+      dragStateRef.current = null;
+    },
+    [endDrag]
+  );
+
+  const handlePointerUp = endDragForPointer;
+  const handlePointerCancel = endDragForPointer;
 
   const [edgeOpacity, setEdgeOpacity] = useState(0);
 
@@ -132,12 +198,12 @@ export function ChunksScene({
 
   useFrame(() => {
     const mesh = meshRef.current;
-    if (!mesh || positions.length === 0) return;
+    if (!mesh || layoutPositions.length === 0) return;
 
-    const n = Math.min(count, positions.length / 2);
+    const n = Math.min(count, layoutPositions.length / 2);
 
     for (let i = 0; i < n; i++) {
-      posVec.current.set(positions[i * 2], positions[i * 2 + 1], 0);
+      posVec.current.set(layoutPositions[i * 2], layoutPositions[i * 2 + 1], 0);
       scaleVec.current.setScalar(CARD_SCALE);
       matrixRef.current.compose(posVec.current, quat.current, scaleVec.current);
       mesh.setMatrixAt(i, matrixRef.current);
@@ -176,7 +242,7 @@ export function ChunksScene({
         <ChunkEdges
           edges={neighborhoodEdges}
           edgesVersion={neighborhoodEdgesVersion}
-          positions={positions}
+          positions={layoutPositions}
           opacity={edgeOpacity * 0.35}
         />
       )}
@@ -186,10 +252,14 @@ export function ChunksScene({
         ref={handleMeshRef}
         args={[geometry, undefined, stableCount]}
         frustumCulled={false}
+        onPointerDown={!isRunning ? handlePointerDown : undefined}
+        onPointerMove={!isRunning ? handlePointerMove : undefined}
+        onPointerUp={!isRunning ? handlePointerUp : undefined}
+        onPointerCancel={!isRunning ? handlePointerCancel : undefined}
       />
       <ChunkTextLabels
         chunks={chunks}
-        positions={positions}
+        positions={layoutPositions}
         cardWidth={CARD_WIDTH}
         cardHeight={CARD_HEIGHT}
         cardScale={CARD_SCALE}

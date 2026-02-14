@@ -133,7 +133,7 @@ export function ChunksView({ chunks }: ChunksViewProps) {
       <main className="flex-1 relative overflow-hidden">
         <ChunksCanvas
           chunks={chunks}
-          positions={positions}
+          umapPositions={positions}
           searchOpacities={searchOpacities}
           neighborhoodEdges={neighborhoodEdges}
           neighborhoodEdgesVersion={neighborhoodEdgesVersion}

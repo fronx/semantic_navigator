@@ -13,7 +13,7 @@ import type { UmapEdge } from "@/hooks/useUmapLayout";
 
 interface ChunksCanvasProps {
   chunks: ChunkEmbeddingData[];
-  positions: Float32Array;
+  umapPositions: Float32Array;
   searchOpacities: Map<string, number>;
   neighborhoodEdges: UmapEdge[];
   neighborhoodEdgesVersion: number;
@@ -22,7 +22,7 @@ interface ChunksCanvasProps {
 
 export function ChunksCanvas({
   chunks,
-  positions,
+  umapPositions,
   searchOpacities,
   neighborhoodEdges,
   neighborhoodEdgesVersion,
@@ -52,7 +52,7 @@ export function ChunksCanvas({
         <color attach="background" args={[backgroundColor]} />
         <ChunksScene
           chunks={chunks}
-          positions={positions}
+          umapPositions={umapPositions}
           searchOpacities={searchOpacities}
           neighborhoodEdges={neighborhoodEdges}
           neighborhoodEdgesVersion={neighborhoodEdgesVersion}

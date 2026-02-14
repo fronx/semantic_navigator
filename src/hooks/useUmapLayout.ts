@@ -17,6 +17,8 @@ export interface UmapEdge {
   target: number;
   /** Edge weight from fuzzy simplicial set */
   weight: number;
+  /** Ideal rest length derived from current embedding (null until computed) */
+  restLength: number | null;
 }
 
 export interface UmapLayoutResult {
@@ -71,11 +73,43 @@ function extractNeighborhoodEdges(
 
     const existing = deduped.get(key);
     if (!existing || value > existing.weight) {
-      deduped.set(key, { source, target, weight: value });
+      deduped.set(key, { source, target, weight: value, restLength: null });
     }
   }
 
   return Array.from(deduped.values());
+}
+
+function attachRestLengths(
+  edges: UmapEdge[],
+  positions: Float32Array
+): UmapEdge[] {
+  if (positions.length < 4 || edges.length === 0) return edges;
+
+  const result: UmapEdge[] = new Array(edges.length);
+  for (let i = 0; i < edges.length; i++) {
+    const edge = edges[i];
+    const sourceIdx = edge.source * 2;
+    const targetIdx = edge.target * 2;
+    if (
+      sourceIdx + 1 >= positions.length ||
+      targetIdx + 1 >= positions.length
+    ) {
+      result[i] = { ...edge, restLength: null };
+      continue;
+    }
+
+    const sx = positions[sourceIdx];
+    const sy = positions[sourceIdx + 1];
+    const tx = positions[targetIdx];
+    const ty = positions[targetIdx + 1];
+    const dx = sx - tx;
+    const dy = sy - ty;
+    const dist = Math.hypot(dx, dy);
+    result[i] = { ...edge, restLength: dist };
+  }
+
+  return result;
 }
 
 /**
@@ -186,6 +220,11 @@ export function useUmapLayout(
     prevKeyRef.current = key;
 
     function snapshotResult(running: boolean): UmapLayoutResult {
+      const edgesWithRestLengths = attachRestLengths(
+        neighborhoodEdgesRef.current,
+        positionsRef.current
+      );
+
       return {
         positions: positionsRef.current,
         progress:
@@ -195,7 +234,7 @@ export function useUmapLayout(
         isRunning: running,
         epoch: epochRef.current,
         totalEpochs: totalEpochsRef.current,
-        neighborhoodEdges: neighborhoodEdgesRef.current,
+        neighborhoodEdges: edgesWithRestLengths,
         neighborhoodEdgesVersion: neighborhoodEdgesVersionRef.current,
       };
     }
