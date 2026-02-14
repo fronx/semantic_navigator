@@ -1,6 +1,6 @@
 /**
  * Text labels for chunk cards in the UMAP visualization.
- * Shows truncated content text on cards when zoomed in close enough.
+ * Shows full content text on cards when zoomed in close enough, visually clipped at card bottom.
  * Only renders labels for the nearest ~50 chunks to the camera center.
  */
 
@@ -11,7 +11,6 @@ import { useThreeTextGeometry } from "@/hooks/useThreeTextGeometry";
 import type { ChunkEmbeddingData } from "@/app/api/chunks/embeddings/route";
 
 const MAX_VISIBLE_LABELS = 50;
-const PREVIEW_CHAR_LIMIT = 150;
 const FONT_URL = "/fonts/source-code-pro-regular.woff2";
 const BASE_FONT_SIZE = 1.2;
 const LINE_HEIGHT = 1.3;
@@ -35,18 +34,7 @@ interface ChunkLabelRegistration {
   group: THREE.Group | null;
   material: THREE.MeshBasicMaterial;
   geometryWidth: number;
-}
-
-/**
- * Truncate text to a character limit, breaking at word boundaries.
- */
-function truncateContent(content: string, limit: number): string {
-  // Collapse whitespace and trim
-  const clean = content.replace(/\s+/g, " ").trim();
-  if (clean.length <= limit) return clean;
-  const sliced = clean.slice(0, limit);
-  const trimmed = sliced.replace(/\s+\S*$/, "");
-  return `${trimmed}...`;
+  clippingPlane: THREE.Plane;
 }
 
 export function ChunkTextLabels({
@@ -56,7 +44,7 @@ export function ChunkTextLabels({
   cardHeight,
   cardScale,
 }: ChunkTextLabelsProps) {
-  const { camera } = useThree();
+  const { camera, gl } = useThree();
   const labelRegistry = useRef(new Map<number, ChunkLabelRegistration>());
 
   // Determine which chunk indices should have visible labels.
@@ -70,9 +58,14 @@ export function ChunkTextLabels({
   // Inner text area dimensions (used for maxWidth in text geometry)
   const innerWidth = cardWidth * (1 - 2 * MARGIN_RATIO);
 
-  // Truncated content strings, memoized per chunk set
-  const chunkPreviews = useMemo(
-    () => chunks.map((chunk) => truncateContent(chunk.content, PREVIEW_CHAR_LIMIT)),
+  // Enable local clipping planes on the renderer
+  useEffect(() => {
+    gl.localClippingEnabled = true;
+  }, [gl]);
+
+  // Full content strings (no truncation, clipped visually at card bottom)
+  const chunkContents = useMemo(
+    () => chunks.map((chunk) => chunk.content.replace(/\s+/g, " ").trim()),
     [chunks]
   );
 
@@ -135,7 +128,7 @@ export function ChunkTextLabels({
 
     // Update registered labels imperatively
     labelRegistry.current.forEach((entry) => {
-      const { index, group, material, geometryWidth } = entry;
+      const { index, group, material, geometryWidth, clippingPlane } = entry;
       if (!group) return;
 
       const isVisible = newSet.has(index);
@@ -153,6 +146,15 @@ export function ChunkTextLabels({
       const usableWidth = cardWorldWidth * (1 - 2 * MARGIN_RATIO);
       const textScale = geometryWidth > 0 ? usableWidth / geometryWidth : cardScale;
       group.scale.setScalar(textScale);
+
+      // Update clipping plane to clip at bottom edge of card
+      const cardWorldHeight = cardHeight * cardScale;
+      const bottomEdgeY = y - cardWorldHeight / 2;
+      // Plane with normal pointing up (0, 1, 0) clips below the bottom edge
+      clippingPlane.setFromNormalAndCoplanarPoint(
+        new THREE.Vector3(0, 1, 0),
+        new THREE.Vector3(0, bottomEdgeY, 0)
+      );
 
       // Set opacity (zoom only - search dims backgrounds, not text)
       const clamped = THREE.MathUtils.clamp(zoomOpacity, 0, 1);
@@ -182,7 +184,7 @@ export function ChunkTextLabels({
         <ChunkLabel
           key={chunkIndex}
           chunkIndex={chunkIndex}
-          text={chunkPreviews[chunkIndex]}
+          text={chunkContents[chunkIndex]}
           maxWidth={innerWidth}
           cardWidth={cardWidth}
           cardHeight={cardHeight}
@@ -234,6 +236,9 @@ function ChunkLabel({
     return [offsetX, offsetY];
   }, [geometryEntry, cardWidth, cardHeight]);
 
+  // Clipping plane for this label (clips text below card bottom edge)
+  const clippingPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
+
   const material = useMemo(
     () =>
       new THREE.MeshBasicMaterial({
@@ -243,8 +248,9 @@ function ChunkLabel({
         depthTest: false,
         depthWrite: false,
         opacity: 0,
+        clippingPlanes: [clippingPlane],
       }),
-    []
+    [clippingPlane]
   );
 
   useEffect(() => () => material.dispose(), [material]);
@@ -264,6 +270,7 @@ function ChunkLabel({
       group: groupRef.current,
       material,
       geometryWidth,
+      clippingPlane,
     };
     registrationRef.current = registration;
     registerLabel(chunkIndex, registration);
@@ -272,7 +279,7 @@ function ChunkLabel({
       registerLabel(chunkIndex, null);
       registrationRef.current = null;
     };
-  }, [geometryEntry, chunkIndex, material, registerLabel]);
+  }, [geometryEntry, chunkIndex, material, clippingPlane, registerLabel]);
 
   const setGroupRef = useCallback((instance: THREE.Group | null) => {
     groupRef.current = instance;
