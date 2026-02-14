@@ -28,7 +28,6 @@ interface ChunkTextLabelsProps {
   cardWidth: number;
   cardHeight: number;
   cardScale: number;
-  searchOpacities: Map<string, number>;
 }
 
 interface ChunkLabelRegistration {
@@ -56,12 +55,9 @@ export function ChunkTextLabels({
   cardWidth,
   cardHeight,
   cardScale,
-  searchOpacities,
 }: ChunkTextLabelsProps) {
   const { camera } = useThree();
   const labelRegistry = useRef(new Map<number, ChunkLabelRegistration>());
-  const searchOpacitiesRef = useRef(searchOpacities);
-  searchOpacitiesRef.current = searchOpacities;
 
   // Determine which chunk indices should have visible labels.
   // Updated each frame imperatively; the React render only creates label components
@@ -138,7 +134,6 @@ export function ChunkTextLabels({
     }
 
     // Update registered labels imperatively
-    const searchActive = searchOpacitiesRef.current.size > 0;
     labelRegistry.current.forEach((entry) => {
       const { index, group, material, geometryWidth } = entry;
       if (!group) return;
@@ -159,13 +154,8 @@ export function ChunkTextLabels({
       const textScale = geometryWidth > 0 ? usableWidth / geometryWidth : cardScale;
       group.scale.setScalar(textScale);
 
-      // Set opacity (zoom * search)
-      let finalOpacity = zoomOpacity;
-      if (searchActive) {
-        const chunkId = chunks[index].id;
-        finalOpacity *= searchOpacitiesRef.current.get(chunkId) ?? 1.0;
-      }
-      const clamped = THREE.MathUtils.clamp(finalOpacity, 0, 1);
+      // Set opacity (zoom only - search dims backgrounds, not text)
+      const clamped = THREE.MathUtils.clamp(zoomOpacity, 0, 1);
       if (Math.abs(material.opacity - clamped) > 0.01) {
         material.opacity = clamped;
         material.needsUpdate = true;

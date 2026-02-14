@@ -142,7 +142,6 @@ export function ChunksScene({ chunks, positions, searchOpacities }: ChunksSceneP
         cardWidth={CARD_WIDTH}
         cardHeight={CARD_HEIGHT}
         cardScale={CARD_SCALE}
-        searchOpacities={searchOpacities}
       />
     </>
   );
