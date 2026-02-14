@@ -8,6 +8,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { UMAP } from "umap-js";
+import type { SparseMatrix } from "umap-js/dist/matrix";
 
 export interface UmapEdge {
   /** Source node index (maps to chunks array) */
@@ -124,6 +125,7 @@ export function useUmapLayout(
   const totalEpochsRef = useRef(0);
   const stepsSinceRenderRef = useRef(0);
   const isRunningRef = useRef(false);
+  const neighborhoodEdgesRef = useRef<UmapEdge[]>([]);
 
   // React state (triggers re-renders on periodic updates)
   const [result, setResult] = useState<UmapLayoutResult>({
@@ -153,7 +155,7 @@ export function useUmapLayout(
         isRunning: running,
         epoch: epochRef.current,
         totalEpochs: totalEpochsRef.current,
-        neighborhoodEdges: [], // TODO: Extract from UMAP graph in Task 2
+        neighborhoodEdges: neighborhoodEdgesRef.current,
       };
     }
 
@@ -168,6 +170,7 @@ export function useUmapLayout(
       positionsRef.current = EMPTY_POSITIONS;
       epochRef.current = 0;
       totalEpochsRef.current = 0;
+      neighborhoodEdgesRef.current = [];
       isRunningRef.current = false;
       setResult(snapshotResult(false));
       return;
@@ -187,6 +190,23 @@ export function useUmapLayout(
     epochRef.current = 0;
     stepsSinceRenderRef.current = 0;
     isRunningRef.current = true;
+
+    // Extract neighborhood graph edges that will influence optimization
+    const graph = (umap as unknown as { graph: SparseMatrix }).graph;
+    const values = graph.getValues();
+    const graphMax = Math.max(...values);
+    const cutoff = graphMax / nEpochs;
+
+    const neighborhoodEdges: UmapEdge[] = graph
+      .getAll()
+      .filter(({ value }) => value >= cutoff)
+      .map(({ row, col, value }) => ({
+        source: row,
+        target: col,
+        weight: value,
+      }));
+
+    neighborhoodEdgesRef.current = neighborhoodEdges;
 
     // Allocate output buffer
     positionsRef.current = new Float32Array(embeddings.length * 2);
