@@ -1,23 +1,41 @@
 /**
  * Scene component for chunks UMAP visualization.
  * Renders chunk cards as an instancedMesh with rounded rectangle geometry,
- * colored by source article. Zoom-based scaling: dots when far, cards when close.
+ * colored by source article. Constant world-space scale: dots when far, cards when close.
  */
 
 import { useRef, useMemo, useState, useEffect, useCallback } from "react";
 import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
-import { CameraController } from "@/components/topics-r3f/CameraController";
-import { useStableInstanceCount } from "@/hooks/useStableInstanceCount";
-import { useInstancedMeshMaterial } from "@/hooks/useInstancedMeshMaterial";
-import { ChunkTextLabels } from "./ChunkTextLabels";
+
 import type { ChunkEmbeddingData } from "@/app/api/chunks/embeddings/route";
-import type { UmapEdge } from "@/hooks/useUmapLayout";
-import { ChunkEdges } from "./ChunkEdges";
+import { CameraController } from "@/components/topics-r3f/CameraController";
 import { useChunkForceLayout } from "@/hooks/useChunkForceLayout";
 import { useInstancedMeshDrag } from "@/hooks/useInstancedMeshDrag";
-import { applyFisheyeCompression, computeCompressionRadii } from "@/lib/fisheye-viewport";
+import { useInstancedMeshMaterial } from "@/hooks/useInstancedMeshMaterial";
+import { useStableInstanceCount } from "@/hooks/useStableInstanceCount";
+import type { UmapEdge } from "@/hooks/useUmapLayout";
+import { CARD_WIDTH, CARD_HEIGHT, createCardGeometry } from "@/lib/chunks-geometry";
+import {
+  LENS_MAX_HOPS,
+  type LensInfo,
+  computeBfsNeighborhood,
+  computeLensNodeScale,
+  applyLensColorEmphasis,
+} from "@/lib/chunks-lens";
+import { hashToHue } from "@/lib/chunks-utils";
 import { computeViewportZones } from "@/lib/edge-pulling";
+import { applyFisheyeCompression, computeCompressionRadii } from "@/lib/fisheye-viewport";
+import { ChunkEdges } from "./ChunkEdges";
+import { ChunkTextLabels } from "./ChunkTextLabels";
+
+// --- Constants ---
+
+/** Constant world-space scale. At z=6000 cards are ~10px dots, at z=300 ~200px readable cards. */
+const CARD_SCALE = 0.3;
+const EDGE_FADE_DURATION_MS = 500;
+
+// --- Props ---
 
 interface ChunksSceneProps {
   chunks: ChunkEmbeddingData[];
@@ -30,27 +48,7 @@ interface ChunksSceneProps {
   onSelectChunk: (chunkId: string | null) => void;
 }
 
-const CARD_WIDTH = 30;
-const CARD_HEIGHT = 20;
-const CORNER_RATIO = 0.08;
-/** Constant world-space scale. At z=6000 cards are ~10px dots, at z=300 ~200px readable cards. */
-const CARD_SCALE = 0.3;
-const LENS_MAX_HOPS = 2;
-const LENS_CENTER_SCALE = 1.3;
-const LENS_EDGE_SCALE = 0.75;
-const LENS_EDGE_LIMIT_RATIO = 0.65;
-const LENS_EDGE_MAX_SCALE = 1.0;
-
-/**
- * Hash a string to a number in [0, 1) for deterministic hue assignment.
- */
-function hashToHue(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
-  }
-  return (((hash % 360) + 360) % 360) / 360;
-}
+// --- Component ---
 
 export function ChunksScene({
   chunks,
@@ -67,35 +65,12 @@ export function ChunksScene({
   const { meshRef, handleMeshRef } = useInstancedMeshMaterial(stableCount);
   const { camera, size } = useThree();
 
-  const geometry = useMemo(() => {
-    const radius = Math.min(CARD_WIDTH, CARD_HEIGHT) * CORNER_RATIO;
-    const shape = new THREE.Shape();
-    const hw = CARD_WIDTH / 2;
-    const hh = CARD_HEIGHT / 2;
-    shape.moveTo(-hw + radius, -hh);
-    shape.lineTo(hw - radius, -hh);
-    shape.quadraticCurveTo(hw, -hh, hw, -hh + radius);
-    shape.lineTo(hw, hh - radius);
-    shape.quadraticCurveTo(hw, hh, hw - radius, hh);
-    shape.lineTo(-hw + radius, hh);
-    shape.quadraticCurveTo(-hw, hh, -hw, hh - radius);
-    shape.lineTo(-hw, -hh + radius);
-    shape.quadraticCurveTo(-hw, -hh, -hw + radius, -hh);
-    return new THREE.ShapeGeometry(shape);
-  }, []);
+  const geometry = useMemo(createCardGeometry, []);
 
-  // Pre-compute per-chunk colors from sourcePath
-  const chunkColors = useMemo(() => {
-    const colors: THREE.Color[] = [];
-    for (let i = 0; i < chunks.length; i++) {
-      const hue = hashToHue(chunks[i].sourcePath);
-      const color = new THREE.Color();
-      color.setHSL(hue, 0.7, 0.55);
-      colors.push(color);
-    }
-    return colors;
-  }, [chunks]);
-  const highlightColor = useMemo(() => new THREE.Color(1, 1, 1), []);
+  const chunkColors = useMemo(
+    () => chunks.map((chunk) => new THREE.Color().setHSL(hashToHue(chunk.sourcePath), 0.7, 0.55)),
+    [chunks],
+  );
 
   const chunkIndexById = useMemo(() => {
     const map = new Map<string, number>();
@@ -116,24 +91,10 @@ export function ChunksScene({
     return map;
   }, [neighborhoodEdges]);
 
-  const lensInfo = useMemo(() => {
-    if (focusIndex < 0) return null;
-    const nodeSet = new Set<number>([focusIndex]);
-    const depthMap = new Map<number, number>([[focusIndex, 0]]);
-    const queue: Array<{ index: number; depth: number }> = [{ index: focusIndex, depth: 0 }];
-    while (queue.length) {
-      const current = queue.shift()!;
-      if (current.depth >= LENS_MAX_HOPS) continue;
-      const neighbors = adjacency.get(current.index) ?? [];
-      for (const neighbor of neighbors) {
-        if (nodeSet.has(neighbor)) continue;
-        nodeSet.add(neighbor);
-        depthMap.set(neighbor, current.depth + 1);
-        queue.push({ index: neighbor, depth: current.depth + 1 });
-      }
-    }
-    return { focusIndex, nodeSet, depthMap };
-  }, [focusIndex, adjacency]);
+  const lensInfo = useMemo<LensInfo | null>(
+    () => focusIndex < 0 ? null : computeBfsNeighborhood(focusIndex, adjacency, LENS_MAX_HOPS),
+    [focusIndex, adjacency],
+  );
 
   const lensActive = !!lensInfo && !isRunning;
   const lensNodeSet = lensInfo?.nodeSet ?? null;
@@ -143,7 +104,7 @@ export function ChunksScene({
     if (!lensActive || !lensInfo) return neighborhoodEdges;
     const set = lensInfo.nodeSet;
     return neighborhoodEdges.filter(
-      (edge) => set.has(edge.source) && set.has(edge.target)
+      (edge) => set.has(edge.source) && set.has(edge.target),
     );
   }, [lensActive, lensInfo, neighborhoodEdges]);
 
@@ -151,13 +112,14 @@ export function ChunksScene({
     ? neighborhoodEdgesVersion * 31 + (lensInfo?.nodeSet.size ?? 0)
     : neighborhoodEdgesVersion;
 
-  // Reusable objects for useFrame (avoid GC pressure)
+  // --- Reusable objects for useFrame (avoid GC pressure) ---
   const matrixRef = useRef(new THREE.Matrix4());
   const posVec = useRef(new THREE.Vector3());
   const quat = useRef(new THREE.Quaternion());
   const scaleVec = useRef(new THREE.Vector3(1, 1, 1));
+  const tempColor = useRef(new THREE.Color());
 
-  // Track which chunks have had colors applied (reset when chunk data changes)
+  // Track when colors need repainting
   const colorChunksRef = useRef<ChunkEmbeddingData[] | null>(null);
   const searchOpacitiesRef = useRef(searchOpacities);
   const colorDirtyRef = useRef(false);
@@ -166,7 +128,6 @@ export function ChunksScene({
     colorDirtyRef.current = true;
   }
 
-  const tempColor = useRef(new THREE.Color());
   const renderPositionsRef = useRef<Float32Array>(new Float32Array(0));
   const renderScalesRef = useRef<Float32Array>(new Float32Array(0));
   const [, setRenderBufferVersion] = useState(0);
@@ -184,6 +145,7 @@ export function ChunksScene({
     isRunning,
   });
 
+  // Allocate lens buffers when entering lens mode
   useEffect(() => {
     if (!lensActive) return;
     if (renderPositionsRef.current.length !== layoutPositions.length) {
@@ -202,7 +164,7 @@ export function ChunksScene({
       if (instanceId == null || instanceId < 0 || instanceId >= chunks.length) return null;
       return instanceId;
     },
-    [chunks.length]
+    [chunks.length],
   );
 
   const dragHandlers = useInstancedMeshDrag({
@@ -215,48 +177,37 @@ export function ChunksScene({
     onClick: (index) => onSelectChunk(chunks[index].id),
   });
 
+  // Edge opacity fade-in over EDGE_FADE_DURATION_MS when simulation stops.
+  // Uses a bounded rAF loop (not useFrame) so React re-renders propagate opacity to ChunkEdges.
   const [edgeOpacity, setEdgeOpacity] = useState(0);
 
   useEffect(() => {
-    let raf: number | null = null;
-
     if (isRunning) {
       setEdgeOpacity(0);
-      return () => {
-        if (raf) cancelAnimationFrame(raf);
-      };
+      return;
     }
-
-    const duration = 500;
+    let raf: number | null = null;
     const start = performance.now();
-
     const tick = () => {
-      const elapsed = performance.now() - start;
-      const progress = Math.min(elapsed / duration, 1);
+      const progress = Math.min((performance.now() - start) / EDGE_FADE_DURATION_MS, 1);
       setEdgeOpacity(progress);
-      if (progress < 1) {
-        raf = requestAnimationFrame(tick);
-      }
+      if (progress < 1) raf = requestAnimationFrame(tick);
     };
-
     raf = requestAnimationFrame(tick);
-
-    return () => {
-      if (raf) cancelAnimationFrame(raf);
-    };
+    return () => { if (raf) cancelAnimationFrame(raf); };
   }, [isRunning]);
 
   useFrame(() => {
     const mesh = meshRef.current;
     if (!mesh || layoutPositions.length === 0) return;
 
+    const n = Math.min(count, layoutPositions.length / 2);
     const bufferReady = renderPositionsRef.current.length === layoutPositions.length;
-    const scalesReady = renderScalesRef.current.length === layoutPositions.length / 2;
+    const scalesReady = renderScalesRef.current.length === n;
     const usingLensBuffer = lensActive && bufferReady && scalesReady && lensNodeSet;
     const targetPositions = usingLensBuffer ? renderPositionsRef.current : layoutPositions;
 
-    const n = Math.min(count, layoutPositions.length / 2);
-
+    // --- Compute lens positions and scales ---
     if (usingLensBuffer && lensInfo && lensNodeSet) {
       const zones = computeViewportZones(camera as THREE.PerspectiveCamera, size.width, size.height);
       const { maxRadius, compressionStartRadius } = computeCompressionRadii(zones);
@@ -268,71 +219,25 @@ export function ChunksScene({
         let x = layoutPositions[i * 2];
         let y = layoutPositions[i * 2 + 1];
         let scale = 1;
+
         if (lensNodeSet.has(i)) {
-          const compressed = applyFisheyeCompression(
-            x,
-            y,
-            camX,
-            camY,
-            compressionStartRadius,
-            maxRadius
-          );
-          x = Math.max(zones.pullBounds.left, Math.min(zones.pullBounds.right, compressed.x));
-          y = Math.max(zones.pullBounds.bottom, Math.min(zones.pullBounds.top, compressed.y));
-
-          if (maxRadius > compressionStartRadius) {
-            const dxAfter = x - camX;
-            const dyAfter = y - camY;
-            const radialDistance = Math.sqrt(dxAfter * dxAfter + dyAfter * dyAfter);
-            const radialWeight =
-              1 -
-              THREE.MathUtils.smoothstep(radialDistance, compressionStartRadius, maxRadius);
-
-            const depth = lensDepthMap?.get(i);
-            const depthWeight =
-              depth == null
-                ? 0
-                : 1 - Math.min(depth, LENS_MAX_HOPS) / Math.max(1, LENS_MAX_HOPS);
-
-            const blendedWeight = Math.max(
-              0,
-              Math.min(1, radialWeight * 0.7 + depthWeight * 0.3)
-            );
-            scale = THREE.MathUtils.lerp(LENS_EDGE_SCALE, LENS_CENTER_SCALE, blendedWeight);
-
-            const edgeZoneStart =
-              compressionStartRadius +
-              (maxRadius - compressionStartRadius) * LENS_EDGE_LIMIT_RATIO;
-            if (maxRadius > edgeZoneStart) {
-              const limitT = Math.min(
-                1,
-                Math.max(0, (radialDistance - edgeZoneStart) / (maxRadius - edgeZoneStart))
-              );
-              if (limitT > 0) {
-                const edgeLimit = THREE.MathUtils.lerp(LENS_EDGE_MAX_SCALE, LENS_EDGE_SCALE, limitT);
-                scale = Math.min(scale, edgeLimit);
-              }
-            }
-          } else {
-            scale = LENS_CENTER_SCALE;
-          }
+          const compressed = applyFisheyeCompression(x, y, camX, camY, compressionStartRadius, maxRadius);
+          x = THREE.MathUtils.clamp(compressed.x, zones.pullBounds.left, zones.pullBounds.right);
+          y = THREE.MathUtils.clamp(compressed.y, zones.pullBounds.bottom, zones.pullBounds.top);
+          scale = computeLensNodeScale(x, y, camX, camY, lensDepthMap?.get(i), compressionStartRadius, maxRadius);
         }
+
         scales[i] = scale;
         targetPositions[i * 2] = x;
         targetPositions[i * 2 + 1] = y;
       }
     } else if (renderScalesRef.current.length) {
-      const scales = renderScalesRef.current;
-      for (let i = 0; i < scales.length; i++) {
-        scales[i] = 1;
-      }
+      renderScalesRef.current.fill(1);
     }
 
+    // --- Set instance matrices ---
     for (let i = 0; i < n; i++) {
-      const x = targetPositions[i * 2];
-      const y = targetPositions[i * 2 + 1];
-
-      // Hide non-focused nodes entirely in lens mode (like topics focus mode)
+      // Hide non-focused nodes in lens mode
       if (lensActive && lensNodeSet && !lensNodeSet.has(i)) {
         scaleVec.current.setScalar(0);
         matrixRef.current.compose(posVec.current, quat.current, scaleVec.current);
@@ -340,9 +245,10 @@ export function ChunksScene({
         continue;
       }
 
-      const nodeScale =
-        usingLensBuffer && renderScalesRef.current.length === n ? renderScalesRef.current[i] : 1;
-      posVec.current.set(x, y, 0);
+      const nodeScale = usingLensBuffer && renderScalesRef.current.length === n
+        ? renderScalesRef.current[i]
+        : 1;
+      posVec.current.set(targetPositions[i * 2], targetPositions[i * 2 + 1], 0);
       scaleVec.current.setScalar(CARD_SCALE * nodeScale);
       matrixRef.current.compose(posVec.current, quat.current, scaleVec.current);
       mesh.setMatrixAt(i, matrixRef.current);
@@ -355,7 +261,7 @@ export function ChunksScene({
       mesh.setMatrixAt(i, matrixRef.current);
     }
 
-    // Apply colors when chunk data or search opacities change
+    // --- Apply colors when chunk data or search opacities change ---
     if (colorChunksRef.current !== chunks || colorDirtyRef.current || !mesh.instanceColor) {
       const searchActive = searchOpacitiesRef.current.size > 0;
       for (let i = 0; i < Math.min(n, chunkColors.length); i++) {
@@ -365,13 +271,7 @@ export function ChunksScene({
           tempColor.current.multiplyScalar(opacity);
         }
         if (lensActive && lensNodeSet && lensNodeSet.has(i)) {
-          const depth = lensDepthMap?.get(i) ?? 0;
-          const emphasis = depth === 0 ? 1.35 : depth === 1 ? 1.15 : 1.05;
-          tempColor.current.lerp(highlightColor, 0.15 * (LENS_MAX_HOPS - depth) / LENS_MAX_HOPS);
-          tempColor.current.multiplyScalar(emphasis);
-          tempColor.current.r = Math.min(1, Math.max(0, tempColor.current.r));
-          tempColor.current.g = Math.min(1, Math.max(0, tempColor.current.g));
-          tempColor.current.b = Math.min(1, Math.max(0, tempColor.current.b));
+          applyLensColorEmphasis(tempColor.current, lensDepthMap?.get(i) ?? 0);
         }
         mesh.setColorAt(i, tempColor.current);
       }
@@ -394,11 +294,11 @@ export function ChunksScene({
       ? renderScalesRef.current
       : null;
 
-  const shouldRenderFocusEdges = !isRunning && focusEdges.length > 0 && edgeOpacity > 0;
+  const shouldRenderEdges = !isRunning && focusEdges.length > 0 && edgeOpacity > 0;
 
   return (
     <>
-      {shouldRenderFocusEdges && (
+      {shouldRenderEdges && (
         <ChunkEdges
           edges={focusEdges}
           edgesVersion={focusEdgesVersion}
