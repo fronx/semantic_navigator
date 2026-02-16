@@ -118,6 +118,12 @@ Semantic Navigator is a knowledge base tool that imports markdown files, atomize
 - `src/hooks/useFadingMembership.ts` - Animated Set-based membership transitions
 - `src/hooks/useTopicsSearch.ts` / `useTopicsSearchOpacity.ts` - Search integration for TopicsView
 - `src/hooks/useGraphHoverHighlight.ts` - Shared hover highlight logic
+- `src/hooks/useFadingVisibility.ts` - Generic animated 0→1 transitions for items entering/leaving a Set (works in any context, not R3F-specific)
+- `src/hooks/useFadingScale.ts` - Animated scale transitions via rAF for focus mode node scaling
+- `src/hooks/usePositionInterpolation.ts` - Time-based lerp for smooth position transitions (Map-based for TopicsView, array-based for ChunksView)
+- `src/hooks/useFocusZoomExit.ts` - Auto-exits focus/lens mode when camera zooms out past threshold
+- `src/hooks/useUmapLayout.ts` - Runs UMAP step-by-step with rAF, returns positions + neighborhood edges (ChunksView)
+- `src/hooks/useChunkForceLayout.ts` - D3 force simulation overlay on UMAP positions (ChunksView)
 
 ### Renderer Architecture
 
@@ -143,8 +149,24 @@ TopicsView supports three renderers. **R3F (React Three Fiber) is the primary re
 - `content-layout.ts` - Force-based content positioning around keywords
 - `content-zoom-config.ts` - Centralized zoom configuration
 - `label-fade-coordinator.ts` - Cross-component label visibility coordination
+- `edge-pulling.ts` - Pull off-screen nodes to viewport boundary as navigational ghosts
+- `fisheye-viewport.ts` - Lp-norm directional compression for rounded-rectangle focus areas
+- `chunks-lens.ts` - BFS neighborhood, lens scale blending, color emphasis for ChunksView
+- `chunks-geometry.ts` / `chunks-utils.ts` - ChunksView geometry and utilities
 
 **Legacy renderers** (D3 and raw Three.js) remain for reference but R3F is preferred.
+
+### ChunksView Architecture
+
+**ChunksView** (`src/components/ChunksView.tsx`) is a chunk-level visualization complementing TopicsView. It displays individual text chunks as cards in a UMAP-computed 2D layout, with a fisheye lens for focus navigation.
+
+**Key differences from TopicsView:**
+- **Layout**: UMAP embedding projection (`useUmapLayout`) instead of force-directed graph. D3 force refines positions after UMAP (`useChunkForceLayout`).
+- **Nodes**: Renders chunks (not keywords) as cards colored by source article.
+- **Interaction**: Click a chunk to activate a fisheye lens that compresses neighbors (BFS 1-hop via `chunks-lens.ts`). `useFocusZoomExit` auto-exits lens on zoom-out.
+- **Lens math**: `fisheye-viewport.ts` provides Lp-norm directional compression for rounded-rectangle shaped focus areas. `hyperbolic-compression.ts` handles radial compression.
+
+**Components** (`src/components/chunks-r3f/`): `ChunksCanvas.tsx` → `ChunksScene.tsx` → `ChunkEdges.tsx`, `ChunkTextLabels.tsx`. Settings via `ChunksControlSidebar.tsx` (UMAP params: nNeighbors, minDist, spread; lens params: compression, scale, horizon shape).
 
 **Known gotcha — non-unique content node IDs**: `createContentNodes()` in `content-layout.ts` creates a separate `ContentSimNode` for each (keyword, chunk) pair. When a chunk is associated with multiple keywords, multiple nodes share the same `id`. Any Map keyed by `node.id` will silently lose data. Use composite keys like `${parentId}:${node.id}` when tracking content nodes. See [Empty Chunk Labels investigation](docs/investigations/empty-chunk-labels.md).
 
@@ -178,6 +200,11 @@ When debugging rendering issues in Three.js/R3F:
 - `GET/POST /api/projects` - Project CRUD; `GET/PATCH/DELETE /api/projects/[id]`
 - `GET /api/projects/[id]/associations` - Project-node associations
 - `GET /api/projects/[id]/neighborhood` - Semantic neighborhood of a project
+- `GET /api/chunks/embeddings` - Chunk embeddings for UMAP layout (ChunksView)
+- `GET /api/keywords/associations` - Keyword-node associations
+- `GET /api/nodes/all` - All nodes (paginated)
+- `GET /api/localStorage-backup` - Persist/restore localStorage state
+- `GET /api/music` - Background music streaming
 
 ### UI Components
 
@@ -189,6 +216,12 @@ When debugging rendering issues in Three.js/R3F:
 - `src/components/topics-r3f/` - R3F renderer components (see Renderer Architecture above)
 - `src/components/ControlSidebar.tsx` - Collapsible settings panel for visualization controls
 - `src/components/ImportProgress.tsx` - SSE-based import progress display
+- `src/components/ChunksView.tsx` - UMAP-based chunk visualization with fisheye lens (see ChunksView Architecture)
+- `src/components/ChunksControlSidebar.tsx` - Settings for UMAP params and lens compression
+- `src/components/ProjectSelector.tsx` / `ProjectSidebar.tsx` - Project management UI
+- `src/components/BackupManager.tsx` - Auto-saves localStorage to server every 5 minutes, with manual save/restore
+- `src/components/OfflineModeToggle.tsx` - Toggle to serve cached data from local JSON instead of database
+- `src/components/CollapsibleSidebar.tsx` - Shared collapsible sidebar wrapper
 
 ### Database
 
@@ -209,10 +242,6 @@ The `search_similar` RPC function performs cosine similarity search and returns 
 ### Traversing the Hierarchy
 
 Keywords → nodes via `keywords.node_id`. Chunks → articles via `containment_edges` (single hop, flat hierarchy).
-
-## Architecture Notes
-
-This project uses precomputed clusters (from database) AND runtime/dynamic clusters. They have different ID systems. Always verify which cluster ID system is in use before implementing cluster-related features. Check the dynamic clustering checkbox state and existing documentation.
 
 ## Styling
 
