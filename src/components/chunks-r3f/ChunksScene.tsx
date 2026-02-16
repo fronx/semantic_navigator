@@ -15,6 +15,7 @@ import { useInstancedMeshDrag } from "@/hooks/useInstancedMeshDrag";
 import { useInstancedMeshMaterial } from "@/hooks/useInstancedMeshMaterial";
 import { useStableInstanceCount } from "@/hooks/useStableInstanceCount";
 import { useFadingScale } from "@/hooks/useFadingScale";
+import { useArrayPositionInterpolation, easeOutCubic } from "@/hooks/usePositionInterpolation";
 import type { UmapEdge } from "@/hooks/useUmapLayout";
 import { CARD_WIDTH, CARD_HEIGHT, createCardGeometry } from "@/lib/chunks-geometry";
 import {
@@ -143,9 +144,6 @@ export function ChunksScene({
     colorDirtyRef.current = true;
   }
 
-  const renderPositionsRef = useRef<Float32Array>(new Float32Array(0));
-  const renderScalesRef = useRef<Float32Array>(new Float32Array(0));
-  const [, setRenderBufferVersion] = useState(0);
   const [isDraggingNode, setIsDraggingNode] = useState(false);
 
   const {
@@ -160,18 +158,93 @@ export function ChunksScene({
     isRunning,
   });
 
-  // Allocate lens buffers when entering lens mode
+  // --- Compute target compressed positions for lens mode ---
+  const compressedPositionsRef = useRef<Float32Array | null>(null);
+  const renderScalesRef = useRef<Float32Array>(new Float32Array(0));
+
+  // Pre-compute compressed positions and scales when lens is active
   useEffect(() => {
-    if (!lensActive) return;
-    if (renderPositionsRef.current.length !== layoutPositions.length) {
-      renderPositionsRef.current = new Float32Array(layoutPositions.length);
-      setRenderBufferVersion((v) => v + 1);
+    if (!lensActive || !lensInfo || !lensNodeSet || layoutPositions.length === 0) {
+      compressedPositionsRef.current = null;
+      return;
     }
-    const nodeCount = layoutPositions.length / 2;
-    if (renderScalesRef.current.length !== nodeCount) {
-      renderScalesRef.current = new Float32Array(nodeCount);
+
+    const n = layoutPositions.length / 2;
+    const zones = computeViewportZones(camera as THREE.PerspectiveCamera, size.width, size.height);
+    const {
+      horizonHalfWidth,
+      horizonHalfHeight,
+      compressionStartHalfWidth,
+      compressionStartHalfHeight,
+    } = computeCompressionExtents(zones);
+    const camX = zones.viewport.camX;
+    const camY = zones.viewport.camY;
+
+    // Allocate buffers
+    const compressedPos = new Float32Array(layoutPositions.length);
+    if (renderScalesRef.current.length !== n) {
+      renderScalesRef.current = new Float32Array(n);
     }
-  }, [lensActive, layoutPositions.length]);
+    const scales = renderScalesRef.current;
+
+    const maxRadius = Math.min(horizonHalfWidth, horizonHalfHeight);
+    const compressionStartRadius = Math.min(compressionStartHalfWidth, compressionStartHalfHeight);
+
+    for (let i = 0; i < n; i++) {
+      let x = layoutPositions[i * 2];
+      let y = layoutPositions[i * 2 + 1];
+      let scale = 1;
+
+      if (lensNodeSet.has(i)) {
+        const compressed = applyFisheyeCompression(
+          x, y, camX, camY,
+          compressionStartHalfWidth, compressionStartHalfHeight,
+          horizonHalfWidth, horizonHalfHeight,
+          lensCompressionStrength,
+          lpNormP
+        );
+        x = THREE.MathUtils.clamp(compressed.x, zones.pullBounds.left, zones.pullBounds.right);
+        y = THREE.MathUtils.clamp(compressed.y, zones.pullBounds.bottom, zones.pullBounds.top);
+        scale = computeLensNodeScale(
+          x, y, camX, camY, lensDepthMap?.get(i),
+          compressionStartRadius, maxRadius,
+          lensCompressionStrength, lensCenterScale, lensEdgeScale
+        );
+      }
+
+      scales[i] = scale;
+      compressedPos[i * 2] = x;
+      compressedPos[i * 2 + 1] = y;
+    }
+
+    compressedPositionsRef.current = compressedPos;
+  }, [
+    lensActive,
+    lensInfo,
+    lensNodeSet,
+    lensDepthMap,
+    layoutPositions,
+    camera,
+    size.width,
+    size.height,
+    lensCompressionStrength,
+    lensCenterScale,
+    lensEdgeScale,
+    lpNormP,
+  ]);
+
+  // --- Smooth position interpolation when entering/exiting lens mode ---
+  const interpolatedPositionsRef = useArrayPositionInterpolation(
+    {
+      targetPositions: compressedPositionsRef.current,
+      duration: 400,
+      easing: easeOutCubic,
+      initialPositions: layoutPositions,
+    },
+    (updateCallback) => {
+      useFrame(updateCallback);
+    }
+  );
 
   const pickInstance = useCallback(
     (event: ThreeEvent<PointerEvent>): number | null => {
@@ -217,10 +290,9 @@ export function ChunksScene({
     if (!mesh || layoutPositions.length === 0) return;
 
     const n = Math.min(count, layoutPositions.length / 2);
-    const bufferReady = renderPositionsRef.current.length === layoutPositions.length;
-    const scalesReady = renderScalesRef.current.length === n;
-    const usingLensBuffer = lensActive && bufferReady && scalesReady && lensNodeSet;
-    const targetPositions = usingLensBuffer ? renderPositionsRef.current : layoutPositions;
+
+    // Use interpolated positions (smoothly transitions between natural and compressed)
+    const renderPositions = interpolatedPositionsRef.current;
 
     // --- Update visible set for animated transitions ---
     visibleNodeIndicesRef.current.clear();
@@ -233,53 +305,6 @@ export function ChunksScene({
       for (let i = 0; i < n; i++) {
         visibleNodeIndicesRef.current.add(i);
       }
-    }
-
-    // --- Compute lens positions and scales ---
-    if (usingLensBuffer && lensInfo && lensNodeSet) {
-      const zones = computeViewportZones(camera as THREE.PerspectiveCamera, size.width, size.height);
-      const {
-        horizonHalfWidth,
-        horizonHalfHeight,
-        compressionStartHalfWidth,
-        compressionStartHalfHeight,
-      } = computeCompressionExtents(zones);
-      const camX = zones.viewport.camX;
-      const camY = zones.viewport.camY;
-      const scales = renderScalesRef.current;
-
-      // computeLensNodeScale uses circular radii (min of half-extents)
-      const maxRadius = Math.min(horizonHalfWidth, horizonHalfHeight);
-      const compressionStartRadius = Math.min(compressionStartHalfWidth, compressionStartHalfHeight);
-
-      for (let i = 0; i < n; i++) {
-        let x = layoutPositions[i * 2];
-        let y = layoutPositions[i * 2 + 1];
-        let scale = 1;
-
-        if (lensNodeSet.has(i)) {
-          const compressed = applyFisheyeCompression(
-            x, y, camX, camY,
-            compressionStartHalfWidth, compressionStartHalfHeight,
-            horizonHalfWidth, horizonHalfHeight,
-            lensCompressionStrength,
-            lpNormP
-          );
-          x = THREE.MathUtils.clamp(compressed.x, zones.pullBounds.left, zones.pullBounds.right);
-          y = THREE.MathUtils.clamp(compressed.y, zones.pullBounds.bottom, zones.pullBounds.top);
-          scale = computeLensNodeScale(
-            x, y, camX, camY, lensDepthMap?.get(i),
-            compressionStartRadius, maxRadius,
-            lensCompressionStrength, lensCenterScale, lensEdgeScale
-          );
-        }
-
-        scales[i] = scale;
-        targetPositions[i * 2] = x;
-        targetPositions[i * 2 + 1] = y;
-      }
-    } else if (renderScalesRef.current.length) {
-      renderScalesRef.current.fill(1);
     }
 
     // --- Set instance matrices ---
@@ -295,10 +320,12 @@ export function ChunksScene({
       }
 
       // Apply lens scale AND animated fade
-      const lensScale = usingLensBuffer ? renderScalesRef.current[i] : 1;
+      const lensScale = lensActive && renderScalesRef.current.length === n
+        ? renderScalesRef.current[i]
+        : 1;
       const finalScale = CARD_SCALE * lensScale * animatedScale;
 
-      posVec.current.set(targetPositions[i * 2], targetPositions[i * 2 + 1], 0);
+      posVec.current.set(renderPositions[i * 2], renderPositions[i * 2 + 1], 0);
       scaleVec.current.setScalar(finalScale);
       matrixRef.current.compose(posVec.current, quat.current, scaleVec.current);
       mesh.setMatrixAt(i, matrixRef.current);
@@ -334,17 +361,13 @@ export function ChunksScene({
     mesh.boundingSphere = null;
   });
 
-  const renderedPositions =
-    lensActive && renderPositionsRef.current.length === layoutPositions.length
-      ? renderPositionsRef.current
-      : layoutPositions;
-
-  const scalesToRender =
-    lensActive && renderScalesRef.current.length === layoutPositions.length / 2
-      ? renderScalesRef.current
-      : null;
-
   const shouldRenderEdges = !isRunning && focusEdges.length > 0 && edgeOpacity > 0;
+
+  // Pass interpolated positions to edges and labels
+  const renderPositions = interpolatedPositionsRef.current;
+  const scalesToRender = lensActive && renderScalesRef.current.length > 0
+    ? renderScalesRef.current
+    : null;
 
   return (
     <>
@@ -352,7 +375,7 @@ export function ChunksScene({
         <ChunkEdges
           edges={focusEdges}
           edgesVersion={focusEdgesVersion}
-          positions={renderedPositions}
+          positions={renderPositions}
           opacity={edgeOpacity * 0.35}
         />
       )}
@@ -366,7 +389,7 @@ export function ChunksScene({
       />
       <ChunkTextLabels
         chunks={chunks}
-        positions={renderedPositions}
+        positions={renderPositions}
         scales={scalesToRender}
         cardWidth={CARD_WIDTH}
         cardHeight={CARD_HEIGHT}

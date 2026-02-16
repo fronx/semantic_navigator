@@ -49,6 +49,10 @@
 - [Topics Loading Optimization](investigations/topics-loading-optimization-2026-02-08.md) - **IN PROGRESS** - Reducing `getKeywordBackbone()` from ~9s to ~2s via lean SQL, parallel queries, and fixing 1000-row PostgREST truncation
 - [Content Card Spacing](investigations/content-card-spacing.md) - Problem space analysis: simulation uses static world-space heuristics but correct spacing depends on zoom, viewport, and fisheye state
 
+### Implementation Notes
+
+- [ChunksView Position Interpolation](implementation-notes/chunks-position-interpolation.md) - Applied smooth position interpolation to ChunksView lens mode using `useArrayPositionInterpolation` for continuous graph morphing (400ms easeOutCubic transitions)
+
 ### Architecture Decision Records (ADRs)
 
 - [ADR-005: Hierarchical Keyword Bubbling](architecture/adr/005-hierarchical-keywords.md) - LLM-based keyword reduction for semantic map performance

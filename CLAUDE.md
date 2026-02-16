@@ -52,14 +52,6 @@ Run scripts with: `npm run script scripts/<script>.ts` (auto-loads .env.local)
 
 ## Testing
 
-**Run tests regularly** to verify changes don't break existing functionality:
-
-```bash
-npm test -- --run    # Run all tests once
-npx tsc --noEmit     # Type check
-```
-
-**When to run tests:**
 - After modifying `src/lib/parser.ts` - parser tests verify frontmatter stripping and hierarchy generation
 - After modifying `src/lib/ingestion-*.ts` - verify node creation logic
 - Before committing significant changes
@@ -96,7 +88,7 @@ Semantic Navigator is a knowledge base tool that imports markdown files, atomize
 - **Graph filtering**: Only keywords that connect content to OTHER content are shown in TopicsView/MapView (see [ADR-015](docs/architecture/adr/015-keywords-as-navigation-primitives.md)). Keywords are navigation primitives, not exhaustive metadata. Filtered keywords remain in the database for search.
 
 **Clustering Systems**:
-- Semantic Navigator has **two clustering systems** serving different views
+- Semantic Navigator has **two clustering systems** serving different views, with different ID systems. Always verify which cluster ID system is in use before implementing cluster-related features.
 - **MapView** uses `keyword_communities` table (Louvain, 8 levels) - for article-keyword bipartite graphs
 - **TopicsView** uses `precomputed_topic_clusters` table (Leiden, 8 resolutions) - for pure keyword graphs with client-side fallback
 - See [Clustering Systems Guide](docs/guides/clustering-systems.md) for inspection tools, maintenance, and detailed comparison
