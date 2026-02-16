@@ -6,7 +6,7 @@
 import * as THREE from "three";
 import { computeCompressionRatio } from "./hyperbolic-compression";
 
-export const LENS_MAX_HOPS = 2;
+export const LENS_MAX_HOPS = 1;
 export const DEFAULT_LENS_CENTER_SCALE = 3.0;
 export const DEFAULT_LENS_EDGE_SCALE = 0.3;
 export const DEFAULT_LENS_COMPRESSION_STRENGTH = 1.5;
