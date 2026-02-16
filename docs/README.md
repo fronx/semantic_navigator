@@ -12,6 +12,7 @@
 ## Patterns
 
 - [Fading Visibility Animation](patterns/fading-visibility-animation.md) - Generic smooth animated transitions for Set-based visibility changes with R3F and non-R3F specializations
+- [Position Interpolation](patterns/position-interpolation.md) - Time-based coordinate transitions with easing for focus/lens mode animations in TopicsView and ChunksView
 - [Fisheye Compression](patterns/fisheye-compression.md) - Smooth radial viewport compression for focus mode to keep nodes visible without snapping
 - [Rounded Rectangle Fisheye](patterns/rounded-rectangle-fisheye.md) - Directional horizon compression using Lp norm to fill viewport with rounded rectangle boundary instead of circular
 - [Stable Refs](patterns/stable-refs.md) - Prevent React effect re-runs for callbacks and config (`useLatest`, `useStableCallback`)
