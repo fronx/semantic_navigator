@@ -20,6 +20,9 @@ interface ChunksCanvasProps {
   isRunning: boolean;
   selectedChunkId: string | null;
   onSelectChunk: (chunkId: string | null) => void;
+  lensCompressionStrength: number;
+  lensCenterScale: number;
+  lensEdgeScale: number;
 }
 
 export function ChunksCanvas({
@@ -31,6 +34,9 @@ export function ChunksCanvas({
   isRunning,
   selectedChunkId,
   onSelectChunk,
+  lensCompressionStrength,
+  lensCenterScale,
+  lensEdgeScale,
 }: ChunksCanvasProps) {
   const [backgroundColor, setBackgroundColor] = useState(getBackgroundColor);
 
@@ -64,6 +70,9 @@ export function ChunksCanvas({
           isRunning={isRunning}
           selectedChunkId={selectedChunkId}
           onSelectChunk={onSelectChunk}
+          lensCompressionStrength={lensCompressionStrength}
+          lensCenterScale={lensCenterScale}
+          lensEdgeScale={lensEdgeScale}
         />
       </Canvas>
     </div>

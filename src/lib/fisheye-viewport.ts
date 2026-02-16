@@ -26,6 +26,7 @@ export function applyFisheyeCompression(
   camY: number,
   compressionStartRadius: number,
   maxRadius: number,
+  compressionStrength?: number,
 ): { x: number; y: number } {
   const dx = nodeX - camX;
   const dy = nodeY - camY;
@@ -42,7 +43,9 @@ export function applyFisheyeCompression(
   }
 
   // Apply hyperbolic compression using shared logic
-  const compressedDistance = applyCompressionToDistance(distance, compressionStartRadius, maxRadius);
+  const compressedDistance = applyCompressionToDistance(
+    distance, compressionStartRadius, maxRadius, compressionStrength
+  );
 
   // Preserve direction, apply compressed distance
   const ratio = compressedDistance / distance;

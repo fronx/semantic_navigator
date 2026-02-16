@@ -7,8 +7,9 @@ import * as THREE from "three";
 import { computeCompressionRatio } from "./hyperbolic-compression";
 
 export const LENS_MAX_HOPS = 2;
-export const LENS_CENTER_SCALE = 1.3;
-export const LENS_EDGE_SCALE = 0.75;
+export const DEFAULT_LENS_CENTER_SCALE = 3.0;
+export const DEFAULT_LENS_EDGE_SCALE = 0.3;
+export const DEFAULT_LENS_COMPRESSION_STRENGTH = 1.5;
 
 export const HIGHLIGHT_COLOR = new THREE.Color(1, 1, 1);
 
@@ -56,13 +57,16 @@ export function computeLensNodeScale(
   depth: number | undefined,
   compressionStartRadius: number,
   maxRadius: number,
+  compressionStrength: number = DEFAULT_LENS_COMPRESSION_STRENGTH,
+  centerScale: number = DEFAULT_LENS_CENTER_SCALE,
+  edgeScale: number = DEFAULT_LENS_EDGE_SCALE,
 ): number {
-  if (maxRadius <= compressionStartRadius) return LENS_CENTER_SCALE;
+  if (maxRadius <= compressionStartRadius) return centerScale;
 
   const dx = x - camX;
   const dy = y - camY;
   const radialWeight = computeCompressionRatio(
-    Math.sqrt(dx * dx + dy * dy), compressionStartRadius, maxRadius,
+    Math.sqrt(dx * dx + dy * dy), compressionStartRadius, maxRadius, compressionStrength,
   );
 
   const depthWeight = depth == null
@@ -70,7 +74,7 @@ export function computeLensNodeScale(
     : 1 - Math.min(depth, LENS_MAX_HOPS) / Math.max(1, LENS_MAX_HOPS);
 
   const blendedWeight = THREE.MathUtils.clamp(radialWeight * 0.7 + depthWeight * 0.3, 0, 1);
-  return THREE.MathUtils.lerp(LENS_EDGE_SCALE, LENS_CENTER_SCALE, blendedWeight);
+  return THREE.MathUtils.lerp(edgeScale, centerScale, blendedWeight);
 }
 
 /**

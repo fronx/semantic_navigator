@@ -46,6 +46,9 @@ interface ChunksSceneProps {
   isRunning: boolean;
   selectedChunkId: string | null;
   onSelectChunk: (chunkId: string | null) => void;
+  lensCompressionStrength: number;
+  lensCenterScale: number;
+  lensEdgeScale: number;
 }
 
 // --- Component ---
@@ -59,6 +62,9 @@ export function ChunksScene({
   isRunning,
   selectedChunkId,
   onSelectChunk,
+  lensCompressionStrength,
+  lensCenterScale,
+  lensEdgeScale,
 }: ChunksSceneProps) {
   const count = chunks.length;
   const { stableCount, meshKey } = useStableInstanceCount(count);
@@ -221,10 +227,16 @@ export function ChunksScene({
         let scale = 1;
 
         if (lensNodeSet.has(i)) {
-          const compressed = applyFisheyeCompression(x, y, camX, camY, compressionStartRadius, maxRadius);
+          const compressed = applyFisheyeCompression(
+            x, y, camX, camY, compressionStartRadius, maxRadius, lensCompressionStrength
+          );
           x = THREE.MathUtils.clamp(compressed.x, zones.pullBounds.left, zones.pullBounds.right);
           y = THREE.MathUtils.clamp(compressed.y, zones.pullBounds.bottom, zones.pullBounds.top);
-          scale = computeLensNodeScale(x, y, camX, camY, lensDepthMap?.get(i), compressionStartRadius, maxRadius);
+          scale = computeLensNodeScale(
+            x, y, camX, camY, lensDepthMap?.get(i),
+            compressionStartRadius, maxRadius,
+            lensCompressionStrength, lensCenterScale, lensEdgeScale
+          );
         }
 
         scales[i] = scale;

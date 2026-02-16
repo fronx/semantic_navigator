@@ -11,11 +11,19 @@ import { useSearch } from "@/hooks/useSearch";
 import { Slider } from "@/components/Slider";
 import { ChunksCanvas } from "./chunks-r3f/ChunksCanvas";
 import { exportUmapGraph } from "@/lib/export-umap-graph";
+import {
+  DEFAULT_LENS_CENTER_SCALE,
+  DEFAULT_LENS_EDGE_SCALE,
+  DEFAULT_LENS_COMPRESSION_STRENGTH,
+} from "@/lib/chunks-lens";
 
 const UMAP_DEFAULTS = {
   nNeighbors: 15,
   minDist: 0.1,
   spread: 1.0,
+  lensCompressionStrength: DEFAULT_LENS_COMPRESSION_STRENGTH,
+  lensCenterScale: DEFAULT_LENS_CENTER_SCALE,
+  lensEdgeScale: DEFAULT_LENS_EDGE_SCALE,
 };
 
 const MIN_SEARCH_OPACITY = 0.1;
@@ -154,6 +162,34 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
         </button>
       </header>
 
+      {/* Focus Lens Controls */}
+      {selectedChunkId && (
+        <div className="flex-shrink-0 px-3 py-1.5 flex items-center gap-4 border-b bg-zinc-50 dark:bg-zinc-900 dark:border-zinc-800">
+          <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Focus Lens:</span>
+          <Slider
+            label="Compression"
+            value={store.values.lensCompressionStrength}
+            onChange={(v) => store.update("lensCompressionStrength", v)}
+            min={1.0} max={4.0} step={0.1}
+            format={(v) => v.toFixed(1)}
+          />
+          <Slider
+            label="Center scale"
+            value={store.values.lensCenterScale}
+            onChange={(v) => store.update("lensCenterScale", v)}
+            min={1.0} max={5.0} step={0.1}
+            format={(v) => v.toFixed(1)}
+          />
+          <Slider
+            label="Edge scale"
+            value={store.values.lensEdgeScale}
+            onChange={(v) => store.update("lensEdgeScale", v)}
+            min={0.3} max={1.0} step={0.05}
+            format={(v) => v.toFixed(2)}
+          />
+        </div>
+      )}
+
       {/* Canvas area */}
       <main className="flex-1 relative overflow-hidden">
         <ChunksCanvas
@@ -165,6 +201,9 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
           isRunning={isRunning}
           selectedChunkId={selectedChunkId}
           onSelectChunk={handleSelectChunk}
+          lensCompressionStrength={store.values.lensCompressionStrength}
+          lensCenterScale={store.values.lensCenterScale}
+          lensEdgeScale={store.values.lensEdgeScale}
         />
       </main>
     </div>
