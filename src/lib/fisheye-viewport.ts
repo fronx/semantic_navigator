@@ -17,10 +17,10 @@
 import { applyCompressionToDistance } from "./hyperbolic-compression";
 
 /**
- * Lp norm exponent for rounded rectangle approximation.
+ * Default Lp norm exponent for rounded rectangle approximation.
  * p=2 → circle, p→∞ → square, p=6 → nice rounded rectangle feel.
  */
-const LP_NORM_P = 6;
+export const DEFAULT_LP_NORM_P = 6;
 
 /**
  * Compute directional horizon distance using Lp norm.
@@ -32,6 +32,7 @@ const LP_NORM_P = 6;
  * @param distance - Euclidean distance sqrt(dx² + dy²)
  * @param halfWidth - Viewport half-width in world units
  * @param halfHeight - Viewport half-height in world units
+ * @param lpNormP - Lp norm exponent (2=circle, 6=rounded rect, ∞=square)
  * @returns Distance to horizon along this ray
  */
 function computeDirectionalHorizon(
@@ -40,6 +41,7 @@ function computeDirectionalHorizon(
   distance: number,
   halfWidth: number,
   halfHeight: number,
+  lpNormP: number,
 ): number {
   if (distance === 0) return 0;
 
@@ -47,13 +49,13 @@ function computeDirectionalHorizon(
   const nx = dx / halfWidth;
   const ny = dy / halfHeight;
 
-  // Compute Lp norm distance (dimensionless, 1.0 = at horizon)
-  // Optimize: use repeated multiplication for p=6
+  // Lp norm distance (dimensionless, 1.0 = at horizon)
+  // Use repeated multiplication when p is an integer for efficiency
   const nx2 = nx * nx;
   const ny2 = ny * ny;
-  const nx6 = nx2 * nx2 * nx2;
-  const ny6 = ny2 * ny2 * ny2;
-  const lpDistance = Math.pow(Math.abs(nx6) + Math.abs(ny6), 1 / LP_NORM_P);
+  const nxP = lpNormP === 6 ? nx2 * nx2 * nx2 : Math.pow(Math.abs(nx), lpNormP);
+  const nyP = lpNormP === 6 ? ny2 * ny2 * ny2 : Math.pow(Math.abs(ny), lpNormP);
+  const lpDistance = Math.pow(nxP + nyP, 1 / lpNormP);
 
   // Avoid division by zero
   if (lpDistance === 0) return distance;
@@ -78,6 +80,7 @@ function computeDirectionalHorizon(
  * @param horizonHalfWidth - Half-width of outer horizon in world units
  * @param horizonHalfHeight - Half-height of outer horizon in world units
  * @param compressionStrength - Hyperbolic compression strength (default from hyperbolic-compression.ts)
+ * @param lpNormP - Lp norm exponent for horizon shape (default: DEFAULT_LP_NORM_P)
  */
 export function applyFisheyeCompression(
   nodeX: number,
@@ -89,6 +92,7 @@ export function applyFisheyeCompression(
   horizonHalfWidth: number,
   horizonHalfHeight: number,
   compressionStrength?: number,
+  lpNormP: number = DEFAULT_LP_NORM_P,
 ): { x: number; y: number } {
   const dx = nodeX - camX;
   const dy = nodeY - camY;
@@ -101,12 +105,12 @@ export function applyFisheyeCompression(
 
   // Compute directional horizon distance for this direction
   const horizonDistance = computeDirectionalHorizon(
-    dx, dy, distance, horizonHalfWidth, horizonHalfHeight
+    dx, dy, distance, horizonHalfWidth, horizonHalfHeight, lpNormP
   );
 
   // Compute directional compression start distance
   const compressionStartDistance = computeDirectionalHorizon(
-    dx, dy, distance, compressionStartHalfWidth, compressionStartHalfHeight
+    dx, dy, distance, compressionStartHalfWidth, compressionStartHalfHeight, lpNormP
   );
 
   // No compression needed if within start boundary

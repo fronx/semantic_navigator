@@ -23,6 +23,7 @@ interface ChunksCanvasProps {
   lensCompressionStrength: number;
   lensCenterScale: number;
   lensEdgeScale: number;
+  lpNormP: number;
 }
 
 export function ChunksCanvas({
@@ -37,6 +38,7 @@ export function ChunksCanvas({
   lensCompressionStrength,
   lensCenterScale,
   lensEdgeScale,
+  lpNormP,
 }: ChunksCanvasProps) {
   const [backgroundColor, setBackgroundColor] = useState(getBackgroundColor);
 
@@ -73,6 +75,7 @@ export function ChunksCanvas({
           lensCompressionStrength={lensCompressionStrength}
           lensCenterScale={lensCenterScale}
           lensEdgeScale={lensEdgeScale}
+          lpNormP={lpNormP}
         />
       </Canvas>
     </div>

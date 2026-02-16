@@ -16,6 +16,7 @@ export interface ChunksSettings {
   lensCompressionStrength: number;
   lensCenterScale: number;
   lensEdgeScale: number;
+  lpNormP: number;
   sidebarCollapsed: boolean;
   sectionStates: Record<string, boolean>;
 }
@@ -100,6 +101,15 @@ export function ChunksControlSidebar({ store }: ChunksControlSidebarProps): Reac
           max={1.0}
           step={0.05}
           format={(v) => v.toFixed(2)}
+        />
+        <Slider
+          label="Horizon shape"
+          value={values.lpNormP}
+          onChange={(v) => update("lpNormP", v)}
+          min={2}
+          max={12}
+          step={0.5}
+          format={(v) => `p=${v.toFixed(1)}`}
         />
       </Section>
     </CollapsibleSidebar>

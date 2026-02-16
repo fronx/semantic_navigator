@@ -7,7 +7,7 @@ import {
   isInViewport,
   MAX_PULLED_NODES,
 } from "@/lib/edge-pulling";
-import { applyFisheyeCompression } from "@/lib/fisheye-viewport";
+import { applyFisheyeCompression, computeCompressionExtents } from "@/lib/fisheye-viewport";
 
 export interface KeywordPulledNode {
   x: number;
@@ -56,98 +56,66 @@ export function computeKeywordPullState({
   const nodeById = new Map<string, SimNode>();
   for (const node of simNodes) nodeById.set(node.id, node);
 
-  // Calculate compression zone radii (distance from camera center)
-  // Compression extents for rounded rectangle fisheye
-  // Outer boundary: horizon at pull zone (25px from edge)
-  // Inner boundary: where compression begins (80px from edge)
-  const camX = zones.viewport.camX;
-  const camY = zones.viewport.camY;
+  const { camX, camY } = zones.viewport;
+  const extents = computeCompressionExtents(zones);
 
-  // Outer boundary: distance from center to pull zone
-  const horizonHalfWidth = zones.pullBounds.right - camX;
-  const horizonHalfHeight = zones.pullBounds.top - camY;
+  /** Compute pulled position: fisheye compression if focused, regular clamping otherwise. */
+  function pullPosition(x: number, y: number, isFocused: boolean): { x: number; y: number } {
+    if (isFocused) {
+      const compressed = applyFisheyeCompression(
+        x, y, camX, camY,
+        extents.compressionStartHalfWidth, extents.compressionStartHalfHeight,
+        extents.horizonHalfWidth, extents.horizonHalfHeight
+      );
+      return {
+        x: Math.max(zones.pullBounds.left, Math.min(zones.pullBounds.right, compressed.x)),
+        y: Math.max(zones.pullBounds.bottom, Math.min(zones.pullBounds.top, compressed.y)),
+      };
+    }
+    return clampToBounds(
+      x, y, camX, camY,
+      zones.pullBounds.left, zones.pullBounds.right,
+      zones.pullBounds.bottom, zones.pullBounds.top
+    );
+  }
 
-  // Inner boundary: distance from center to focus pull zone
-  const compressionStartHalfWidth = zones.focusPullBounds.right - camX;
-  const compressionStartHalfHeight = zones.focusPullBounds.top - camY;
+  function isFocused(nodeId: string): boolean {
+    return focusState?.focusedNodeIds.has(nodeId) ?? false;
+  }
 
+  // --- Phase 1: Classify visible nodes as primary or pulled ---
   for (const node of simNodes) {
     const x = node.x ?? 0;
     const y = node.y ?? 0;
+    const focused = isFocused(node.id);
 
-    const isFocusedKeyword = focusState?.focusedNodeIds.has(node.id) ?? false;
+    // Focused keywords skip viewport check -- apply compression to ALL of them
+    if (!focused && !isInViewport(x, y, zones.extendedViewport)) continue;
 
-    // For focused keywords in focus mode, skip the viewport check - apply compression to ALL of them
-    if (!isFocusedKeyword && !isInViewport(x, y, zones.extendedViewport)) continue;
-
-    if (isFocusedKeyword) {
-      // Apply fisheye compression for focused keywords
-      const compressed = applyFisheyeCompression(
-        x,
-        y,
-        camX,
-        camY,
-        compressionStartHalfWidth,
-        compressionStartHalfHeight,
-        horizonHalfWidth,
-        horizonHalfHeight
-      );
-
-      // Clamp to rectangular pull bounds to ensure it never goes off-screen
-      // (fisheye is radial, but viewport is rectangular)
-      const clampedX = Math.max(
-        zones.pullBounds.left,
-        Math.min(zones.pullBounds.right, compressed.x)
-      );
-      const clampedY = Math.max(
-        zones.pullBounds.bottom,
-        Math.min(zones.pullBounds.top, compressed.y)
-      );
-
-      // Check if position changed at all (compression OR clamping)
-      const positionChanged = clampedX !== x || clampedY !== y;
+    if (focused) {
+      const pulled = pullPosition(x, y, true);
+      const positionChanged = pulled.x !== x || pulled.y !== y;
 
       if (positionChanged) {
-        // Store as pulled with adjusted position
         pulledMap.set(node.id, {
-          x: clampedX,
-          y: clampedY,
-          realX: x,
-          realY: y,
-          connectedPrimaryIds: [],
+          x: pulled.x, y: pulled.y, realX: x, realY: y, connectedPrimaryIds: [],
         });
       } else {
-        // No adjustment needed, stays at natural position as primary
         primarySet.add(node.id);
       }
     } else {
-      // Non-focused keywords use regular cliff-zone clamping
-      const inCliff = isInCliffZone(x, y, zones.pullBounds);
-      if (!inCliff) {
+      if (!isInCliffZone(x, y, zones.pullBounds)) {
         primarySet.add(node.id);
         continue;
       }
-
-      const clamped = clampToBounds(
-        x,
-        y,
-        zones.viewport.camX,
-        zones.viewport.camY,
-        zones.pullBounds.left,
-        zones.pullBounds.right,
-        zones.pullBounds.bottom,
-        zones.pullBounds.top
-      );
+      const clamped = pullPosition(x, y, false);
       pulledMap.set(node.id, {
-        x: clamped.x,
-        y: clamped.y,
-        realX: x,
-        realY: y,
-        connectedPrimaryIds: [],
+        x: clamped.x, y: clamped.y, realX: x, realY: y, connectedPrimaryIds: [],
       });
     }
   }
 
+  // --- Phase 2: Pull in off-screen neighbors of primary nodes ---
   if (adjacencyMap && adjacencyMap.size > 0) {
     const candidates = new Map<string, { node: SimNode; bestSimilarity: number; connectedPrimaryIds: string[] }>();
     for (const primaryId of primarySet) {
@@ -155,8 +123,7 @@ export function computeKeywordPullState({
       if (!neighbors) continue;
 
       for (const { id: neighborId, similarity } of neighbors) {
-        if (primarySet.has(neighborId)) continue;
-        if (pulledMap.has(neighborId)) continue;
+        if (primarySet.has(neighborId) || pulledMap.has(neighborId)) continue;
 
         const neighborNode = nodeById.get(neighborId);
         if (!neighborNode) continue;
@@ -184,120 +151,40 @@ export function computeKeywordPullState({
       ? [...contentDrivenKeywordIds].filter((id) => !primarySet.has(id) && !pulledMap.has(id) && nodeById.has(id)).length
       : 0;
     const adjacencySlots = Math.max(0, maxPulled - contentDrivenCount);
-    const pulledNeighbors = sorted.slice(0, adjacencySlots);
-    for (const { node, connectedPrimaryIds } of pulledNeighbors) {
+    for (const { node, connectedPrimaryIds } of sorted.slice(0, adjacencySlots)) {
       const realX = node.x ?? 0;
       const realY = node.y ?? 0;
-
-      const isFocusedKeyword = focusState?.focusedNodeIds.has(node.id) ?? false;
-
-      let pulledX: number;
-      let pulledY: number;
-
-      if (isFocusedKeyword) {
-        // Apply fisheye compression for focused keywords
-        const compressed = applyFisheyeCompression(
-          realX,
-          realY,
-          camX,
-          camY,
-          compressionStartHalfWidth,
-          compressionStartHalfHeight,
-          horizonHalfWidth,
-          horizonHalfHeight
-        );
-        // Clamp to rectangular pull bounds
-        pulledX = Math.max(zones.pullBounds.left, Math.min(zones.pullBounds.right, compressed.x));
-        pulledY = Math.max(zones.pullBounds.bottom, Math.min(zones.pullBounds.top, compressed.y));
-      } else {
-        // Non-focused: regular clamping to outer pull line
-        const clamped = clampToBounds(
-          realX,
-          realY,
-          zones.viewport.camX,
-          zones.viewport.camY,
-          zones.pullBounds.left,
-          zones.pullBounds.right,
-          zones.pullBounds.bottom,
-          zones.pullBounds.top
-        );
-        pulledX = clamped.x;
-        pulledY = clamped.y;
-      }
-
+      const pulled = pullPosition(realX, realY, isFocused(node.id));
       pulledMap.set(node.id, {
-        x: pulledX,
-        y: pulledY,
-        realX,
-        realY,
-        connectedPrimaryIds,
+        x: pulled.x, y: pulled.y, realX, realY, connectedPrimaryIds,
       });
     }
   }
 
-  // Mark content-driven keywords that are already in pulledMap (e.g. cliff zone)
-  // so they skip anchor validation. Also add any that aren't in the map yet.
+  // --- Phase 3: Add content-driven keywords ---
   const contentDrivenPulledIds = new Set<string>();
   if (contentDrivenKeywordIds && contentDrivenKeywordIds.size > 0) {
     for (const kwId of contentDrivenKeywordIds) {
       if (primarySet.has(kwId)) continue;
       const node = nodeById.get(kwId);
       if (!node) continue;
-      // Already in pulledMap (from cliff zone) — just mark it as content-driven
+      // Already in pulledMap (from cliff zone) -- just mark as content-driven
       if (pulledMap.has(kwId)) {
         contentDrivenPulledIds.add(kwId);
         continue;
       }
       const realX = node.x ?? 0;
       const realY = node.y ?? 0;
-
-      const isFocusedKeyword = focusState?.focusedNodeIds.has(kwId) ?? false;
-
-      let pulledX: number;
-      let pulledY: number;
-
-      if (isFocusedKeyword) {
-        // Apply fisheye compression for focused keywords
-        const compressed = applyFisheyeCompression(
-          realX,
-          realY,
-          camX,
-          camY,
-          compressionStartHalfWidth,
-          compressionStartHalfHeight,
-          horizonHalfWidth,
-          horizonHalfHeight
-        );
-        // Clamp to rectangular pull bounds
-        pulledX = Math.max(zones.pullBounds.left, Math.min(zones.pullBounds.right, compressed.x));
-        pulledY = Math.max(zones.pullBounds.bottom, Math.min(zones.pullBounds.top, compressed.y));
-      } else {
-        // Non-focused: regular clamping to outer pull line
-        const clamped = clampToBounds(
-          realX,
-          realY,
-          zones.viewport.camX,
-          zones.viewport.camY,
-          zones.pullBounds.left,
-          zones.pullBounds.right,
-          zones.pullBounds.bottom,
-          zones.pullBounds.top
-        );
-        pulledX = clamped.x;
-        pulledY = clamped.y;
-      }
-
+      const pulled = pullPosition(realX, realY, isFocused(kwId));
       pulledMap.set(kwId, {
-        x: pulledX,
-        y: pulledY,
-        realX,
-        realY,
+        x: pulled.x, y: pulled.y, realX, realY,
         connectedPrimaryIds: [], // Anchored by content, not keywords
       });
       contentDrivenPulledIds.add(kwId);
     }
   }
 
+  // --- Phase 4: Validate anchors ---
   const getAnchorsForNode = (nodeId: string): string[] => {
     if (!adjacencyMap || adjacencyMap.size === 0) return [];
     const neighbors = adjacencyMap.get(nodeId);
@@ -309,11 +196,7 @@ export function computeKeywordPullState({
 
   for (const [nodeId, pulled] of pulledMap) {
     if (contentDrivenPulledIds.has(nodeId)) continue; // Anchored by content cards
-
-    // In focus mode, skip anchor validation for focused keywords
-    // They should stay visible even without connections to primary nodes
-    const isFocusedKeyword = focusState?.focusedNodeIds.has(nodeId) ?? false;
-    if (isFocusedKeyword) continue;
+    if (isFocused(nodeId)) continue; // Focused keywords stay visible without anchors
 
     if (pulled.connectedPrimaryIds.length === 0) {
       const anchorIds = getAnchorsForNode(nodeId);

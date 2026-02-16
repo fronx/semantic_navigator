@@ -49,6 +49,7 @@ interface ChunksSceneProps {
   lensCompressionStrength: number;
   lensCenterScale: number;
   lensEdgeScale: number;
+  lpNormP: number;
 }
 
 // --- Component ---
@@ -65,6 +66,7 @@ export function ChunksScene({
   lensCompressionStrength,
   lensCenterScale,
   lensEdgeScale,
+  lpNormP,
 }: ChunksSceneProps) {
   const count = chunks.length;
   const { stableCount, meshKey } = useStableInstanceCount(count);
@@ -226,7 +228,7 @@ export function ChunksScene({
       const camY = zones.viewport.camY;
       const scales = renderScalesRef.current;
 
-      // For scale computation, use approximate circular radius (legacy compat)
+      // computeLensNodeScale uses circular radii (min of half-extents)
       const maxRadius = Math.min(horizonHalfWidth, horizonHalfHeight);
       const compressionStartRadius = Math.min(compressionStartHalfWidth, compressionStartHalfHeight);
 
@@ -240,7 +242,8 @@ export function ChunksScene({
             x, y, camX, camY,
             compressionStartHalfWidth, compressionStartHalfHeight,
             horizonHalfWidth, horizonHalfHeight,
-            lensCompressionStrength
+            lensCompressionStrength,
+            lpNormP
           );
           x = THREE.MathUtils.clamp(compressed.x, zones.pullBounds.left, zones.pullBounds.right);
           y = THREE.MathUtils.clamp(compressed.y, zones.pullBounds.bottom, zones.pullBounds.top);
@@ -269,9 +272,7 @@ export function ChunksScene({
         continue;
       }
 
-      const nodeScale = usingLensBuffer && renderScalesRef.current.length === n
-        ? renderScalesRef.current[i]
-        : 1;
+      const nodeScale = usingLensBuffer ? renderScalesRef.current[i] : 1;
       posVec.current.set(targetPositions[i * 2], targetPositions[i * 2 + 1], 0);
       scaleVec.current.setScalar(CARD_SCALE * nodeScale);
       matrixRef.current.compose(posVec.current, quat.current, scaleVec.current);

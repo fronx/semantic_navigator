@@ -17,6 +17,7 @@ import {
   DEFAULT_LENS_EDGE_SCALE,
   DEFAULT_LENS_COMPRESSION_STRENGTH,
 } from "@/lib/chunks-lens";
+import { DEFAULT_LP_NORM_P } from "@/lib/fisheye-viewport";
 
 const CHUNKS_DEFAULTS: ChunksSettings = {
   nNeighbors: 15,
@@ -25,6 +26,7 @@ const CHUNKS_DEFAULTS: ChunksSettings = {
   lensCompressionStrength: DEFAULT_LENS_COMPRESSION_STRENGTH,
   lensCenterScale: DEFAULT_LENS_CENTER_SCALE,
   lensEdgeScale: DEFAULT_LENS_EDGE_SCALE,
+  lpNormP: DEFAULT_LP_NORM_P,
   sidebarCollapsed: false,
   sectionStates: {
     UMAP: true,
@@ -161,6 +163,7 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
             lensCompressionStrength={store.values.lensCompressionStrength}
             lensCenterScale={store.values.lensCenterScale}
             lensEdgeScale={store.values.lensEdgeScale}
+            lpNormP={store.values.lpNormP}
           />
         </div>
       </main>
