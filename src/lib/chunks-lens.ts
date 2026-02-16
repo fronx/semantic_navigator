@@ -4,12 +4,11 @@
  */
 
 import * as THREE from "three";
+import { computeCompressionRatio } from "./hyperbolic-compression";
 
 export const LENS_MAX_HOPS = 2;
 export const LENS_CENTER_SCALE = 1.3;
 export const LENS_EDGE_SCALE = 0.75;
-export const LENS_EDGE_LIMIT_RATIO = 0.65;
-export const LENS_EDGE_MAX_SCALE = 1.0;
 
 export const HIGHLIGHT_COLOR = new THREE.Color(1, 1, 1);
 
@@ -46,8 +45,8 @@ export function computeBfsNeighborhood(
 }
 
 /**
- * Compute per-node scale for a lens-focused node based on its radial
- * distance from camera center and its BFS depth from the focus node.
+ * Compute per-node scale based on radial distance from camera center
+ * blended with BFS depth from the focus node (70% radial, 30% topology).
  */
 export function computeLensNodeScale(
   x: number,
@@ -62,30 +61,16 @@ export function computeLensNodeScale(
 
   const dx = x - camX;
   const dy = y - camY;
-  const radialDistance = Math.sqrt(dx * dx + dy * dy);
-  const radialWeight = 1 - THREE.MathUtils.smoothstep(radialDistance, compressionStartRadius, maxRadius);
+  const radialWeight = computeCompressionRatio(
+    Math.sqrt(dx * dx + dy * dy), compressionStartRadius, maxRadius,
+  );
 
   const depthWeight = depth == null
     ? 0
     : 1 - Math.min(depth, LENS_MAX_HOPS) / Math.max(1, LENS_MAX_HOPS);
 
   const blendedWeight = THREE.MathUtils.clamp(radialWeight * 0.7 + depthWeight * 0.3, 0, 1);
-  let scale = THREE.MathUtils.lerp(LENS_EDGE_SCALE, LENS_CENTER_SCALE, blendedWeight);
-
-  // Clamp scale down at the outer edge zone to prevent overshoot
-  const edgeZoneStart = compressionStartRadius + (maxRadius - compressionStartRadius) * LENS_EDGE_LIMIT_RATIO;
-  if (maxRadius > edgeZoneStart) {
-    const limitT = THREE.MathUtils.clamp(
-      (radialDistance - edgeZoneStart) / (maxRadius - edgeZoneStart),
-      0,
-      1,
-    );
-    if (limitT > 0) {
-      scale = Math.min(scale, THREE.MathUtils.lerp(LENS_EDGE_MAX_SCALE, LENS_EDGE_SCALE, limitT));
-    }
-  }
-
-  return scale;
+  return THREE.MathUtils.lerp(LENS_EDGE_SCALE, LENS_CENTER_SCALE, blendedWeight);
 }
 
 /**
