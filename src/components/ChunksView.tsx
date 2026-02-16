@@ -3,7 +3,7 @@
  * Extracts embeddings from chunk data, runs UMAP, and renders the canvas.
  */
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import type { ChunkEmbeddingData } from "@/app/api/chunks/embeddings/route";
 import { useUmapLayout } from "@/hooks/useUmapLayout";
 import { usePersistedStore } from "@/hooks/usePersistedStore";
@@ -11,6 +11,7 @@ import { useSearch } from "@/hooks/useSearch";
 import { Slider } from "@/components/Slider";
 import { ChunksCanvas } from "./chunks-r3f/ChunksCanvas";
 import { exportUmapGraph } from "@/lib/export-umap-graph";
+import { OfflineCacheButton } from "@/components/OfflineCacheButton";
 
 const UMAP_DEFAULTS = {
   nNeighbors: 15,
@@ -22,11 +23,13 @@ const MIN_SEARCH_OPACITY = 0.1;
 
 interface ChunksViewProps {
   chunks: ChunkEmbeddingData[];
+  isStale?: boolean;
 }
 
-export function ChunksView({ chunks }: ChunksViewProps) {
+export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
   const store = usePersistedStore("chunks-umap-v1", UMAP_DEFAULTS, 300);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedChunkId, setSelectedChunkId] = useState<string | null>(null);
 
   const embeddings = useMemo(
     () => chunks.map((c) => c.embedding),
@@ -80,6 +83,9 @@ export function ChunksView({ chunks }: ChunksViewProps) {
     exportUmapGraph(chunks, positions, neighborhoodEdges);
   }, [chunks, positions, neighborhoodEdges]);
 
+  const handleSelectChunk = useCallback((chunkId: string | null) => {
+    setSelectedChunkId((prev) => (prev === chunkId ? null : chunkId));
+  }, []);
 
   return (
     <div className="flex flex-col h-screen bg-zinc-50 dark:bg-zinc-950">
@@ -101,6 +107,7 @@ export function ChunksView({ chunks }: ChunksViewProps) {
           {searchOpacities.size > 0
             ? `${matchCount} / ${chunks.length} chunks`
             : `${chunks.length} chunks`}
+          {isStale && <span className="ml-2 text-amber-600 dark:text-amber-400">(offline)</span>}
         </span>
 
         <Slider
@@ -138,6 +145,12 @@ export function ChunksView({ chunks }: ChunksViewProps) {
           </div>
         )}
 
+        <OfflineCacheButton
+          cacheKey="chunks-data-cache"
+          label="Save Offline"
+          isStale={isStale}
+        />
+
         <button
           onClick={handleExport}
           disabled={positions.length === 0}
@@ -157,6 +170,8 @@ export function ChunksView({ chunks }: ChunksViewProps) {
           neighborhoodEdges={neighborhoodEdges}
           neighborhoodEdgesVersion={neighborhoodEdgesVersion}
           isRunning={isRunning}
+          selectedChunkId={selectedChunkId}
+          onSelectChunk={handleSelectChunk}
         />
       </main>
     </div>

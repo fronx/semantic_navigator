@@ -1,22 +1,18 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import type { ChunkEmbeddingData } from "@/app/api/chunks/embeddings/route";
 import { ChunksView } from "@/components/ChunksView";
+import { useOfflineCache } from "@/hooks/useOfflineCache";
 
 export default function ChunksPage() {
-  const [chunks, setChunks] = useState<ChunkEmbeddingData[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch("/api/chunks/embeddings")
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-      })
-      .then((data: ChunkEmbeddingData[]) => setChunks(data))
-      .catch((err) => setError(err.message));
-  }, []);
+  const { data: chunks, loading, error, isStale } = useOfflineCache<ChunkEmbeddingData[]>({
+    cacheKey: "chunks-data-cache",
+    fetcher: async () => {
+      const res = await fetch("/api/chunks/embeddings");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    },
+  });
 
   if (error) {
     return (
@@ -26,7 +22,7 @@ export default function ChunksPage() {
     );
   }
 
-  if (!chunks) {
+  if (loading || !chunks) {
     return (
       <div className="h-screen flex items-center justify-center bg-white dark:bg-zinc-900">
         <span className="text-zinc-500">Loading chunks...</span>
@@ -34,5 +30,5 @@ export default function ChunksPage() {
     );
   }
 
-  return <ChunksView chunks={chunks} />;
+  return <ChunksView chunks={chunks} isStale={isStale} />;
 }

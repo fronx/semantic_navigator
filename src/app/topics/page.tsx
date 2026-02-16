@@ -9,6 +9,8 @@ import { useErrorNotification } from "@/hooks/useErrorNotification";
 import { useTopicsSettings } from "@/hooks/useTopicsSettings";
 import { useContentLoading } from "@/hooks/useContentLoading";
 import { useLocalStorageBackup } from "@/hooks/useLocalStorageBackup";
+import { useOfflineCache } from "@/hooks/useOfflineCache";
+import { OfflineCacheButton } from "@/components/OfflineCacheButton";
 import { ProjectSidebar, type Project as SidebarProject } from "@/components/ProjectSidebar";
 import { InlineTitleInput } from "@/components/InlineTitleInput";
 import { ControlSidebar } from "@/components/ControlSidebar";
@@ -42,11 +44,7 @@ interface TopicsData {
 }
 
 export default function TopicsPage() {
-  const [data, setData] = useState<TopicsData | null>(null);
   const [initialClusters, setInitialClusters] = useState<PrecomputedClusterData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [isStale, setIsStale] = useState(false);
   const [started, setStarted] = useState(false);
 
   // Consolidated settings
@@ -54,6 +52,18 @@ export default function TopicsPage() {
 
   // Automatic localStorage backup
   useLocalStorageBackup({ enabled: true });
+
+  // Fetch data with localStorage cache fallback
+  const { data, loading, error, isStale } = useOfflineCache<TopicsData>({
+    cacheKey: "topics-data-cache",
+    fetcher: async () => {
+      const res = await fetch(`/api/topics?nodeType=${settings.nodeType}`);
+      const topicsData = await res.json();
+      if (topicsData.error) throw new Error(topicsData.error);
+      return topicsData;
+    },
+    deps: [settings.nodeType],
+  });
 
   // Sync global contrast to module-level state (synchronous so children read it during same render)
   if (typeof window !== "undefined") {
@@ -344,19 +354,16 @@ export default function TopicsPage() {
     if (!isFocused) clearSearch();
   }, [clearSearch]);
 
-  // Fetch data with localStorage cache fallback
+  // Warm up cluster labels cache (fire and forget)
   useEffect(() => {
-    const CACHE_KEY = "topics-data-cache";
-
     fetch("/api/cluster-labels/warm").catch(() => {});
+  }, []);
 
-    async function fetchData() {
-      setLoading(true);
-      setIsStale(false);
-
+  // Fetch projects and clusters separately (not cached)
+  useEffect(() => {
+    async function fetchSupplementaryData() {
       try {
-        const [topicsRes, projectsRes, clustersRes] = await Promise.all([
-          fetch(`/api/topics?nodeType=${settings.nodeType}`),
+        const [projectsRes, clustersRes] = await Promise.all([
           fetch("/api/projects"),
           fetch("/api/precomputed-clusters", {
             method: "POST",
@@ -368,16 +375,9 @@ export default function TopicsPage() {
           }),
         ]);
 
-        const topicsData = await topicsRes.json();
         const projectsData = await projectsRes.json();
         const clustersData = clustersRes.ok ? await clustersRes.json() : null;
 
-        if (topicsData.error) {
-          throw new Error(topicsData.error);
-        }
-
-        localStorage.setItem(CACHE_KEY, JSON.stringify(topicsData));
-        setData(topicsData);
         setInitialClusters(clustersData);
 
         if (Array.isArray(projectsData)) {
@@ -392,26 +392,16 @@ export default function TopicsPage() {
             }))
           );
         }
-
-        setError(null);
       } catch (err) {
-        const cached = localStorage.getItem(CACHE_KEY);
-        if (cached) {
-          setData(JSON.parse(cached));
-          setIsStale(true);
-          setError(null);
-        } else {
-          setError(err instanceof Error ? err.message : "Unknown error");
-          setData(null);
-        }
-      } finally {
-        setLoading(false);
+        console.warn("Failed to fetch supplementary data:", err);
       }
     }
 
-    fetchData();
+    if (data) {
+      fetchSupplementaryData();
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.nodeType]); // debouncedClusterResolution intentionally excluded - only need initial value
+  }, [settings.nodeType, data]); // debouncedClusterResolution intentionally excluded - only need initial value
 
   if (loading) {
     return (
@@ -476,6 +466,11 @@ export default function TopicsPage() {
           </div>
 
           <div className="flex items-center gap-3">
+            <OfflineCacheButton
+              cacheKey="topics-data-cache"
+              label="Save Offline"
+              isStale={isStale}
+            />
             <GranularityToggle
               value={settings.nodeType}
               onChange={(value) => update('nodeType', value)}
