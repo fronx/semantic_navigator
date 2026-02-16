@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase";
 import { adaptToContentNode } from "@/lib/node-adapters";
-import { loadOfflineJSON } from "@/lib/offline-data";
+import { getCachedOfflineData } from "@/lib/offline-data-cache";
 
 export async function POST(request: Request) {
   try {
@@ -28,66 +28,58 @@ export async function POST(request: Request) {
     let data: any = null;
     let error: any = null;
 
-    // Try offline cache first (server-side only)
-    if (typeof window === 'undefined') {
-      try {
-        const offlineAssociations = await loadOfflineJSON<{ associations: Array<{ keywordId: string; keyword: string; nodeId: string; nodeType: string }> }>(
-          `keyword-associations-${nodeType}.json`
-        );
-        const offlineNodes = await loadOfflineJSON<{ nodes: any[] }>(
-          `nodes-${nodeType}.json`
-        );
+    // Try offline cache first (instant - preloaded in memory)
+    const offlineAssociations = getCachedOfflineData<{ associations: Array<{ keywordId: string; keyword: string; nodeId: string; nodeType: string }> }>(
+      `keyword-associations-${nodeType}.json`
+    );
+    const offlineNodes = getCachedOfflineData<{ nodes: any[] }>(
+      `nodes-${nodeType}.json`
+    );
 
-        if (offlineAssociations && offlineNodes) {
-          console.log('[Chunks API] Using offline cache');
+    if (offlineAssociations && offlineNodes) {
+      console.log('[Chunks API] Using offline cache (in-memory)');
 
-          // Filter associations by requested keywords
-          const relevantAssocs = offlineAssociations.associations.filter(
-            assoc => keywordLabels.includes(assoc.keyword)
-          );
+      // Filter associations by requested keywords
+      const relevantAssocs = offlineAssociations.associations.filter(
+        assoc => keywordLabels.includes(assoc.keyword)
+      );
 
-          // Build node lookup
-          const nodeLookup = new Map<string, any>();
-          for (const node of offlineNodes.nodes) {
-            nodeLookup.set(node.id, node);
-          }
-
-          // Build response structure matching database format
-          const keywordMap = new Map<string, any>();
-          for (const assoc of relevantAssocs) {
-            const node = nodeLookup.get(assoc.nodeId);
-            if (!node) continue;
-
-            if (!keywordMap.has(assoc.keyword)) {
-              keywordMap.set(assoc.keyword, {
-                id: assoc.keywordId,
-                keyword: assoc.keyword,
-                keyword_occurrences: []
-              });
-            }
-
-            keywordMap.get(assoc.keyword).keyword_occurrences.push({
-              node_id: assoc.nodeId,
-              node_type: assoc.nodeType,
-              nodes: {
-                id: node.id,
-                content: node.content,
-                summary: node.summary || null,
-                source_path: node.sourcePath || node.source_path || null,
-                node_type: assoc.nodeType
-              }
-            });
-          }
-
-          data = Array.from(keywordMap.values());
-        }
-      } catch (offlineError) {
-        console.log('[Chunks API] Offline cache unavailable, using database');
+      // Build node lookup
+      const nodeLookup = new Map<string, any>();
+      for (const node of offlineNodes.nodes) {
+        nodeLookup.set(node.id, node);
       }
-    }
 
-    // Fall back to database query if offline cache not available
-    if (!data) {
+      // Build response structure matching database format
+      const keywordMap = new Map<string, any>();
+      for (const assoc of relevantAssocs) {
+        const node = nodeLookup.get(assoc.nodeId);
+        if (!node) continue;
+
+        if (!keywordMap.has(assoc.keyword)) {
+          keywordMap.set(assoc.keyword, {
+            id: assoc.keywordId,
+            keyword: assoc.keyword,
+            keyword_occurrences: []
+          });
+        }
+
+        keywordMap.get(assoc.keyword).keyword_occurrences.push({
+          node_id: assoc.nodeId,
+          node_type: assoc.nodeType,
+          nodes: {
+            id: node.id,
+            content: node.content,
+            summary: node.summary || null,
+            source_path: node.sourcePath || node.source_path || null,
+            node_type: assoc.nodeType
+          }
+        });
+      }
+
+      data = Array.from(keywordMap.values());
+    } else {
+      // Fall back to database query if offline cache not available
       const result = await supabase
         .from('keywords')
         .select(`
