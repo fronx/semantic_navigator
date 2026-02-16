@@ -35,15 +35,13 @@ export function computeContentPullState({
   const pulledMap = new Map<string, ContentPulledNode>();
   const candidates: SimNode[] = [];
 
-  // Calculate compression zone radii (same as keywords)
+  // Calculate compression zone extents for rounded rectangle fisheye
   const camX = zones.viewport.camX;
   const camY = zones.viewport.camY;
-  const pullZoneDistanceRight = zones.pullBounds.right - camX;
-  const pullZoneDistanceTop = zones.pullBounds.top - camY;
-  const maxRadius = Math.min(pullZoneDistanceRight, pullZoneDistanceTop);
-  const focusPullDistanceRight = zones.focusPullBounds.right - camX;
-  const focusPullDistanceTop = zones.focusPullBounds.top - camY;
-  const compressionStartRadius = Math.min(focusPullDistanceRight, focusPullDistanceTop);
+  const horizonHalfWidth = zones.pullBounds.right - camX;
+  const horizonHalfHeight = zones.pullBounds.top - camY;
+  const compressionStartHalfWidth = zones.focusPullBounds.right - camX;
+  const compressionStartHalfHeight = zones.focusPullBounds.top - camY;
 
   for (const node of contentNodes) {
     const x = node.x ?? 0;
@@ -67,7 +65,11 @@ export function computeContentPullState({
 
       if (hasFocusedParent) {
         // Apply fisheye compression for content with focused parents
-        const compressed = applyFisheyeCompression(x, y, camX, camY, compressionStartRadius, maxRadius);
+        const compressed = applyFisheyeCompression(
+          x, y, camX, camY,
+          compressionStartHalfWidth, compressionStartHalfHeight,
+          horizonHalfWidth, horizonHalfHeight
+        );
         // Clamp to rectangular pull bounds
         pulledX = Math.max(zones.pullBounds.left, Math.min(zones.pullBounds.right, compressed.x));
         pulledY = Math.max(zones.pullBounds.bottom, Math.min(zones.pullBounds.top, compressed.y));
@@ -118,7 +120,11 @@ export function computeContentPullState({
 
     if (hasFocusedParent) {
       // Apply fisheye compression for content with focused parents
-      const compressed = applyFisheyeCompression(realX, realY, camX, camY, compressionStartRadius, maxRadius);
+      const compressed = applyFisheyeCompression(
+        realX, realY, camX, camY,
+        compressionStartHalfWidth, compressionStartHalfHeight,
+        horizonHalfWidth, horizonHalfHeight
+      );
       // Clamp to rectangular pull bounds
       pulledX = Math.max(zones.pullBounds.left, Math.min(zones.pullBounds.right, compressed.x));
       pulledY = Math.max(zones.pullBounds.bottom, Math.min(zones.pullBounds.top, compressed.y));

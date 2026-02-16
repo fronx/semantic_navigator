@@ -4,7 +4,7 @@ import * as THREE from "three";
 
 import type { UmapEdge } from "@/hooks/useUmapLayout";
 import { computeArcPoints, computeOutwardDirection } from "@/lib/edge-curves";
-import { computeViewportZones, computeCompressionRadii } from "@/lib/edge-pulling";
+import { computeViewportZones, computeCompressionExtents } from "@/lib/edge-pulling";
 
 const EDGE_SEGMENTS = 16;
 const ARC_VERTEX_COUNT = EDGE_SEGMENTS + 1;
@@ -87,7 +87,9 @@ export function ChunkEdges({
     const perspCamera = camera as THREE.PerspectiveCamera;
     const zones = computeViewportZones(perspCamera, size.width, size.height);
     const viewport = zones.viewport;
-    const { maxRadius } = computeCompressionRadii(zones);
+    const { horizonHalfWidth, horizonHalfHeight } = computeCompressionExtents(zones);
+    // For edge projection, use approximate circular radius
+    const maxRadius = Math.min(horizonHalfWidth, horizonHalfHeight);
     const camX = zones.viewport.camX;
     const camY = zones.viewport.camY;
     const shouldProject = Boolean(projectOutsideFocus && focusNodeSet && focusNodeSet.size > 0);

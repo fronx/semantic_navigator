@@ -25,7 +25,7 @@ import {
 } from "@/lib/chunks-lens";
 import { hashToHue } from "@/lib/chunks-utils";
 import { computeViewportZones } from "@/lib/edge-pulling";
-import { applyFisheyeCompression, computeCompressionRadii } from "@/lib/fisheye-viewport";
+import { applyFisheyeCompression, computeCompressionExtents } from "@/lib/fisheye-viewport";
 import { ChunkEdges } from "./ChunkEdges";
 import { ChunkTextLabels } from "./ChunkTextLabels";
 
@@ -216,10 +216,19 @@ export function ChunksScene({
     // --- Compute lens positions and scales ---
     if (usingLensBuffer && lensInfo && lensNodeSet) {
       const zones = computeViewportZones(camera as THREE.PerspectiveCamera, size.width, size.height);
-      const { maxRadius, compressionStartRadius } = computeCompressionRadii(zones);
+      const {
+        horizonHalfWidth,
+        horizonHalfHeight,
+        compressionStartHalfWidth,
+        compressionStartHalfHeight,
+      } = computeCompressionExtents(zones);
       const camX = zones.viewport.camX;
       const camY = zones.viewport.camY;
       const scales = renderScalesRef.current;
+
+      // For scale computation, use approximate circular radius (legacy compat)
+      const maxRadius = Math.min(horizonHalfWidth, horizonHalfHeight);
+      const compressionStartRadius = Math.min(compressionStartHalfWidth, compressionStartHalfHeight);
 
       for (let i = 0; i < n; i++) {
         let x = layoutPositions[i * 2];
@@ -228,7 +237,10 @@ export function ChunksScene({
 
         if (lensNodeSet.has(i)) {
           const compressed = applyFisheyeCompression(
-            x, y, camX, camY, compressionStartRadius, maxRadius, lensCompressionStrength
+            x, y, camX, camY,
+            compressionStartHalfWidth, compressionStartHalfHeight,
+            horizonHalfWidth, horizonHalfHeight,
+            lensCompressionStrength
           );
           x = THREE.MathUtils.clamp(compressed.x, zones.pullBounds.left, zones.pullBounds.right);
           y = THREE.MathUtils.clamp(compressed.y, zones.pullBounds.bottom, zones.pullBounds.top);

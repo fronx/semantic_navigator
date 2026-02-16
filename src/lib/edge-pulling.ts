@@ -8,7 +8,7 @@
 import type * as THREE from "three";
 
 // Re-export fisheye utilities for convenience
-export { applyFisheyeCompression, computeCompressionRadii } from "./fisheye-viewport";
+export { applyFisheyeCompression, computeCompressionRadii, computeCompressionExtents } from "./fisheye-viewport";
 
 // Screen-pixel-based constants (consistent at all zoom levels)
 export const PULL_LINE_PX = 25;     // from viewport edge — where pulled nodes are placed

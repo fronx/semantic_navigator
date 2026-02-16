@@ -57,20 +57,19 @@ export function computeKeywordPullState({
   for (const node of simNodes) nodeById.set(node.id, node);
 
   // Calculate compression zone radii (distance from camera center)
-  // maxRadius: outer boundary - targets pull zone (25px from edge)
-  // compressionStartRadius: inner boundary - where compression begins (80px from edge)
+  // Compression extents for rounded rectangle fisheye
+  // Outer boundary: horizon at pull zone (25px from edge)
+  // Inner boundary: where compression begins (80px from edge)
   const camX = zones.viewport.camX;
   const camY = zones.viewport.camY;
 
   // Outer boundary: distance from center to pull zone
-  const pullZoneDistanceRight = zones.pullBounds.right - camX;
-  const pullZoneDistanceTop = zones.pullBounds.top - camY;
-  const maxRadius = Math.min(pullZoneDistanceRight, pullZoneDistanceTop);
+  const horizonHalfWidth = zones.pullBounds.right - camX;
+  const horizonHalfHeight = zones.pullBounds.top - camY;
 
   // Inner boundary: distance from center to focus pull zone
-  const focusPullDistanceRight = zones.focusPullBounds.right - camX;
-  const focusPullDistanceTop = zones.focusPullBounds.top - camY;
-  const compressionStartRadius = Math.min(focusPullDistanceRight, focusPullDistanceTop);
+  const compressionStartHalfWidth = zones.focusPullBounds.right - camX;
+  const compressionStartHalfHeight = zones.focusPullBounds.top - camY;
 
   for (const node of simNodes) {
     const x = node.x ?? 0;
@@ -88,8 +87,10 @@ export function computeKeywordPullState({
         y,
         camX,
         camY,
-        compressionStartRadius,
-        maxRadius
+        compressionStartHalfWidth,
+        compressionStartHalfHeight,
+        horizonHalfWidth,
+        horizonHalfHeight
       );
 
       // Clamp to rectangular pull bounds to ensure it never goes off-screen
@@ -200,8 +201,10 @@ export function computeKeywordPullState({
           realY,
           camX,
           camY,
-          compressionStartRadius,
-          maxRadius
+          compressionStartHalfWidth,
+          compressionStartHalfHeight,
+          horizonHalfWidth,
+          horizonHalfHeight
         );
         // Clamp to rectangular pull bounds
         pulledX = Math.max(zones.pullBounds.left, Math.min(zones.pullBounds.right, compressed.x));
@@ -260,8 +263,10 @@ export function computeKeywordPullState({
           realY,
           camX,
           camY,
-          compressionStartRadius,
-          maxRadius
+          compressionStartHalfWidth,
+          compressionStartHalfHeight,
+          horizonHalfWidth,
+          horizonHalfHeight
         );
         // Clamp to rectangular pull bounds
         pulledX = Math.max(zones.pullBounds.left, Math.min(zones.pullBounds.right, compressed.x));
