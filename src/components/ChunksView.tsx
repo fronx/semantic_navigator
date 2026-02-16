@@ -5,10 +5,11 @@
 
 import { useState, useMemo, useCallback } from "react";
 import type { ChunkEmbeddingData } from "@/app/api/chunks/embeddings/route";
+import type { ChunksSettings } from "@/components/ChunksControlSidebar";
 import { useUmapLayout } from "@/hooks/useUmapLayout";
 import { usePersistedStore } from "@/hooks/usePersistedStore";
 import { useSearch } from "@/hooks/useSearch";
-import { Slider } from "@/components/Slider";
+import { ChunksControlSidebar } from "@/components/ChunksControlSidebar";
 import { ChunksCanvas } from "./chunks-r3f/ChunksCanvas";
 import { exportUmapGraph } from "@/lib/export-umap-graph";
 import {
@@ -17,13 +18,18 @@ import {
   DEFAULT_LENS_COMPRESSION_STRENGTH,
 } from "@/lib/chunks-lens";
 
-const UMAP_DEFAULTS = {
+const CHUNKS_DEFAULTS: ChunksSettings = {
   nNeighbors: 15,
   minDist: 0.1,
   spread: 1.0,
   lensCompressionStrength: DEFAULT_LENS_COMPRESSION_STRENGTH,
   lensCenterScale: DEFAULT_LENS_CENTER_SCALE,
   lensEdgeScale: DEFAULT_LENS_EDGE_SCALE,
+  sidebarCollapsed: false,
+  sectionStates: {
+    UMAP: true,
+    "Focus Lens": true,
+  },
 };
 
 const MIN_SEARCH_OPACITY = 0.1;
@@ -34,7 +40,7 @@ interface ChunksViewProps {
 }
 
 export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
-  const store = usePersistedStore("chunks-umap-v1", UMAP_DEFAULTS, 300);
+  const store = usePersistedStore("chunks-umap-v2", CHUNKS_DEFAULTS, 300);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedChunkId, setSelectedChunkId] = useState<string | null>(null);
 
@@ -67,9 +73,7 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
     const matched = new Map<string, number>();
     for (const r of searchResults) matched.set(r.id, r.similarity);
 
-    // Find min similarity among matches to ensure all matches are brighter than non-matches
     const minMatchSimilarity = Math.min(...searchResults.map(r => r.similarity));
-    // Remap: matches keep original similarity, non-matches get scaled below the minimum match
     const nonMatchOpacity = Math.min(MIN_SEARCH_OPACITY, minMatchSimilarity * 0.8);
 
     for (const chunk of chunks) {
@@ -117,27 +121,6 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
           {isStale && <span className="ml-2 text-amber-600 dark:text-amber-400">(offline)</span>}
         </span>
 
-        <Slider
-          label="Neighbors"
-          value={store.values.nNeighbors}
-          onChange={(v) => store.update("nNeighbors", v)}
-          min={2} max={100} step={1}
-          format={(v) => `${v}`}
-        />
-        <Slider
-          label="Min dist"
-          value={store.values.minDist}
-          onChange={(v) => store.update("minDist", v)}
-          min={0} max={1} step={0.01}
-        />
-        <Slider
-          label="Spread"
-          value={store.values.spread}
-          onChange={(v) => store.update("spread", v)}
-          min={0.1} max={5} step={0.1}
-          format={(v) => v.toFixed(1)}
-        />
-
         {isRunning && (
           <div className="flex items-center gap-2 flex-1 max-w-xs">
             <div className="flex-1 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
@@ -162,49 +145,24 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
         </button>
       </header>
 
-      {/* Focus Lens Controls */}
-      {selectedChunkId && (
-        <div className="flex-shrink-0 px-3 py-1.5 flex items-center gap-4 border-b bg-zinc-50 dark:bg-zinc-900 dark:border-zinc-800">
-          <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Focus Lens:</span>
-          <Slider
-            label="Compression"
-            value={store.values.lensCompressionStrength}
-            onChange={(v) => store.update("lensCompressionStrength", v)}
-            min={1.0} max={4.0} step={0.1}
-            format={(v) => v.toFixed(1)}
-          />
-          <Slider
-            label="Center scale"
-            value={store.values.lensCenterScale}
-            onChange={(v) => store.update("lensCenterScale", v)}
-            min={1.0} max={5.0} step={0.1}
-            format={(v) => v.toFixed(1)}
-          />
-          <Slider
-            label="Edge scale"
-            value={store.values.lensEdgeScale}
-            onChange={(v) => store.update("lensEdgeScale", v)}
-            min={0.3} max={1.0} step={0.05}
-            format={(v) => v.toFixed(2)}
+      {/* Sidebar + Canvas */}
+      <main className="flex-1 relative overflow-hidden flex">
+        <ChunksControlSidebar store={store} />
+        <div className="flex-1 relative min-w-0 overflow-hidden">
+          <ChunksCanvas
+            chunks={chunks}
+            umapPositions={positions}
+            searchOpacities={searchOpacities}
+            neighborhoodEdges={neighborhoodEdges}
+            neighborhoodEdgesVersion={neighborhoodEdgesVersion}
+            isRunning={isRunning}
+            selectedChunkId={selectedChunkId}
+            onSelectChunk={handleSelectChunk}
+            lensCompressionStrength={store.values.lensCompressionStrength}
+            lensCenterScale={store.values.lensCenterScale}
+            lensEdgeScale={store.values.lensEdgeScale}
           />
         </div>
-      )}
-
-      {/* Canvas area */}
-      <main className="flex-1 relative overflow-hidden">
-        <ChunksCanvas
-          chunks={chunks}
-          umapPositions={positions}
-          searchOpacities={searchOpacities}
-          neighborhoodEdges={neighborhoodEdges}
-          neighborhoodEdgesVersion={neighborhoodEdgesVersion}
-          isRunning={isRunning}
-          selectedChunkId={selectedChunkId}
-          onSelectChunk={handleSelectChunk}
-          lensCompressionStrength={store.values.lensCompressionStrength}
-          lensCenterScale={store.values.lensCenterScale}
-          lensEdgeScale={store.values.lensEdgeScale}
-        />
       </main>
     </div>
   );

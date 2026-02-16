@@ -10,6 +10,7 @@ import type { SemanticFilter } from "@/lib/topics-filter";
 import type { KeywordNode } from "@/lib/graph-queries";
 import { CAMERA_Z_SCALE_BASE } from "@/lib/rendering-utils/camera-controller";
 import { BackupManager } from "@/components/BackupManager";
+import { CollapsibleSidebar } from "@/components/CollapsibleSidebar";
 import { Section } from "@/components/Section";
 import { Slider } from "@/components/Slider";
 import { Checkbox } from "@/components/Checkbox";
@@ -76,24 +77,10 @@ export function ControlSidebar({
   });
 
   return (
-    <div
-      className={`
-        flex-shrink-0 bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-700
-        transition-all duration-200 ease-in-out overflow-hidden
-        ${settings.sidebarCollapsed ? "w-10" : "w-72"}
-      `}
+    <CollapsibleSidebar
+      collapsed={settings.sidebarCollapsed}
+      onToggle={() => update("sidebarCollapsed", !settings.sidebarCollapsed)}
     >
-      {/* Collapse toggle */}
-      <button
-        onClick={() => update("sidebarCollapsed", !settings.sidebarCollapsed)}
-        className="w-full h-10 flex items-center justify-center border-b border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-        title={settings.sidebarCollapsed ? "Expand controls" : "Collapse controls"}
-      >
-        <span className="text-zinc-500 text-sm">{settings.sidebarCollapsed ? "»" : "«"}</span>
-      </button>
-
-      {!settings.sidebarCollapsed && (
-        <div className="overflow-y-auto h-[calc(100%-40px)]">
           {/* Backup Controls */}
           <BackupManager />
 
@@ -578,8 +565,6 @@ export function ControlSidebar({
               )}
             </div>
           </Section>
-        </div>
-      )}
-    </div>
+    </CollapsibleSidebar>
   );
 }
