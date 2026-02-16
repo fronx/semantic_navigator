@@ -147,23 +147,9 @@ export function ChunksScene({
     );
   }, [lensActive, lensInfo, neighborhoodEdges]);
 
-  const outboundEdges = useMemo(() => {
-    if (!lensActive || !lensInfo) return [];
-    const set = lensInfo.nodeSet;
-    return neighborhoodEdges.filter((edge) => {
-      const sourceIn = set.has(edge.source);
-      const targetIn = set.has(edge.target);
-      return sourceIn !== targetIn;
-    });
-  }, [lensActive, lensInfo, neighborhoodEdges]);
-
   const focusEdgesVersion = lensActive
     ? neighborhoodEdgesVersion * 31 + (lensInfo?.nodeSet.size ?? 0)
     : neighborhoodEdgesVersion;
-
-  const outboundEdgesVersion = lensActive
-    ? neighborhoodEdgesVersion * 37 + (lensInfo?.nodeSet.size ?? 0)
-    : 0;
 
   // Reusable objects for useFrame (avoid GC pressure)
   const matrixRef = useRef(new THREE.Matrix4());
@@ -345,6 +331,15 @@ export function ChunksScene({
     for (let i = 0; i < n; i++) {
       const x = targetPositions[i * 2];
       const y = targetPositions[i * 2 + 1];
+
+      // Hide non-focused nodes entirely in lens mode (like topics focus mode)
+      if (lensActive && lensNodeSet && !lensNodeSet.has(i)) {
+        scaleVec.current.setScalar(0);
+        matrixRef.current.compose(posVec.current, quat.current, scaleVec.current);
+        mesh.setMatrixAt(i, matrixRef.current);
+        continue;
+      }
+
       const nodeScale =
         usingLensBuffer && renderScalesRef.current.length === n ? renderScalesRef.current[i] : 1;
       posVec.current.set(x, y, 0);
@@ -369,18 +364,14 @@ export function ChunksScene({
           const opacity = searchOpacitiesRef.current.get(chunks[i].id) ?? 1.0;
           tempColor.current.multiplyScalar(opacity);
         }
-        if (lensActive && lensNodeSet) {
-          if (!lensNodeSet.has(i)) {
-            tempColor.current.multiplyScalar(0.35);
-          } else {
-            const depth = lensDepthMap?.get(i) ?? 0;
-            const emphasis = depth === 0 ? 1.35 : depth === 1 ? 1.15 : 1.05;
-            tempColor.current.lerp(highlightColor, 0.15 * (LENS_MAX_HOPS - depth) / LENS_MAX_HOPS);
-            tempColor.current.multiplyScalar(emphasis);
-            tempColor.current.r = Math.min(1, Math.max(0, tempColor.current.r));
-            tempColor.current.g = Math.min(1, Math.max(0, tempColor.current.g));
-            tempColor.current.b = Math.min(1, Math.max(0, tempColor.current.b));
-          }
+        if (lensActive && lensNodeSet && lensNodeSet.has(i)) {
+          const depth = lensDepthMap?.get(i) ?? 0;
+          const emphasis = depth === 0 ? 1.35 : depth === 1 ? 1.15 : 1.05;
+          tempColor.current.lerp(highlightColor, 0.15 * (LENS_MAX_HOPS - depth) / LENS_MAX_HOPS);
+          tempColor.current.multiplyScalar(emphasis);
+          tempColor.current.r = Math.min(1, Math.max(0, tempColor.current.r));
+          tempColor.current.g = Math.min(1, Math.max(0, tempColor.current.g));
+          tempColor.current.b = Math.min(1, Math.max(0, tempColor.current.b));
         }
         mesh.setColorAt(i, tempColor.current);
       }
@@ -404,8 +395,6 @@ export function ChunksScene({
       : null;
 
   const shouldRenderFocusEdges = !isRunning && focusEdges.length > 0 && edgeOpacity > 0;
-  const shouldRenderOutboundEdges =
-    lensActive && !isRunning && outboundEdges.length > 0 && edgeOpacity > 0;
 
   return (
     <>
@@ -415,16 +404,6 @@ export function ChunksScene({
           edgesVersion={focusEdgesVersion}
           positions={renderedPositions}
           opacity={edgeOpacity * 0.35}
-        />
-      )}
-      {shouldRenderOutboundEdges && (
-        <ChunkEdges
-          edges={outboundEdges}
-          edgesVersion={outboundEdgesVersion}
-          positions={renderedPositions}
-          opacity={edgeOpacity * 0.15}
-          focusNodeSet={lensNodeSet}
-          projectOutsideFocus
         />
       )}
       <CameraController maxDistance={10000} enableDragPan={!isDraggingNode} />
