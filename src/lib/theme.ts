@@ -10,6 +10,7 @@ import { colors } from "./colors";
  * Uses prefers-color-scheme media query.
  */
 export function isDarkMode(): boolean {
+  if (typeof window === 'undefined') return false;
   return window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
@@ -26,6 +27,8 @@ export function getBackgroundColor(): string {
  * Returns cleanup function to remove listener.
  */
 export function watchThemeChanges(callback: (isDark: boolean) => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+
   const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
   const handler = (e: MediaQueryListEvent) => callback(e.matches);
 
