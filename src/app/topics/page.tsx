@@ -10,8 +10,8 @@ import { useTopicsSettings } from "@/hooks/useTopicsSettings";
 import { useContentLoading } from "@/hooks/useContentLoading";
 import { useLocalStorageBackup } from "@/hooks/useLocalStorageBackup";
 import { useOfflineCache } from "@/hooks/useOfflineCache";
-import { OfflineCacheButton } from "@/components/OfflineCacheButton";
 import { ProjectSidebar, type Project as SidebarProject } from "@/components/ProjectSidebar";
+import { OfflineModeToggle } from "@/components/OfflineModeToggle";
 import { InlineTitleInput } from "@/components/InlineTitleInput";
 import { ControlSidebar } from "@/components/ControlSidebar";
 import { GranularityToggle } from "@/components/GranularityToggle";
@@ -53,9 +53,8 @@ export default function TopicsPage() {
   // Automatic localStorage backup
   useLocalStorageBackup({ enabled: true });
 
-  // Fetch data with localStorage cache fallback
+  // Fetch data (server uses file-based cache when offline mode enabled)
   const { data, loading, error, isStale } = useOfflineCache<TopicsData>({
-    cacheKey: "topics-data-cache",
     fetcher: async () => {
       const res = await fetch(`/api/topics?nodeType=${settings.nodeType}`);
       const topicsData = await res.json();
@@ -466,11 +465,7 @@ export default function TopicsPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            <OfflineCacheButton
-              cacheKey="topics-data-cache"
-              label="Save Offline"
-              isStale={isStale}
-            />
+            <OfflineModeToggle />
             <GranularityToggle
               value={settings.nodeType}
               onChange={(value) => update('nodeType', value)}

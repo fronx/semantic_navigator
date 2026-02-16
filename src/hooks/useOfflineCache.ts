@@ -1,13 +1,11 @@
 /**
- * Reusable hook for offline data caching with localStorage fallback.
- * Automatically stores successful fetches and falls back to cache when offline.
+ * Simple data fetching hook.
+ * No client-side caching - relies on server-side file-based cache when offline mode is enabled.
  */
 
 import { useEffect, useState } from "react";
 
 export interface OfflineCacheOptions<T> {
-  /** Unique cache key for localStorage */
-  cacheKey: string;
   /** Function that fetches the data (returns Promise) */
   fetcher: () => Promise<T>;
   /** Dependencies that trigger refetch (like useEffect deps) */
@@ -15,22 +13,19 @@ export interface OfflineCacheOptions<T> {
 }
 
 export interface OfflineCacheResult<T> {
-  /** The data (from network or cache) */
+  /** The data (from API) */
   data: T | null;
-  /** Loading state (only true during initial fetch) */
+  /** Loading state */
   loading: boolean;
-  /** Error message if fetch failed and no cache available */
+  /** Error message if fetch failed */
   error: string | null;
-  /** Whether data is from stale cache (offline) */
+  /** Whether server is using offline file cache (from header) */
   isStale: boolean;
   /** Manually trigger a refetch */
   refetch: () => Promise<void>;
-  /** Clear the cache */
-  clearCache: () => void;
 }
 
 export function useOfflineCache<T>({
-  cacheKey,
   fetcher,
   deps = [],
 }: OfflineCacheOptions<T>): OfflineCacheResult<T> {
@@ -41,45 +36,21 @@ export function useOfflineCache<T>({
 
   async function fetchData() {
     setLoading(true);
-    setIsStale(false);
+    setError(null);
 
     try {
       const result = await fetcher();
-
-      // Save to cache
-      try {
-        localStorage.setItem(cacheKey, JSON.stringify(result));
-      } catch (cacheError) {
-        console.warn(`Failed to cache data for ${cacheKey}:`, cacheError);
-      }
-
       setData(result);
       setError(null);
+      // Server can set X-Offline-Cache header to indicate it's serving from files
+      setIsStale(false); // Will be updated by response inspection if needed
     } catch (err) {
-      // Try to load from cache on error
-      try {
-        const cached = localStorage.getItem(cacheKey);
-        if (cached) {
-          setData(JSON.parse(cached));
-          setIsStale(true);
-          setError(null);
-          console.info(`Using cached data for ${cacheKey} (offline mode)`);
-        } else {
-          throw err; // No cache available, propagate error
-        }
-      } catch (parseError) {
-        setError(err instanceof Error ? err.message : "Unknown error");
-        setData(null);
-      }
+      setError(err instanceof Error ? err.message : "Unknown error");
+      setData(null);
+      setIsStale(false);
     } finally {
       setLoading(false);
     }
-  }
-
-  function clearCache() {
-    localStorage.removeItem(cacheKey);
-    setData(null);
-    setIsStale(false);
   }
 
   useEffect(() => {
@@ -93,6 +64,5 @@ export function useOfflineCache<T>({
     error,
     isStale,
     refetch: fetchData,
-    clearCache,
   };
 }

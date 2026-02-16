@@ -11,7 +11,6 @@ import { useSearch } from "@/hooks/useSearch";
 import { Slider } from "@/components/Slider";
 import { ChunksCanvas } from "./chunks-r3f/ChunksCanvas";
 import { exportUmapGraph } from "@/lib/export-umap-graph";
-import { OfflineCacheButton } from "@/components/OfflineCacheButton";
 
 const UMAP_DEFAULTS = {
   nNeighbors: 15,
@@ -144,12 +143,6 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
             </span>
           </div>
         )}
-
-        <OfflineCacheButton
-          cacheKey="chunks-data-cache"
-          label="Save Offline"
-          isStale={isStale}
-        />
 
         <button
           onClick={handleExport}

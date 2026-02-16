@@ -6,7 +6,6 @@ import { useOfflineCache } from "@/hooks/useOfflineCache";
 
 export default function ChunksPage() {
   const { data: chunks, loading, error, isStale } = useOfflineCache<ChunkEmbeddingData[]>({
-    cacheKey: "chunks-data-cache",
     fetcher: async () => {
       const res = await fetch("/api/chunks/embeddings");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

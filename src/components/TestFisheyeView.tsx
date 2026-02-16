@@ -1,8 +1,7 @@
-import { Canvas, useThree } from "@react-three/fiber";
-import { useMemo } from "react";
+import { Canvas, useThree, useFrame } from "@react-three/fiber";
+import { useMemo, useEffect, useState, useRef } from "react";
 import { getBackgroundColor } from "@/lib/theme";
 import { CAMERA_FOV_DEGREES } from "@/lib/rendering-utils/zoom-to-cursor";
-import { applyFisheyeCompression } from "@/lib/fisheye-viewport";
 
 interface GridLine {
   points: [number, number, number][];
@@ -41,24 +40,57 @@ function makeGrid(
   return lines;
 }
 
+function applyFisheyeDistortion(
+  x: number,
+  y: number,
+  focusX: number,
+  focusY: number,
+  radius: number,
+  strength: number
+): [number, number] {
+  const dx = x - focusX;
+  const dy = y - focusY;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+
+  if (distance === 0) {
+    return [x, y];
+  }
+
+  // Classic fisheye: expand near center, compress at edges
+  // Use a smooth curve that magnifies in the middle and compresses at the boundary
+  const normalized = distance / radius;
+
+  if (normalized >= 1) {
+    return [x, y];
+  }
+
+  // Distortion factor: center expands (>1), edges compress (<1)
+  // Using: distortedR = r * (1 + strength * (1 - r/radius)^2)
+  const factor = 1 + strength * Math.pow(1 - normalized, 2);
+  const distortedDistance = distance * factor;
+
+  const ratio = distortedDistance / distance;
+  return [focusX + dx * ratio, focusY + dy * ratio];
+}
+
 function distortGrid(
   lines: GridLine[],
   focusX: number,
   focusY: number,
-  compressionStartRadius: number,
-  maxRadius: number
+  radius: number,
+  strength: number
 ): GridLine[] {
   return lines.map((line) => ({
     points: line.points.map(([x, y, z]) => {
-      const compressed = applyFisheyeCompression(
+      const [distortedX, distortedY] = applyFisheyeDistortion(
         x,
         y,
         focusX,
         focusY,
-        compressionStartRadius,
-        maxRadius
+        radius,
+        strength
       );
-      return [compressed.x, compressed.y, z] as [number, number, number];
+      return [distortedX, distortedY, z] as [number, number, number];
     }),
   }));
 }
@@ -98,13 +130,40 @@ function calculateGridBounds(cameraZ: number, fov: number, aspect: number) {
   };
 }
 
+function CameraController() {
+  const { camera } = useThree();
+
+  useEffect(() => {
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const delta = e.deltaY;
+      const zoomSpeed = 10;
+      camera.position.z = Math.max(1000, Math.min(20000, camera.position.z + delta * zoomSpeed));
+    };
+
+    window.addEventListener("wheel", handleWheel, { passive: false });
+    return () => window.removeEventListener("wheel", handleWheel);
+  }, [camera]);
+
+  return null;
+}
+
 function Scene() {
-  const { size } = useThree();
+  const { size, camera } = useThree();
+  const [cameraZ, setCameraZ] = useState(camera.position.z);
+  const lastCameraZ = useRef(camera.position.z);
+
+  useFrame(() => {
+    if (Math.abs(camera.position.z - lastCameraZ.current) > 10) {
+      lastCameraZ.current = camera.position.z;
+      setCameraZ(camera.position.z);
+    }
+  });
 
   const aspect = size.width / size.height;
   const { size: gridSize, interval } = useMemo(
-    () => calculateGridBounds(6000, CAMERA_FOV_DEGREES, aspect),
-    [aspect]
+    () => calculateGridBounds(cameraZ, CAMERA_FOV_DEGREES, aspect),
+    [cameraZ, aspect]
   );
 
   const grid = useMemo(
@@ -113,9 +172,9 @@ function Scene() {
   );
 
   const distortedGrid = useMemo(() => {
-    const compressionStartRadius = gridSize * 0.6;
-    const maxRadius = gridSize * 0.9;
-    return distortGrid(grid, 0, 0, compressionStartRadius, maxRadius);
+    const radius = gridSize * 0.7;
+    const strength = 0.5; // 0 = no effect, 1 = strong magnification
+    return distortGrid(grid, 0, 0, radius, strength);
   }, [grid, gridSize]);
 
   return <GridLines lines={distortedGrid} />;
@@ -140,6 +199,7 @@ export function TestFisheyeView() {
         style={{ width: "100%", height: "100%" }}
       >
         <color attach="background" args={[backgroundColor]} />
+        <CameraController />
         <Scene />
       </Canvas>
     </main>
