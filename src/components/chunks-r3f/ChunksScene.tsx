@@ -14,6 +14,7 @@ import { useChunkForceLayout } from "@/hooks/useChunkForceLayout";
 import { useInstancedMeshDrag } from "@/hooks/useInstancedMeshDrag";
 import { useInstancedMeshMaterial } from "@/hooks/useInstancedMeshMaterial";
 import { useStableInstanceCount } from "@/hooks/useStableInstanceCount";
+import { useFadingScale } from "@/hooks/useFadingScale";
 import type { UmapEdge } from "@/hooks/useUmapLayout";
 import { CARD_WIDTH, CARD_HEIGHT, createCardGeometry } from "@/lib/chunks-geometry";
 import {
@@ -120,6 +121,12 @@ export function ChunksScene({
     ? neighborhoodEdgesVersion * 31 + (lensInfo?.nodeSet.size ?? 0)
     : neighborhoodEdgesVersion;
 
+  // --- Animated visibility for focus mode ---
+  const visibleNodeIndicesRef = useRef(new Set<number>());
+  const nodeScalesRef = useFadingScale(visibleNodeIndicesRef, {
+    lerpSpeed: 0.1,  // Slightly faster than default for responsive feel
+  });
+
   // --- Reusable objects for useFrame (avoid GC pressure) ---
   const matrixRef = useRef(new THREE.Matrix4());
   const posVec = useRef(new THREE.Vector3());
@@ -215,6 +222,19 @@ export function ChunksScene({
     const usingLensBuffer = lensActive && bufferReady && scalesReady && lensNodeSet;
     const targetPositions = usingLensBuffer ? renderPositionsRef.current : layoutPositions;
 
+    // --- Update visible set for animated transitions ---
+    visibleNodeIndicesRef.current.clear();
+    if (lensActive && lensNodeSet) {
+      for (const nodeIndex of lensNodeSet) {
+        visibleNodeIndicesRef.current.add(nodeIndex);
+      }
+    } else {
+      // All nodes visible when lens inactive
+      for (let i = 0; i < n; i++) {
+        visibleNodeIndicesRef.current.add(i);
+      }
+    }
+
     // --- Compute lens positions and scales ---
     if (usingLensBuffer && lensInfo && lensNodeSet) {
       const zones = computeViewportZones(camera as THREE.PerspectiveCamera, size.width, size.height);
@@ -264,17 +284,22 @@ export function ChunksScene({
 
     // --- Set instance matrices ---
     for (let i = 0; i < n; i++) {
-      // Hide non-focused nodes in lens mode
-      if (lensActive && lensNodeSet && !lensNodeSet.has(i)) {
+      const animatedScale = nodeScalesRef.current.get(i) ?? 0;
+
+      // Skip fully invisible nodes (optimization)
+      if (animatedScale < 0.005) {
         scaleVec.current.setScalar(0);
         matrixRef.current.compose(posVec.current, quat.current, scaleVec.current);
         mesh.setMatrixAt(i, matrixRef.current);
         continue;
       }
 
-      const nodeScale = usingLensBuffer ? renderScalesRef.current[i] : 1;
+      // Apply lens scale AND animated fade
+      const lensScale = usingLensBuffer ? renderScalesRef.current[i] : 1;
+      const finalScale = CARD_SCALE * lensScale * animatedScale;
+
       posVec.current.set(targetPositions[i * 2], targetPositions[i * 2 + 1], 0);
-      scaleVec.current.setScalar(CARD_SCALE * nodeScale);
+      scaleVec.current.setScalar(finalScale);
       matrixRef.current.compose(posVec.current, quat.current, scaleVec.current);
       mesh.setMatrixAt(i, matrixRef.current);
     }
