@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase";
 import { adaptToContentNode } from "@/lib/node-adapters";
+import { loadOfflineJSON } from "@/lib/offline-data";
 
 export async function POST(request: Request) {
   try {
@@ -24,28 +25,92 @@ export async function POST(request: Request) {
     console.log(`[Chunks API] Querying for ${keywordLabels.length} keyword labels (${nodeTypeLabel})`);
     console.log('[Chunks API] First 5 labels:', keywordLabels.slice(0, 5));
 
-    // Query keywords table, join through keyword_occurrences to get nodes
-    // Filter by nodeType (article or chunk) via keyword_occurrences.node_type
-    // Note: Using 'any' cast because Supabase types don't include the new schema yet
-    const { data, error } = await supabase
-      .from('keywords')
-      .select(`
-        id,
-        keyword,
-        keyword_occurrences!inner (
-          node_id,
-          node_type,
-          nodes!inner (
-            id,
-            content,
-            summary,
-            source_path,
-            node_type
+    let data: any = null;
+    let error: any = null;
+
+    // Try offline cache first (server-side only)
+    if (typeof window === 'undefined') {
+      try {
+        const offlineAssociations = await loadOfflineJSON<{ associations: Array<{ keywordId: string; keyword: string; nodeId: string; nodeType: string }> }>(
+          `keyword-associations-${nodeType}.json`
+        );
+        const offlineNodes = await loadOfflineJSON<{ nodes: any[] }>(
+          `nodes-${nodeType}.json`
+        );
+
+        if (offlineAssociations && offlineNodes) {
+          console.log('[Chunks API] Using offline cache');
+
+          // Filter associations by requested keywords
+          const relevantAssocs = offlineAssociations.associations.filter(
+            assoc => keywordLabels.includes(assoc.keyword)
+          );
+
+          // Build node lookup
+          const nodeLookup = new Map<string, any>();
+          for (const node of offlineNodes.nodes) {
+            nodeLookup.set(node.id, node);
+          }
+
+          // Build response structure matching database format
+          const keywordMap = new Map<string, any>();
+          for (const assoc of relevantAssocs) {
+            const node = nodeLookup.get(assoc.nodeId);
+            if (!node) continue;
+
+            if (!keywordMap.has(assoc.keyword)) {
+              keywordMap.set(assoc.keyword, {
+                id: assoc.keywordId,
+                keyword: assoc.keyword,
+                keyword_occurrences: []
+              });
+            }
+
+            keywordMap.get(assoc.keyword).keyword_occurrences.push({
+              node_id: assoc.nodeId,
+              node_type: assoc.nodeType,
+              nodes: {
+                id: node.id,
+                content: node.content,
+                summary: node.summary || null,
+                source_path: node.sourcePath || node.source_path || null,
+                node_type: assoc.nodeType
+              }
+            });
+          }
+
+          data = Array.from(keywordMap.values());
+        }
+      } catch (offlineError) {
+        console.log('[Chunks API] Offline cache unavailable, using database');
+      }
+    }
+
+    // Fall back to database query if offline cache not available
+    if (!data) {
+      const result = await supabase
+        .from('keywords')
+        .select(`
+          id,
+          keyword,
+          keyword_occurrences!inner (
+            node_id,
+            node_type,
+            nodes!inner (
+              id,
+              content,
+              summary,
+              source_path,
+              node_type
+            )
           )
-        )
-      `)
-      .in('keyword', keywordLabels)
-      .eq('keyword_occurrences.node_type', nodeType) as any;
+        `)
+        .in('keyword', keywordLabels)
+        .eq('keyword_occurrences.node_type', nodeType) as any;
+
+      data = result.data;
+      error = result.error;
+    }
 
     if (error) {
       console.error('[Chunks API] Database error:', error);

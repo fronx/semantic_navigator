@@ -25,6 +25,7 @@ const FULL_OPACITY_Z = 200;
 interface ChunkTextLabelsProps {
   chunks: ChunkEmbeddingData[];
   positions: Float32Array;
+  scales?: Float32Array | null;
   cardWidth: number;
   cardHeight: number;
   cardScale: number;
@@ -41,6 +42,7 @@ interface ChunkLabelRegistration {
 export function ChunkTextLabels({
   chunks,
   positions,
+  scales,
   cardWidth,
   cardHeight,
   cardScale,
@@ -143,13 +145,14 @@ export function ChunkTextLabels({
       group.position.set(x, y, 0.1); // slightly above cards
 
       // Scale text to fit within card bounds
-      const cardWorldWidth = cardWidth * cardScale;
+      const nodeScale = scales?.[index] ?? 1;
+      const cardWorldWidth = cardWidth * cardScale * nodeScale;
       const usableWidth = cardWorldWidth * (1 - 2 * MARGIN_RATIO);
       const textScale = geometryWidth > 0 ? usableWidth / geometryWidth : cardScale;
       group.scale.setScalar(textScale);
 
       // Update clipping plane to clip at bottom edge of card
-      const cardWorldHeight = cardHeight * cardScale;
+      const cardWorldHeight = cardHeight * cardScale * nodeScale;
       clippingUpdater.setBottomClip(y, cardWorldHeight);
 
       // Set opacity (zoom only - search dims backgrounds, not text)

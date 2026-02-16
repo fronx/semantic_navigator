@@ -72,6 +72,22 @@ async function main() {
       await downloadJSON(`${BASE_URL}/api/projects`, "projects.json")
     );
 
+    // Download keyword associations (keyword → chunk/article mappings)
+    results.push(
+      await downloadJSON(`${BASE_URL}/api/keywords/associations?nodeType=chunk`, "keyword-associations-chunk.json")
+    );
+    results.push(
+      await downloadJSON(`${BASE_URL}/api/keywords/associations?nodeType=article`, "keyword-associations-article.json")
+    );
+
+    // Download all nodes (content for chunks and articles)
+    results.push(
+      await downloadJSON(`${BASE_URL}/api/nodes/all?nodeType=chunk`, "nodes-chunk.json")
+    );
+    results.push(
+      await downloadJSON(`${BASE_URL}/api/nodes/all?nodeType=article`, "nodes-article.json")
+    );
+
     // Download precomputed clusters for common resolutions
     const resolutions = [0.1, 0.3, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0];
     for (const resolution of resolutions) {

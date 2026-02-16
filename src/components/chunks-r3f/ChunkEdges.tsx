@@ -4,21 +4,31 @@ import * as THREE from "three";
 
 import type { UmapEdge } from "@/hooks/useUmapLayout";
 import { computeArcPoints, computeOutwardDirection } from "@/lib/edge-curves";
-import { computeViewportZones } from "@/lib/edge-pulling";
+import { computeViewportZones, computeCompressionRadii } from "@/lib/edge-pulling";
 
 const EDGE_SEGMENTS = 16;
 const ARC_VERTEX_COUNT = EDGE_SEGMENTS + 1;
 const VERTICES_PER_EDGE = ARC_VERTEX_COUNT + 1; // +1 for NaN break
 const EDGE_COLOR = 0.533; // ~#888888
+const OUTBOUND_EDGE_OFFSET = 40;
 
 export interface ChunkEdgesProps {
   edges: UmapEdge[];
   edgesVersion: number;
   positions: Float32Array;
   opacity: number;
+  focusNodeSet?: Set<number> | null;
+  projectOutsideFocus?: boolean;
 }
 
-export function ChunkEdges({ edges, edgesVersion, positions, opacity }: ChunkEdgesProps) {
+export function ChunkEdges({
+  edges,
+  edgesVersion,
+  positions,
+  opacity,
+  focusNodeSet,
+  projectOutsideFocus = false,
+}: ChunkEdgesProps) {
   const lineRef = useRef<THREE.Line | null>(null);
   const { camera, size } = useThree();
 
@@ -77,6 +87,10 @@ export function ChunkEdges({ edges, edgesVersion, positions, opacity }: ChunkEdg
     const perspCamera = camera as THREE.PerspectiveCamera;
     const zones = computeViewportZones(perspCamera, size.width, size.height);
     const viewport = zones.viewport;
+    const { maxRadius } = computeCompressionRadii(zones);
+    const camX = zones.viewport.camX;
+    const camY = zones.viewport.camY;
+    const shouldProject = Boolean(projectOutsideFocus && focusNodeSet && focusNodeSet.size > 0);
     const width = viewport.right - viewport.left;
     const height = viewport.top - viewport.bottom;
     const marginX = width * 0.2;
@@ -85,6 +99,31 @@ export function ChunkEdges({ edges, edgesVersion, positions, opacity }: ChunkEdg
     const maxX = viewport.right + marginX;
     const minY = viewport.bottom - marginY;
     const maxY = viewport.top + marginY;
+
+    const projectPosition = (nodeIndex: number, x: number, y: number) => {
+      if (!shouldProject || focusNodeSet?.has(nodeIndex)) {
+        return { x, y };
+      }
+
+      const insidePullBounds =
+        x >= zones.pullBounds.left &&
+        x <= zones.pullBounds.right &&
+        y >= zones.pullBounds.bottom &&
+        y <= zones.pullBounds.top;
+      if (insidePullBounds) {
+        return { x, y };
+      }
+      const dx = x - camX;
+      const dy = y - camY;
+      const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+      const targetDistance = maxRadius + OUTBOUND_EDGE_OFFSET;
+      const ratio = targetDistance / distance;
+      let px = camX + dx * ratio;
+      let py = camY + dy * ratio;
+      px = Math.max(zones.pullBounds.left, Math.min(zones.pullBounds.right, px));
+      py = Math.max(zones.pullBounds.bottom, Math.min(zones.pullBounds.top, py));
+      return { x: px, y: py };
+    };
 
     let maxWeight = 0;
     for (const edge of edges) {
@@ -113,13 +152,18 @@ export function ChunkEdges({ edges, edgesVersion, positions, opacity }: ChunkEdg
         continue;
       }
 
-      const sx = positions[sourceIdx];
-      const sy = positions[sourceIdx + 1];
-      const tx = positions[targetIdx];
-      const ty = positions[targetIdx + 1];
+      const sourceRawX = positions[sourceIdx];
+      const sourceRawY = positions[sourceIdx + 1];
+      const targetRawX = positions[targetIdx];
+      const targetRawY = positions[targetIdx + 1];
 
-      const sourceInView = sx >= minX && sx <= maxX && sy >= minY && sy <= maxY;
-      const targetInView = tx >= minX && tx <= maxX && ty >= minY && ty <= maxY;
+      const sourcePoint = projectPosition(edge.source, sourceRawX, sourceRawY);
+      const targetPoint = projectPosition(edge.target, targetRawX, targetRawY);
+
+      const sourceInView =
+        sourcePoint.x >= minX && sourcePoint.x <= maxX && sourcePoint.y >= minY && sourcePoint.y <= maxY;
+      const targetInView =
+        targetPoint.x >= minX && targetPoint.x <= maxX && targetPoint.y >= minY && targetPoint.y <= maxY;
       if (!sourceInView && !targetInView) {
         for (let i = 0; i < VERTICES_PER_EDGE * 3; i++) {
           posArray[basePos + i] = Number.NaN;
@@ -131,14 +175,14 @@ export function ChunkEdges({ edges, edgesVersion, positions, opacity }: ChunkEdg
       }
 
       const direction = computeOutwardDirection(
-        { id: `${edge.source}`, x: sx, y: sy },
-        { id: `${edge.target}`, x: tx, y: ty },
+        { id: `${edge.source}`, x: sourcePoint.x, y: sourcePoint.y },
+        { id: `${edge.target}`, x: targetPoint.x, y: targetPoint.y },
         centroid
       );
 
       const arcPoints = computeArcPoints(
-        { x: sx, y: sy },
-        { x: tx, y: ty },
+        { x: sourcePoint.x, y: sourcePoint.y },
+        { x: targetPoint.x, y: targetPoint.y },
         0.15,
         direction,
         EDGE_SEGMENTS
