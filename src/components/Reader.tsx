@@ -48,7 +48,7 @@ export function Reader({ chunkId, onClose }: ReaderProps) {
       return [
         { articleId: data.articleId, sourcePath: data.sourcePath, chunkId, data },
         ...prev,
-      ];
+      ].slice(0, 5);
     });
     setActiveArticleId(data.articleId);
   }, [data, chunkId]);
