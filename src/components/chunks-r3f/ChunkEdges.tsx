@@ -50,6 +50,12 @@ const VIEWPORT_FADE_SPEED = 0.08;
 // Width constants
 const FOV_HALF_TAN = Math.tan((5 * Math.PI) / 180); // half of 10° FOV
 const REFERENCE_Z = 3000;
+
+// Zoom-based contrast: dim when zoomed out (many edges cluttered), sharp when zoomed in
+const CONTRAST_FAR_Z = 6000;
+const CONTRAST_NEAR_Z = 400;
+const CONTRAST_AT_FAR = 4;
+const CONTRAST_AT_NEAR = 13;
 const MAX_PIXEL_WIDTH = 5;
 const MIN_PIXEL_WIDTH = 0.3;
 
@@ -73,7 +79,6 @@ export interface ChunkEdgesProps {
   positions: Float32Array;
   opacity: number;
   edgeThickness: number;
-  edgeContrast: number;
   edgeMidpoint: number;
   focusNodeSet?: Set<number> | null;
   projectOutsideFocus?: boolean;
@@ -86,7 +91,6 @@ export function ChunkEdges({
   positions,
   opacity,
   edgeThickness,
-  edgeContrast,
   edgeMidpoint,
   focusNodeSet,
   projectOutsideFocus = false,
@@ -155,8 +159,10 @@ export function ChunkEdges({
 
     const perspCamera = camera as THREE.PerspectiveCamera;
 
-    // --- Camera-dependent width ---
+    // --- Camera-dependent width and contrast ---
     const cameraZ = perspCamera.position.z;
+    const zoomT = Math.max(0, Math.min(1, (cameraZ - CONTRAST_NEAR_Z) / (CONTRAST_FAR_Z - CONTRAST_NEAR_Z)));
+    const edgeContrast = CONTRAST_AT_NEAR + (CONTRAST_AT_FAR - CONTRAST_AT_NEAR) * zoomT;
     const worldPerPixel = (2 * cameraZ * FOV_HALF_TAN) / size.height;
     const basePixelWidth = Math.min(
       edgeThickness * (REFERENCE_Z / cameraZ),

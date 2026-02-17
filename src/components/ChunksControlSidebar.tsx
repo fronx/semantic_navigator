@@ -18,13 +18,15 @@ export interface ChunksSettings {
   minSaturation: number;
   chunkColorMix: number;
   edgeThickness: number;
-  edgeContrast: number;
   edgeMidpoint: number;
   lensCompressionStrength: number;
   lensCenterScale: number;
   lensEdgeScale: number;
   lpNormP: number;
   focusMode: "manifold" | "click";
+  nodeSizeMin: number;
+  nodeSizeMax: number;
+  nodeSizePivot: number;
   sidebarCollapsed: boolean;
   sectionStates: Record<string, boolean>;
 }
@@ -120,21 +122,42 @@ export function ChunksControlSidebar({ store }: ChunksControlSidebarProps): Reac
           format={(v) => v.toFixed(1)}
         />
         <Slider
-          label="Contrast"
-          value={values.edgeContrast}
-          onChange={(v) => update("edgeContrast", v)}
-          min={0}
-          max={20}
-          step={1}
-          format={(v) => `${v}`}
-        />
-        <Slider
           label="Midpoint"
           value={values.edgeMidpoint}
           onChange={(v) => update("edgeMidpoint", v)}
           min={0.1}
           max={0.9}
           step={0.05}
+        />
+      </Section>
+
+      <Section {...sectionProps("Node Size")}>
+        <Slider
+          label="Min size"
+          value={values.nodeSizeMin}
+          onChange={(v) => update("nodeSizeMin", v)}
+          min={0.1}
+          max={2.0}
+          step={0.05}
+          format={(v) => v.toFixed(2)}
+        />
+        <Slider
+          label="Max size"
+          value={values.nodeSizeMax}
+          onChange={(v) => update("nodeSizeMax", v)}
+          min={1.0}
+          max={50.0}
+          step={1}
+          format={(v) => v.toFixed(1)}
+        />
+        <Slider
+          label="Pivot count"
+          value={values.nodeSizePivot}
+          onChange={(v) => update("nodeSizePivot", v)}
+          min={5}
+          max={300}
+          step={5}
+          format={(v) => `${v}`}
         />
       </Section>
 

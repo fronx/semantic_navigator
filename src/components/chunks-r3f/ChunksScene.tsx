@@ -102,13 +102,15 @@ interface ChunksSceneProps {
   minSaturation: number;
   chunkColorMix: number;
   edgeThickness: number;
-  edgeContrast: number;
   edgeMidpoint: number;
   lensCompressionStrength: number;
   lensCenterScale: number;
   lensEdgeScale: number;
   lpNormP: number;
   focusMode: "manifold" | "click";
+  nodeSizeMin: number;
+  nodeSizeMax: number;
+  nodeSizePivot: number;
   backgroundClickRef?: MutableRefObject<(() => void) | null>;
 }
 
@@ -126,13 +128,15 @@ export function ChunksScene({
   minSaturation,
   chunkColorMix,
   edgeThickness,
-  edgeContrast,
   edgeMidpoint,
   lensCompressionStrength,
   lensCenterScale,
   lensEdgeScale,
   lpNormP,
   focusMode,
+  nodeSizeMin,
+  nodeSizeMax,
+  nodeSizePivot,
   backgroundClickRef,
 }: ChunksSceneProps) {
   const count = chunks.length;
@@ -286,6 +290,9 @@ export function ChunksScene({
 
   const lensActive = !!lensInfo && focusSeedIndices.length > 0 && !isRunning;
   const lensNodeSet = lensInfo?.nodeSet ?? null;
+  // Use visible node count for sizing: focus mode shows a subset, so nodes should appear larger.
+  const visibleCount = lensNodeSet != null ? lensNodeSet.size : count;
+  const countScale = nodeSizeMin + (nodeSizeMax - nodeSizeMin) * (nodeSizePivot / (nodeSizePivot + visibleCount));
   const lensDepthMap = lensInfo?.depthMap;
   const focusNodeSetRef = useRef<Set<number>>(new Set());
   useEffect(() => {
@@ -800,7 +807,7 @@ export function ChunksScene({
       // smoothstep easing: slow at start and end, fast in the middle
       const t = rawProgress * rawProgress * (3 - 2 * rawProgress);
       const hoverScale = 1 + (HOVER_SCALE_MULTIPLIER - 1) * t;
-      const finalScale = CARD_SCALE * lensScale * animatedScale * hoverScale;
+      const finalScale = CARD_SCALE * countScale * lensScale * animatedScale * hoverScale;
       const rank = zRankRef.current.get(i) ?? i;
       const cardZ = rank * cardZStep;
       const textZForCard = cardZ + cardZStep / 2;
@@ -922,8 +929,7 @@ export function ChunksScene({
           edgesVersion={focusEdgesVersion}
           positions={displayPositions}
           opacity={edgeOpacity * 0.35}
-          edgeThickness={edgeThickness}
-          edgeContrast={edgeContrast}
+          edgeThickness={edgeThickness * countScale}
           edgeMidpoint={edgeMidpoint}
           nodeColors={chunkColors}
         />
