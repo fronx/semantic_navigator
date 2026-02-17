@@ -30,7 +30,13 @@ import {
 } from "@/lib/chunks-lens";
 import { hashToHue } from "@/lib/chunks-utils";
 import { computeViewportZones } from "@/lib/edge-pulling";
-import { applyFisheyeCompression, computeCompressionExtents, DEFAULT_LP_NORM_P } from "@/lib/fisheye-viewport";
+import {
+  applyDirectionalRangeCompression,
+  applyFisheyeCompression,
+  computeCompressionExtents,
+  createDirectionalRangeCompressionConfig,
+  DEFAULT_LP_NORM_P,
+} from "@/lib/fisheye-viewport";
 import { projectCardToScreenRect, type ScreenRect } from "@/lib/screen-rect-projection";
 import { normalizeF32 } from "@/lib/semantic-zoom";
 import { ChunkEdges } from "./ChunkEdges";
@@ -74,81 +80,6 @@ function lpDistance(dx: number, dy: number, p: number): number {
   const absX = Math.abs(dx);
   const absY = Math.abs(dy);
   return Math.pow(Math.pow(absX, exponent) + Math.pow(absY, exponent), 1 / exponent);
-}
-
-interface RangeCompressionConfig {
-  pivot: number;
-  innerCurve: number;
-  outerCurve: number;
-  blend: number;
-}
-
-function remapNormalizedDistance(value: number, config: RangeCompressionConfig): number {
-  const pivot = THREE.MathUtils.clamp(config.pivot, 0.1, 0.85);
-  const normalized = THREE.MathUtils.clamp(value, 0, 1.2);
-  const innerCurve = THREE.MathUtils.clamp(config.innerCurve, 0.2, 0.95);
-  const outerCurve = Math.max(1.01, config.outerCurve);
-  if (normalized <= 0) return 0;
-  if (normalized < pivot) {
-    const ratio = normalized / Math.max(pivot, 1e-3);
-    const eased = Math.pow(Math.max(ratio, 0), innerCurve);
-    return pivot * eased;
-  }
-  const span = Math.max(1e-3, 1 - pivot);
-  const ratio = (normalized - pivot) / span;
-  const eased = Math.pow(Math.max(ratio, 0), outerCurve);
-  return pivot + span * eased;
-}
-
-function applyViewportRangeCompression(
-  x: number,
-  y: number,
-  camX: number,
-  camY: number,
-  horizonHalfWidth: number,
-  horizonHalfHeight: number,
-  config: RangeCompressionConfig,
-): { x: number; y: number } {
-  const dx = x - camX;
-  const dy = y - camY;
-  const denomX = Math.max(Math.abs(horizonHalfWidth), 1e-3);
-  const denomY = Math.max(Math.abs(horizonHalfHeight), 1e-3);
-  const normalized = Math.max(Math.abs(dx) / denomX, Math.abs(dy) / denomY);
-  if (!Number.isFinite(normalized) || normalized <= 1e-4) {
-    return { x, y };
-  }
-  const remapped = remapNormalizedDistance(normalized, config);
-  const blend = THREE.MathUtils.clamp(config.blend, 0, 1);
-  const target = THREE.MathUtils.clamp(normalized + (remapped - normalized) * blend, 0, 0.995);
-  if (Math.abs(target - normalized) < 1e-4 || normalized <= 0) {
-    return { x, y };
-  }
-  const scale = target / normalized;
-  return {
-    x: camX + dx * scale,
-    y: camY + dy * scale,
-  };
-}
-
-function createRangeCompressionConfig(
-  compressionStrength: number,
-  extents: {
-    horizonHalfWidth: number;
-    horizonHalfHeight: number;
-    compressionStartHalfWidth: number;
-    compressionStartHalfHeight: number;
-  },
-): RangeCompressionConfig {
-  const ratioX = extents.compressionStartHalfWidth / Math.max(extents.horizonHalfWidth, 1e-3);
-  const ratioY = extents.compressionStartHalfHeight / Math.max(extents.horizonHalfHeight, 1e-3);
-  const avgRatio = (ratioX + ratioY) * 0.5;
-  const normalizedStrength = THREE.MathUtils.clamp(compressionStrength, 0.6, 3);
-  return {
-    pivot: THREE.MathUtils.clamp(avgRatio * 0.9, 0.3, 0.6),
-    innerCurve: THREE.MathUtils.clamp(0.6 - (normalizedStrength - 1) * 0.08, 0.35, 0.85),
-    outerCurve: THREE.MathUtils.clamp(1.2 + (normalizedStrength - 1) * 0.35, 1.1, 2.1),
-    blend: THREE.MathUtils.clamp(0.6 + (normalizedStrength - 1) * 0.12, 0.5, 0.95),
-  };
 }
 
 // --- Props ---
@@ -620,7 +551,7 @@ export function ChunksScene({
       : null;
     const extents = zones ? computeCompressionExtents(zones) : null;
     const rangeCompressionConfig = !isManifoldFocus && lensActive && extents != null
-      ? createRangeCompressionConfig(lensCompressionStrength, extents)
+      ? createDirectionalRangeCompressionConfig(lensCompressionStrength, extents)
       : null;
 
     if (lensActive && zones) {
@@ -681,7 +612,7 @@ export function ChunksScene({
         y = THREE.MathUtils.clamp(compressed.y, zones.pullBounds.bottom, zones.pullBounds.top);
 
         if (rangeCompressionConfig) {
-          const remapped = applyViewportRangeCompression(
+          const remapped = applyDirectionalRangeCompression(
             x,
             y,
             zones.viewport.camX,

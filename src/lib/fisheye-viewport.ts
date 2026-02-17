@@ -16,6 +16,9 @@
 
 import { applyCompressionToDistance } from "./hyperbolic-compression";
 
+const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+const EPSILON = 1e-4;
+
 /**
  * Default Lp norm exponent for rounded rectangle approximation.
  * p=2 → circle, p→∞ → square, p=6 → nice rounded rectangle feel.
@@ -175,5 +178,90 @@ export function computeCompressionRadii(zones: {
   return {
     maxRadius: Math.min(zones.pullBounds.right - camX, zones.pullBounds.top - camY),
     compressionStartRadius: Math.min(zones.focusPullBounds.right - camX, zones.focusPullBounds.top - camY),
+  };
+}
+
+// ----------------------------------------------------------------------------
+// Directional range compression (rounded-rect remapping)
+// ----------------------------------------------------------------------------
+
+export interface DirectionalRangeCompressionConfig {
+  pivot: number;
+  innerExponent: number;
+  outerExponent: number;
+  blend: number;
+}
+
+export interface DirectionalRangeCompressionExtents {
+  horizonHalfWidth: number;
+  horizonHalfHeight: number;
+  compressionStartHalfWidth: number;
+  compressionStartHalfHeight: number;
+}
+
+/**
+ * Create a compression config describing how aggressively to remap normalized distances.
+ * pivot: where the response transitions from expansion to compression (0-1 normalized radius).
+ * innerExponent < 1 spreads close nodes, outerExponent > 1 compresses far nodes.
+ * blend mixes the remapped value back toward the original for partial effect.
+ */
+export function createDirectionalRangeCompressionConfig(
+  compressionStrength: number,
+  extents: DirectionalRangeCompressionExtents,
+): DirectionalRangeCompressionConfig {
+  const ratioX = extents.compressionStartHalfWidth / Math.max(extents.horizonHalfWidth, EPSILON);
+  const ratioY = extents.compressionStartHalfHeight / Math.max(extents.horizonHalfHeight, EPSILON);
+  const avgRatio = (ratioX + ratioY) * 0.5;
+  const normalizedStrength = clamp(compressionStrength, 0.6, 3);
+  return {
+    pivot: clamp(avgRatio * 0.9, 0.3, 0.6),
+    innerExponent: clamp(0.6 - (normalizedStrength - 1) * 0.08, 0.35, 0.85),
+    outerExponent: clamp(1.2 + (normalizedStrength - 1) * 0.35, 1.1, 2.1),
+    blend: clamp(0.6 + (normalizedStrength - 1) * 0.12, 0.5, 0.95),
+  };
+}
+
+function remapNormalizedDistance(value: number, config: DirectionalRangeCompressionConfig): number {
+  const pivot = clamp(config.pivot, 0.1, 0.85);
+  const normalized = clamp(value, 0, 1.2);
+  if (normalized <= 0) return 0;
+  if (normalized < pivot) {
+    const ratio = normalized / Math.max(pivot, EPSILON);
+    const eased = Math.pow(Math.max(ratio, 0), config.innerExponent);
+    return pivot * eased;
+  }
+  const span = Math.max(EPSILON, 1 - pivot);
+  const ratio = (normalized - pivot) / span;
+  const eased = Math.pow(Math.max(ratio, 0), config.outerExponent);
+  return pivot + span * eased;
+}
+
+export function applyDirectionalRangeCompression(
+  nodeX: number,
+  nodeY: number,
+  camX: number,
+  camY: number,
+  horizonHalfWidth: number,
+  horizonHalfHeight: number,
+  config: DirectionalRangeCompressionConfig,
+): { x: number; y: number } {
+  const dx = nodeX - camX;
+  const dy = nodeY - camY;
+  const normalized = Math.max(
+    Math.abs(dx) / Math.max(Math.abs(horizonHalfWidth), EPSILON),
+    Math.abs(dy) / Math.max(Math.abs(horizonHalfHeight), EPSILON),
+  );
+  if (!Number.isFinite(normalized) || normalized <= EPSILON) {
+    return { x: nodeX, y: nodeY };
+  }
+  const remapped = remapNormalizedDistance(normalized, config);
+  const target = clamp(normalized + (remapped - normalized) * config.blend, 0, 0.995);
+  if (Math.abs(target - normalized) < EPSILON || normalized <= 0) {
+    return { x: nodeX, y: nodeY };
+  }
+  const scale = target / normalized;
+  return {
+    x: camX + dx * scale,
+    y: camY + dy * scale,
   };
 }
