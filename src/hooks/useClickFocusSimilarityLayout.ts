@@ -177,6 +177,10 @@ export function useClickFocusSimilarityLayout({
         hoveredStateRef.current = { index, scaleFactor };
         const sim = simulationRef.current;
         if (!sim) return;
+        // forceCollide caches radii at init time — re-set the radius function
+        // to force d3 to recompute from the updated hoveredStateRef.
+        const collision = sim.force("collision") as d3.ForceCollide<SimilarityNode> | null;
+        if (collision) collision.radius(collision.radius());
         sim.alpha(Math.max(sim.alpha(), 0.5)).restart();
       },
     }),

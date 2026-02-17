@@ -24,7 +24,7 @@ import { setGlobalContrast } from "@/lib/rendering-utils/node-renderer";
 import { isDarkMode, watchThemeChanges } from "@/lib/theme";
 import { searchResultsToKeywordIds } from "@/lib/search-filter";
 import { StartOverlay } from "@/components/StartOverlay";
-import { calculateZoomBasedDesaturation, calculateClusterLabelDesaturation } from "@/lib/zoom-phase-config";
+import { calculateZoomDesaturation, calculateClusterLabelDesaturation } from "@/lib/zoom-phase-config";
 
 /** Debounce a value - returns the value after it stops changing for `delay` ms */
 function useDebouncedValue<T>(value: T, delay: number): T {
@@ -152,7 +152,8 @@ export default function TopicsPage() {
   // Slider (colorDesaturation) acts as multiplier: 0.5x to 2x
   const effectiveDesaturation = useMemo(() => {
     if (!currentCameraZ) return settings.colorDesaturation;
-    const baseDesaturation = calculateZoomBasedDesaturation(currentCameraZ, settings.zoomPhaseConfig);
+    const zpc = settings.zoomPhaseConfig;
+    const baseDesaturation = calculateZoomDesaturation(currentCameraZ, zpc.keywordLabels.start, zpc.chunkCrossfade.far, zpc.chunkCrossfade.near);
     return Math.min(1, baseDesaturation * settings.colorDesaturation);
   }, [currentCameraZ, settings.colorDesaturation, settings.zoomPhaseConfig]);
 

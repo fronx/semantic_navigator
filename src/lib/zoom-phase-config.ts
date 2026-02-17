@@ -84,33 +84,30 @@ export function sanitizeZoomPhaseConfig(config: ZoomPhaseConfig): ZoomPhaseConfi
 }
 
 /**
- * Calculate zoom-based desaturation (0-1 range).
+ * Calculate zoom-based desaturation from three camera-Z reference points.
  *
- * - Zoomed out (cluster level, ~14000+): 0% desaturation
- * - Keyword level (chunkCrossfade.far ~3736): 30% desaturation
- * - Detail level (chunkCrossfade.near ~2052): 65% desaturation
+ * Piecewise linear interpolation with two segments:
+ *   farZ  → 0% desaturation  (fully saturated when zoomed out)
+ *   midZ  → 30% desaturation
+ *   nearZ → 65% desaturation (most desaturated when zoomed in)
  *
- * Uses piecewise linear interpolation with two segments.
+ * Reusable across views with different zoom ranges.
  */
-export function calculateZoomBasedDesaturation(
+export function calculateZoomDesaturation(
   cameraZ: number,
-  config: ZoomPhaseConfig = DEFAULT_ZOOM_PHASE_CONFIG
+  farZ: number,
+  midZ: number,
+  nearZ: number,
 ): number {
-  const clusterLevel = config.keywordLabels.start;
-  const keywordLevel = config.chunkCrossfade.far;
-  const detailLevel = config.chunkCrossfade.near;
-
-  const z = Math.max(detailLevel, Math.min(clusterLevel, cameraZ));
-
-  if (z >= keywordLevel) {
-    // Cluster level (0%) -> keyword level (30%)
-    const t = (clusterLevel - z) / (clusterLevel - keywordLevel);
+  const z = Math.max(nearZ, Math.min(farZ, cameraZ));
+  if (z >= midZ) {
+    const t = (farZ - z) / (farZ - midZ);
     return t * 0.3;
   }
-  // Keyword level (30%) -> detail level (65%)
-  const t = (keywordLevel - z) / (keywordLevel - detailLevel);
+  const t = (midZ - z) / (midZ - nearZ);
   return 0.3 + t * 0.35;
 }
+
 
 /**
  * Calculate zoom-based desaturation for cluster labels (inverse of keyword desaturation).

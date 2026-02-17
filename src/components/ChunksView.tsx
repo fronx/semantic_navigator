@@ -25,6 +25,7 @@ const CHUNKS_DEFAULTS: ChunksSettings = {
   minDist: 0.1,
   spread: 1.0,
   colorSaturation: 0.6,
+  chunkColorMix: 0.4,
   edgeThickness: 2,
   edgeContrast: 10,
   edgeMidpoint: 0.6,
@@ -173,6 +174,7 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
             isRunning={isRunning}
             onSelectChunk={handleSelectChunk}
             colorSaturation={store.values.colorSaturation}
+            chunkColorMix={store.values.chunkColorMix}
             edgeThickness={store.values.edgeThickness}
             edgeContrast={store.values.edgeContrast}
             edgeMidpoint={store.values.edgeMidpoint}

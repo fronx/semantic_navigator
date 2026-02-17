@@ -173,11 +173,6 @@ export function Reader({ chunkId, onClose }: ReaderProps) {
                   : ""
               }`}
             >
-              {chunk.heading_context && chunk.heading_context.length > 0 && (
-                <div className="text-xs text-zinc-400 dark:text-zinc-500 mb-1">
-                  {chunk.heading_context.join(" › ")}
-                </div>
-              )}
               {chunk.chunk_type && (
                 <span className="inline-block text-xs px-1 py-0.5 mb-1 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 rounded">
                   {chunk.chunk_type}
