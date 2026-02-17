@@ -218,21 +218,14 @@ export function ChunksScene({
     const n = Math.min(count, layoutPositions.length / 2);
 
     // --- Compute viewport zones fresh each frame (TopicsView pattern) ---
+    // When lensActive is true, zones and extents are always non-null.
     const zones = lensActive
       ? computeViewportZones(camera as THREE.PerspectiveCamera, size.width, size.height)
       : null;
-
-    const compressionExtents = zones ? computeCompressionExtents(zones) : null;
-    const maxRadius = compressionExtents
-      ? Math.min(compressionExtents.horizonHalfWidth, compressionExtents.horizonHalfHeight)
-      : 0;
-    const compressionStartRadius = compressionExtents
-      ? Math.min(compressionExtents.compressionStartHalfWidth, compressionExtents.compressionStartHalfHeight)
-      : 0;
+    const extents = zones ? computeCompressionExtents(zones) : null;
 
     // --- Compute compressed positions into buffer (for edges and labels) ---
-    if (lensActive && zones && compressionExtents) {
-      // Allocate buffer if needed
+    if (lensActive && zones && extents) {
       if (compressedPositionsRef.current.length !== layoutPositions.length) {
         compressedPositionsRef.current = new Float32Array(layoutPositions.length);
       }
@@ -241,15 +234,12 @@ export function ChunksScene({
         let x = layoutPositions[i * 2];
         let y = layoutPositions[i * 2 + 1];
 
-        if (lensNodeSet?.has(i)) {
+        if (lensNodeSet!.has(i)) {
           const compressed = applyFisheyeCompression(
             x, y, zones.viewport.camX, zones.viewport.camY,
-            compressionExtents.compressionStartHalfWidth,
-            compressionExtents.compressionStartHalfHeight,
-            compressionExtents.horizonHalfWidth,
-            compressionExtents.horizonHalfHeight,
-            lensCompressionStrength,
-            lpNormP
+            extents.compressionStartHalfWidth, extents.compressionStartHalfHeight,
+            extents.horizonHalfWidth, extents.horizonHalfHeight,
+            lensCompressionStrength, lpNormP,
           );
           x = THREE.MathUtils.clamp(compressed.x, zones.pullBounds.left, zones.pullBounds.right);
           y = THREE.MathUtils.clamp(compressed.y, zones.pullBounds.bottom, zones.pullBounds.top);
@@ -262,19 +252,12 @@ export function ChunksScene({
 
     // --- Update visible set for animated transitions ---
     visibleNodeIndicesRef.current.clear();
-    if (lensActive && lensNodeSet) {
-      for (const nodeIndex of lensNodeSet) {
-        visibleNodeIndicesRef.current.add(nodeIndex);
-      }
-    } else {
-      // All nodes visible when lens inactive
-      for (let i = 0; i < n; i++) {
-        visibleNodeIndicesRef.current.add(i);
-      }
+    const visibleSet = lensActive ? lensNodeSet! : null;
+    for (let i = 0; i < n; i++) {
+      if (!visibleSet || visibleSet.has(i)) visibleNodeIndicesRef.current.add(i);
     }
 
     // --- Set instance matrices ---
-    // Read positions from compressed buffer if in lens mode, otherwise use layout positions
     const renderPositions = lensActive && compressedPositionsRef.current.length > 0
       ? compressedPositionsRef.current
       : layoutPositions;
@@ -295,11 +278,13 @@ export function ChunksScene({
 
       // Compute lens scale for nodes in lens set
       let lensScale = 1;
-      if (lensActive && lensNodeSet?.has(i) && zones && compressionExtents) {
+      if (lensActive && lensNodeSet!.has(i)) {
+        const maxRadius = Math.min(extents!.horizonHalfWidth, extents!.horizonHalfHeight);
+        const startRadius = Math.min(extents!.compressionStartHalfWidth, extents!.compressionStartHalfHeight);
         lensScale = computeLensNodeScale(
-          x, y, zones.viewport.camX, zones.viewport.camY, lensDepthMap?.get(i),
-          compressionStartRadius, maxRadius,
-          lensCompressionStrength, lensCenterScale, lensEdgeScale
+          x, y, zones!.viewport.camX, zones!.viewport.camY, lensDepthMap?.get(i),
+          startRadius, maxRadius,
+          lensCompressionStrength, lensCenterScale, lensEdgeScale,
         );
       }
 
