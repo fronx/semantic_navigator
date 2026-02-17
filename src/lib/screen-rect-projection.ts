@@ -5,6 +5,7 @@ export interface ScreenRect {
   y: number; // screen center Y (pixels)
   width: number; // screen width (pixels)
   height: number; // screen height (pixels)
+  z: number; // World z for text positioning (card z + TEXT_Z_OFFSET)
 }
 
 /**
@@ -42,5 +43,6 @@ export function projectCardToScreenRect(
     y: screenCenterY,
     width: screenHalfWidth * 2,
     height: screenHalfHeight * 2,
+    z, // Pass through for caller convenience
   };
 }

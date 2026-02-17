@@ -36,8 +36,13 @@ import { ChunkTextLabels } from "./ChunkTextLabels";
 
 /** Constant world-space scale. At z=6000 cards are ~10px dots, at z=300 ~200px readable cards. */
 const CARD_SCALE = 0.3;
-/** Text rendered slightly in front of cards so depth test correctly occludes background text. */
-const TEXT_Z = 0.15;
+/**
+ * Total z-depth budget across all cards (world units).
+ * Card 0 is at z=0 (farthest from camera); card N-1 is at z=CARD_Z_RANGE (closest).
+ * Text for card i sits at z = i*step + step/2 — always in front of its own card,
+ * always behind the next card forward. step = CARD_Z_RANGE / count.
+ */
+const CARD_Z_RANGE = 20;
 const EDGE_FADE_DURATION_MS = 500;
 
 // --- Props ---
@@ -133,6 +138,39 @@ export function ChunksScene({
     ? neighborhoodEdgesVersion * 31 + (lensInfo?.nodeSet.size ?? 0)
     : neighborhoodEdgesVersion;
 
+  // Persistent z-order: each click/drag pushes a card to the top without disturbing
+  // the relative order of all other cards (including previously elevated cards).
+  // zOrderRef[rank] = card index (rank 0 = farthest back, rank n-1 = front).
+  // zRankRef maps card index → rank for O(1) lookup in useFrame.
+  const zOrderRef = useRef<number[]>([]);
+  const zRankRef = useRef<Map<number, number>>(new Map());
+
+  // Initialize / reinitialize when chunks change (default order = array index).
+  useEffect(() => {
+    const n = chunks.length;
+    const order = Array.from({ length: n }, (_, i) => i);
+    zOrderRef.current = order;
+    const ranks = new Map<number, number>();
+    for (let i = 0; i < n; i++) ranks.set(i, i);
+    zRankRef.current = ranks;
+  }, [chunks]);
+
+  // Promote card to rank n-1 (front). All cards previously above it shift down by 1.
+  const bringToFront = useCallback((cardIndex: number) => {
+    const order = zOrderRef.current;
+    const ranks = zRankRef.current;
+    const n = order.length;
+    const oldRank = ranks.get(cardIndex);
+    if (oldRank === undefined || oldRank === n - 1) return; // already at front or not found
+    for (let rank = oldRank + 1; rank < n; rank++) {
+      const idx = order[rank];
+      order[rank - 1] = idx;
+      ranks.set(idx, rank - 1);
+    }
+    order[n - 1] = cardIndex;
+    ranks.set(cardIndex, n - 1);
+  }, []);
+
   // --- Animated visibility for focus mode ---
   const visibleNodeIndicesRef = useRef(new Set<number>());
   const nodeScalesRef = useFadingScale(visibleNodeIndicesRef, {
@@ -188,12 +226,16 @@ export function ChunksScene({
 
   const dragHandlers = useInstancedMeshDrag({
     pickInstance,
-    onDragStart: startDrag,
+    onDragStart: (index) => {
+      bringToFront(index);
+      startDrag(index);
+    },
     onDrag: drag,
     onDragEnd: endDrag,
     enabled: !isRunning,
     onDragStateChange: setIsDraggingNode,
     onClick: (index) => {
+      bringToFront(index);
       onSelectChunk(chunks[index].id);
       captureEntryZoom(); // Capture zoom level for exit detection
     },
@@ -271,6 +313,11 @@ export function ChunksScene({
       ? compressedPositionsRef.current
       : layoutPositions;
 
+    // Stable z-ordering: card i at z = i*cardZStep, text at z = i*cardZStep + cardZStep/2.
+    // Card N-1 is closest to camera (front), card 0 is farthest (back).
+    // Order never changes → no flickering. Total z range = CARD_Z_RANGE world units.
+    const cardZStep = n > 1 ? CARD_Z_RANGE / n : CARD_Z_RANGE;
+
     for (let i = 0; i < n; i++) {
       const animatedScale = nodeScalesRef.current.get(i) ?? 0;
 
@@ -299,14 +346,18 @@ export function ChunksScene({
 
       const finalScale = CARD_SCALE * lensScale * animatedScale;
 
-      posVec.current.set(x, y, 0);
+      const rank = zRankRef.current.get(i) ?? i;
+      const cardZ = rank * cardZStep;
+      const textZForCard = cardZ + cardZStep / 2;
+
+      posVec.current.set(x, y, cardZ);
       scaleVec.current.setScalar(finalScale);
       matrixRef.current.compose(posVec.current, quat.current, scaleVec.current);
       mesh.setMatrixAt(i, matrixRef.current);
 
       // Compute screen rect for text label positioning
       chunkScreenRectsRef.current.set(i, projectCardToScreenRect(
-        x, y, TEXT_Z,
+        x, y, textZForCard,
         (CARD_WIDTH / 2) * finalScale,
         (CARD_HEIGHT / 2) * finalScale,
         camera, size,
@@ -378,7 +429,6 @@ export function ChunksScene({
         positions={displayPositions}
         cardWidth={CARD_WIDTH}
         cardHeight={CARD_HEIGHT}
-        textZ={TEXT_Z}
         screenRectsRef={chunkScreenRectsRef}
       />
     </>

@@ -33,7 +33,7 @@ interface ChunkTextLabelsProps {
   positions: Float32Array;
   cardWidth: number;
   cardHeight: number;
-  textZ: number;
+  // textZ removed — now per-card via screenRect.z
   screenRectsRef: MutableRefObject<Map<number, ScreenRect>>;
 }
 
@@ -50,7 +50,6 @@ export function ChunkTextLabels({
   positions,
   cardWidth,
   cardHeight,
-  textZ,
   screenRectsRef,
 }: ChunkTextLabelsProps) {
   const { camera, size, gl } = useThree();
@@ -156,7 +155,7 @@ export function ChunkTextLabels({
 
       const x = positions[index * 2];
       const y = positions[index * 2 + 1];
-      group.position.set(x, y, textZ);
+      group.position.set(x, y, screenRect.z);
 
       // Screen-space scaling: same pattern as ContentTextLabels3D
       const worldPosition = group.getWorldPosition(tempVec);
