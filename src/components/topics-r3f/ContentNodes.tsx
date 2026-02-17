@@ -77,6 +77,8 @@ export interface ContentNodesProps {
   hoveredContentIdRef?: React.MutableRefObject<string | null>;
   /** Handler for content node hover */
   onContentHover?: (contentId: string | null) => void;
+  /** Handler for content node click */
+  onContentClick?: (chunkId: string) => void;
 }
 
 export function ContentNodes({
@@ -102,6 +104,7 @@ export function ContentNodes({
   focusState,
   hoveredContentIdRef,
   onContentHover,
+  onContentClick,
 }: ContentNodesProps) {
   const { camera, size, viewport } = useThree();
 
@@ -424,6 +427,13 @@ export function ContentNodes({
     onContentHover?.(null);
   };
 
+  const handleClick = (event: any) => {
+    event.stopPropagation();
+    const instanceId = event.instanceId;
+    if (instanceId === undefined || instanceId < 0 || instanceId >= contentNodes.length) return;
+    onContentClick?.((contentNodes[instanceId] as ContentSimNode).id);
+  };
+
   if (contentNodes.length === 0) return null;
 
   return (
@@ -434,6 +444,7 @@ export function ContentNodes({
       frustumCulled={false}
       onPointerOver={handlePointerOver}
       onPointerOut={handlePointerOut}
+      onClick={handleClick}
     >
       {/* Important: do not reactivate the following line that is commented out. Doing so causes the dots to be black. */}
       {/* <meshBasicMaterial vertexColors transparent depthTest={false} /> */}

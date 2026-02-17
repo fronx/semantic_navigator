@@ -11,6 +11,7 @@ import { useD3TopicsRenderer } from "@/hooks/useD3TopicsRenderer";
 import { useR3FTopicsRenderer } from "@/hooks/useR3FTopicsRenderer";
 import { useContentLoading } from "@/hooks/useContentLoading";
 import { R3FTopicsCanvas } from "@/components/topics-r3f/R3FTopicsCanvas";
+import { Reader } from "@/components/Reader";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 import { loadPCATransform, type PCATransform } from "@/lib/semantic-colors";
 import { calculateDegreeSizeMultiplier } from "@/lib/topics-graph-nodes";
@@ -200,6 +201,7 @@ export function TopicsView({
 
   // Focus mode state (click-to-focus pushes non-neighbors to margins)
   const [focusState, setFocusState] = useState<FocusState | null>(null);
+  const [selectedChunkId, setSelectedChunkId] = useState<string | null>(null);
 
   // Focus zoom exit hook (provides camera Z tracking and exit logic)
   const absoluteThreshold = (zoomPhaseConfig ?? DEFAULT_ZOOM_PHASE_CONFIG).keywordLabels.start * 1.3;
@@ -451,6 +453,10 @@ export function TopicsView({
   const handleProjectClick = useStableCallback(onProjectClick);
   const handleProjectDrag = useStableCallback(onProjectDrag);
 
+  const handleContentNodeClick = useStableCallback((chunkId: string) => {
+    setSelectedChunkId((prev) => (prev === chunkId ? null : chunkId));
+  });
+
   // Track if a project interaction just happened (to suppress click-to-filter)
   const projectInteractionRef = useRef(false);
 
@@ -617,7 +623,9 @@ export function TopicsView({
           onZoomChange={handleZoomChange}
           onChunkHover={onChunkHover}
           onKeywordHover={onKeywordHover ?? (() => {})}
+          onContentNodeClick={handleContentNodeClick}
         />
+        <Reader chunkId={selectedChunkId} onClose={() => setSelectedChunkId(null)} />
         {isLoading && (
           <div className="absolute top-4 right-4 px-3 py-2 bg-black/70 text-white text-sm rounded-md">
             Loading chunks...

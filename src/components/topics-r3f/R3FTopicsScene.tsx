@@ -125,6 +125,8 @@ export interface R3FTopicsSceneProps {
   onKeywordHover?: (keywordId: string | null) => void;
   /** Handler for cluster label click */
   onClusterLabelClick?: (clusterId: number) => void;
+  /** Handler for content node click */
+  onContentNodeClick?: (chunkId: string) => void;
   /** Refs for label rendering (bridging to DOM overlay) */
   labelRefs: LabelRefs;
   /** Cursor position for 3D text proximity filtering */
@@ -175,6 +177,7 @@ export function R3FTopicsScene({
   onKeywordClick,
   onKeywordHover,
   onClusterLabelClick,
+  onContentNodeClick,
   labelRefs,
   cursorPosition,
   flyToRef,
@@ -432,6 +435,7 @@ export function R3FTopicsScene({
           contentDrivenKeywordIdsRef={contentDrivenKeywordIdsRef}
           focusState={focusState}
           hoveredContentIdRef={labelRefs.hoveredContentIdRef}
+          onContentClick={onContentNodeClick}
         />
       )}
 

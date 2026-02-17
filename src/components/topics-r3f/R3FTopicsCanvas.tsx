@@ -81,6 +81,8 @@ export interface R3FTopicsCanvasProps {
   onChunkHover?: (chunkId: string | null, content: string | null) => void;
   /** Background click handler (clears focus mode) */
   onBackgroundClick?: () => void;
+  /** Handler for content node click */
+  onContentNodeClick?: (chunkId: string) => void;
   /**
    * Handler for keyword hover.
    * Required because R3F renderer always detects hover and expects a handler.
@@ -133,6 +135,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
     onChunkHover: _onChunkHover,
     onBackgroundClick,
     onKeywordHover,
+    onContentNodeClick,
   }, ref) {
     // Theme-aware background color that updates when system theme changes
     const [backgroundColor, setBackgroundColor] = useState(getBackgroundColor);
@@ -298,6 +301,7 @@ export const R3FTopicsCanvas = forwardRef<LabelsOverlayHandle, R3FTopicsCanvasPr
           onKeywordClick={keywordClickHandler}
           onKeywordHover={stableOnKeywordHover}
           onClusterLabelClick={onClusterLabelClick}
+          onContentNodeClick={onContentNodeClick}
           flyToRef={flyToRef}
           labelRefs={labelRefs}
           cursorPosition={cursorPosition}

@@ -11,6 +11,7 @@ import { usePersistedStore } from "@/hooks/usePersistedStore";
 import { useSearch } from "@/hooks/useSearch";
 import { ChunksControlSidebar } from "@/components/ChunksControlSidebar";
 import { ChunksCanvas } from "./chunks-r3f/ChunksCanvas";
+import { Reader } from "@/components/Reader";
 import { exportUmapGraph } from "@/lib/export-umap-graph";
 import {
   DEFAULT_LENS_CENTER_SCALE,
@@ -165,6 +166,7 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
             lensEdgeScale={store.values.lensEdgeScale}
             lpNormP={store.values.lpNormP}
           />
+          <Reader chunkId={selectedChunkId} onClose={() => handleSelectChunk(null)} />
         </div>
       </main>
     </div>
