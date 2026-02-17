@@ -15,7 +15,7 @@ import { useInstancedMeshDrag } from "@/hooks/useInstancedMeshDrag";
 import { useInstancedMeshMaterial } from "@/hooks/useInstancedMeshMaterial";
 import { useStableInstanceCount } from "@/hooks/useStableInstanceCount";
 import { useFadingScale } from "@/hooks/useFadingScale";
-import { useArrayPositionInterpolation, easeOutCubic } from "@/hooks/usePositionInterpolation";
+import { useFocusZoomExit } from "@/hooks/useFocusZoomExit";
 import type { UmapEdge } from "@/hooks/useUmapLayout";
 import { CARD_WIDTH, CARD_HEIGHT, createCardGeometry } from "@/lib/chunks-geometry";
 import {
@@ -74,6 +74,14 @@ export function ChunksScene({
   const { stableCount, meshKey } = useStableInstanceCount(count);
   const { meshRef, handleMeshRef } = useInstancedMeshMaterial(stableCount);
   const { camera, size } = useThree();
+
+  // Focus zoom exit hook - exits lens mode when zooming out
+  const { handleZoomChange, captureEntryZoom } = useFocusZoomExit({
+    isFocused: selectedChunkId !== null,
+    onExitFocus: () => onSelectChunk(null),
+    absoluteThreshold: 8000, // 80% of maxDistance=10000
+    relativeMultiplier: 1.05,
+  });
 
   const geometry = useMemo(createCardGeometry, []);
 
@@ -158,93 +166,8 @@ export function ChunksScene({
     isRunning,
   });
 
-  // --- Compute target compressed positions for lens mode ---
-  const compressedPositionsRef = useRef<Float32Array | null>(null);
-  const renderScalesRef = useRef<Float32Array>(new Float32Array(0));
-
-  // Pre-compute compressed positions and scales when lens is active
-  useEffect(() => {
-    if (!lensActive || !lensInfo || !lensNodeSet || layoutPositions.length === 0) {
-      compressedPositionsRef.current = null;
-      return;
-    }
-
-    const n = layoutPositions.length / 2;
-    const zones = computeViewportZones(camera as THREE.PerspectiveCamera, size.width, size.height);
-    const {
-      horizonHalfWidth,
-      horizonHalfHeight,
-      compressionStartHalfWidth,
-      compressionStartHalfHeight,
-    } = computeCompressionExtents(zones);
-    const camX = zones.viewport.camX;
-    const camY = zones.viewport.camY;
-
-    // Allocate buffers
-    const compressedPos = new Float32Array(layoutPositions.length);
-    if (renderScalesRef.current.length !== n) {
-      renderScalesRef.current = new Float32Array(n);
-    }
-    const scales = renderScalesRef.current;
-
-    const maxRadius = Math.min(horizonHalfWidth, horizonHalfHeight);
-    const compressionStartRadius = Math.min(compressionStartHalfWidth, compressionStartHalfHeight);
-
-    for (let i = 0; i < n; i++) {
-      let x = layoutPositions[i * 2];
-      let y = layoutPositions[i * 2 + 1];
-      let scale = 1;
-
-      if (lensNodeSet.has(i)) {
-        const compressed = applyFisheyeCompression(
-          x, y, camX, camY,
-          compressionStartHalfWidth, compressionStartHalfHeight,
-          horizonHalfWidth, horizonHalfHeight,
-          lensCompressionStrength,
-          lpNormP
-        );
-        x = THREE.MathUtils.clamp(compressed.x, zones.pullBounds.left, zones.pullBounds.right);
-        y = THREE.MathUtils.clamp(compressed.y, zones.pullBounds.bottom, zones.pullBounds.top);
-        scale = computeLensNodeScale(
-          x, y, camX, camY, lensDepthMap?.get(i),
-          compressionStartRadius, maxRadius,
-          lensCompressionStrength, lensCenterScale, lensEdgeScale
-        );
-      }
-
-      scales[i] = scale;
-      compressedPos[i * 2] = x;
-      compressedPos[i * 2 + 1] = y;
-    }
-
-    compressedPositionsRef.current = compressedPos;
-  }, [
-    lensActive,
-    lensInfo,
-    lensNodeSet,
-    lensDepthMap,
-    layoutPositions,
-    camera,
-    size.width,
-    size.height,
-    lensCompressionStrength,
-    lensCenterScale,
-    lensEdgeScale,
-    lpNormP,
-  ]);
-
-  // --- Smooth position interpolation when entering/exiting lens mode ---
-  const interpolatedPositionsRef = useArrayPositionInterpolation(
-    {
-      targetPositions: compressedPositionsRef.current,
-      duration: 400,
-      easing: easeOutCubic,
-      initialPositions: layoutPositions,
-    },
-    (updateCallback) => {
-      useFrame(updateCallback);
-    }
-  );
+  // Buffer for compressed positions (computed fresh each frame, TopicsView pattern)
+  const compressedPositionsRef = useRef<Float32Array>(new Float32Array(0));
 
   const pickInstance = useCallback(
     (event: ThreeEvent<PointerEvent>): number | null => {
@@ -262,7 +185,10 @@ export function ChunksScene({
     onDragEnd: endDrag,
     enabled: !isRunning,
     onDragStateChange: setIsDraggingNode,
-    onClick: (index) => onSelectChunk(chunks[index].id),
+    onClick: (index) => {
+      onSelectChunk(chunks[index].id);
+      captureEntryZoom(); // Capture zoom level for exit detection
+    },
   });
 
   // Edge opacity fade-in over EDGE_FADE_DURATION_MS when simulation stops.
@@ -291,8 +217,48 @@ export function ChunksScene({
 
     const n = Math.min(count, layoutPositions.length / 2);
 
-    // Use interpolated positions (smoothly transitions between natural and compressed)
-    const renderPositions = interpolatedPositionsRef.current;
+    // --- Compute viewport zones fresh each frame (TopicsView pattern) ---
+    const zones = lensActive
+      ? computeViewportZones(camera as THREE.PerspectiveCamera, size.width, size.height)
+      : null;
+
+    const compressionExtents = zones ? computeCompressionExtents(zones) : null;
+    const maxRadius = compressionExtents
+      ? Math.min(compressionExtents.horizonHalfWidth, compressionExtents.horizonHalfHeight)
+      : 0;
+    const compressionStartRadius = compressionExtents
+      ? Math.min(compressionExtents.compressionStartHalfWidth, compressionExtents.compressionStartHalfHeight)
+      : 0;
+
+    // --- Compute compressed positions into buffer (for edges and labels) ---
+    if (lensActive && zones && compressionExtents) {
+      // Allocate buffer if needed
+      if (compressedPositionsRef.current.length !== layoutPositions.length) {
+        compressedPositionsRef.current = new Float32Array(layoutPositions.length);
+      }
+
+      for (let i = 0; i < n; i++) {
+        let x = layoutPositions[i * 2];
+        let y = layoutPositions[i * 2 + 1];
+
+        if (lensNodeSet?.has(i)) {
+          const compressed = applyFisheyeCompression(
+            x, y, zones.viewport.camX, zones.viewport.camY,
+            compressionExtents.compressionStartHalfWidth,
+            compressionExtents.compressionStartHalfHeight,
+            compressionExtents.horizonHalfWidth,
+            compressionExtents.horizonHalfHeight,
+            lensCompressionStrength,
+            lpNormP
+          );
+          x = THREE.MathUtils.clamp(compressed.x, zones.pullBounds.left, zones.pullBounds.right);
+          y = THREE.MathUtils.clamp(compressed.y, zones.pullBounds.bottom, zones.pullBounds.top);
+        }
+
+        compressedPositionsRef.current[i * 2] = x;
+        compressedPositionsRef.current[i * 2 + 1] = y;
+      }
+    }
 
     // --- Update visible set for animated transitions ---
     visibleNodeIndicesRef.current.clear();
@@ -308,6 +274,11 @@ export function ChunksScene({
     }
 
     // --- Set instance matrices ---
+    // Read positions from compressed buffer if in lens mode, otherwise use layout positions
+    const renderPositions = lensActive && compressedPositionsRef.current.length > 0
+      ? compressedPositionsRef.current
+      : layoutPositions;
+
     for (let i = 0; i < n; i++) {
       const animatedScale = nodeScalesRef.current.get(i) ?? 0;
 
@@ -319,13 +290,22 @@ export function ChunksScene({
         continue;
       }
 
-      // Apply lens scale AND animated fade
-      const lensScale = lensActive && renderScalesRef.current.length === n
-        ? renderScalesRef.current[i]
-        : 1;
+      const x = renderPositions[i * 2];
+      const y = renderPositions[i * 2 + 1];
+
+      // Compute lens scale for nodes in lens set
+      let lensScale = 1;
+      if (lensActive && lensNodeSet?.has(i) && zones && compressionExtents) {
+        lensScale = computeLensNodeScale(
+          x, y, zones.viewport.camX, zones.viewport.camY, lensDepthMap?.get(i),
+          compressionStartRadius, maxRadius,
+          lensCompressionStrength, lensCenterScale, lensEdgeScale
+        );
+      }
+
       const finalScale = CARD_SCALE * lensScale * animatedScale;
 
-      posVec.current.set(renderPositions[i * 2], renderPositions[i * 2 + 1], 0);
+      posVec.current.set(x, y, 0);
       scaleVec.current.setScalar(finalScale);
       matrixRef.current.compose(posVec.current, quat.current, scaleVec.current);
       mesh.setMatrixAt(i, matrixRef.current);
@@ -363,11 +343,10 @@ export function ChunksScene({
 
   const shouldRenderEdges = !isRunning && focusEdges.length > 0 && edgeOpacity > 0;
 
-  // Pass interpolated positions to edges and labels
-  const renderPositions = interpolatedPositionsRef.current;
-  const scalesToRender = lensActive && renderScalesRef.current.length > 0
-    ? renderScalesRef.current
-    : null;
+  // Use compressed positions for edges and labels when lens is active
+  const displayPositions = lensActive && compressedPositionsRef.current.length > 0
+    ? compressedPositionsRef.current
+    : layoutPositions;
 
   return (
     <>
@@ -375,11 +354,15 @@ export function ChunksScene({
         <ChunkEdges
           edges={focusEdges}
           edgesVersion={focusEdgesVersion}
-          positions={renderPositions}
+          positions={displayPositions}
           opacity={edgeOpacity * 0.35}
         />
       )}
-      <CameraController maxDistance={10000} enableDragPan={!isDraggingNode} />
+      <CameraController
+        maxDistance={10000}
+        enableDragPan={!isDraggingNode}
+        onZoomChange={handleZoomChange}
+      />
       <instancedMesh
         key={meshKey}
         ref={handleMeshRef}
@@ -389,8 +372,8 @@ export function ChunksScene({
       />
       <ChunkTextLabels
         chunks={chunks}
-        positions={renderPositions}
-        scales={scalesToRender}
+        positions={displayPositions}
+        scales={null}
         cardWidth={CARD_WIDTH}
         cardHeight={CARD_HEIGHT}
         cardScale={CARD_SCALE}

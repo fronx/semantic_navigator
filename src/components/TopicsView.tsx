@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { type HoverHighlightConfig } from "@/hooks/useGraphHoverHighlight";
 import { useClusterLabels, type PrecomputedClusterData } from "@/hooks/useClusterLabels";
 import { useStableCallback } from "@/hooks/useStableRef";
+import { useFocusZoomExit } from "@/hooks/useFocusZoomExit";
 import { useTopicsFilter } from "@/hooks/useTopicsFilter";
 import { useProjectCreation } from "@/hooks/useProjectCreation";
 import { useD3TopicsRenderer } from "@/hooks/useD3TopicsRenderer";
@@ -197,12 +198,21 @@ export function TopicsView({
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Camera Z tracking for scale interpolation
-  const [cameraZ, setCameraZ] = useState<number | undefined>(undefined);
-
   // Focus mode state (click-to-focus pushes non-neighbors to margins)
   const [focusState, setFocusState] = useState<FocusState | null>(null);
-  const focusEntryZRef = useRef<number | null>(null);
+
+  // Focus zoom exit hook (provides camera Z tracking and exit logic)
+  const absoluteThreshold = (zoomPhaseConfig ?? DEFAULT_ZOOM_PHASE_CONFIG).keywordLabels.start * 1.3;
+  const {
+    handleZoomChange: handleFocusZoomChange,
+    captureEntryZoom,
+    cameraZ,
+  } = useFocusZoomExit({
+    isFocused: focusState !== null,
+    onExitFocus: () => setFocusState(null),
+    absoluteThreshold,
+    relativeMultiplier: 1.05,
+  });
 
   // External focus trigger: when focusKeywordIds changes, update focus state
   // undefined = not provided (no-op), null or empty Set = clear, non-empty Set = apply
@@ -211,7 +221,6 @@ export function TopicsView({
 
     if (focusKeywordIds === null || focusKeywordIds.size === 0) {
       setFocusState(null);
-      focusEntryZRef.current = null;
       return;
     }
 
@@ -219,7 +228,7 @@ export function TopicsView({
     const allNodeIds = keywordNodes.map(n => n.id);
     setFocusState(createSearchFocusState(focusKeywordIds, allNodeIds));
     // Capture camera Z at entry time only (not on every zoom)
-    focusEntryZRef.current = cameraZ ?? null;
+    captureEntryZoom();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusKeywordIds, keywordNodes]);
 
@@ -351,21 +360,8 @@ export function TopicsView({
 
   // Stable callbacks - won't trigger effect re-runs when parent re-renders
   const handleZoomChange = useStableCallback((zoomScale: number) => {
-    if (rendererType === "r3f" && Number.isFinite(zoomScale) && zoomScale > 0) {
-      const newCameraZ = CAMERA_Z_SCALE_BASE / zoomScale;
-      setCameraZ(newCameraZ);
-
-      // Exit focus when both rules agree:
-      // 1) Absolute: past where keyword labels are fully faded (with margin)
-      // 2) Relative: zoomed out >5% beyond where focus was entered
-      if (focusState) {
-        const absoluteLimit = (zoomPhaseConfig ?? DEFAULT_ZOOM_PHASE_CONFIG).keywordLabels.start * 1.3;
-        const relativeLimit = (focusEntryZRef.current ?? 0) * 1.05;
-        if (newCameraZ > absoluteLimit && newCameraZ > relativeLimit) {
-          setFocusState(null);
-          focusEntryZRef.current = null;
-        }
-      }
+    if (rendererType === "r3f") {
+      handleFocusZoomChange(zoomScale);
     }
     onZoomChange?.(zoomScale);
   });
@@ -430,7 +426,7 @@ export function TopicsView({
     }
 
     setFocusState(computeFocusForKeyword(keywordId));
-    focusEntryZRef.current = cameraZ ?? null;
+    captureEntryZoom();
 
     const node = activeNodes.find(n => n.id === keywordId);
     if (node) onKeywordClick?.(node.label);
@@ -449,7 +445,6 @@ export function TopicsView({
   const handleBackgroundClick = useStableCallback(() => {
     if (focusState) {
       setFocusState(null);
-      focusEntryZRef.current = null;
     }
   });
 
