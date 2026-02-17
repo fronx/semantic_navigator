@@ -30,6 +30,7 @@ import {
 } from "@/lib/chunks-lens";
 import { hashToHue } from "@/lib/chunks-utils";
 import { loadPCATransform, centroidToColor, type PCATransform } from "@/lib/semantic-colors";
+import { calculateZoomDesaturation } from "@/lib/zoom-phase-config";
 import { computeViewportZones } from "@/lib/edge-pulling";
 import {
   applyDirectionalRangeCompression,
@@ -47,6 +48,10 @@ import { ChunkTextLabels } from "./ChunkTextLabels";
 
 /** Constant world-space scale. At z=6000 cards are ~10px dots, at z=300 ~200px readable cards. */
 const CARD_SCALE = 0.3;
+/** Camera Z reference points for zoom-based desaturation. */
+const DESAT_FAR_Z = 6000;   // Fully saturated when zoomed out (cards are dots)
+const DESAT_MID_Z = 2000;   // 30% desaturation at mid zoom
+const DESAT_NEAR_Z = 400;   // 65% desaturation when zoomed in to read cards
 /**
  * Total z-depth budget across all cards (world units).
  * Card 0 is at z=0 (farthest from camera); card N-1 is at z=CARD_Z_RANGE (closest).
@@ -145,24 +150,23 @@ export function ChunksScene({
     [chunks],
   );
 
+  // Base colors at full saturation — desaturation is applied per-frame in useFrame
+  // so zoom level can continuously modulate it without triggering useMemo.
   const chunkColors = useMemo(() => {
-    const desaturation = 1 - colorSaturation;
     if (!pcaTransform) {
-      return chunks.map((chunk) => new THREE.Color().setHSL(hashToHue(chunk.sourcePath), colorSaturation * 0.7, 0.55));
+      return chunks.map((chunk) => new THREE.Color().setHSL(hashToHue(chunk.sourcePath), 0.7, 0.55));
     }
-    // Group chunk embeddings by article
     const articleEmbeddings = new Map<string, number[][]>();
     for (const chunk of chunks) {
       if (!articleEmbeddings.has(chunk.sourcePath)) articleEmbeddings.set(chunk.sourcePath, []);
       articleEmbeddings.get(chunk.sourcePath)!.push(chunk.embedding);
     }
-    // Compute PCA centroid color per article
     const articleColors = new Map<string, THREE.Color>();
     for (const [sourcePath, embeddings] of articleEmbeddings) {
-      articleColors.set(sourcePath, new THREE.Color(centroidToColor(embeddings, pcaTransform, desaturation)));
+      articleColors.set(sourcePath, new THREE.Color(centroidToColor(embeddings, pcaTransform)));
     }
     return chunks.map((chunk) => articleColors.get(chunk.sourcePath) ?? new THREE.Color(0.6, 0.6, 0.6));
-  }, [chunks, pcaTransform, colorSaturation]);
+  }, [chunks, pcaTransform]);
 
   const [isDraggingNode, setIsDraggingNode] = useState(false);
 
@@ -496,6 +500,11 @@ export function ChunksScene({
   const colorChunksRef = useRef<THREE.Color[] | null>(null);
   const searchOpacitiesRef = useRef(searchOpacities);
   const colorDirtyRef = useRef(false);
+  const prevDesaturationRef = useRef(-1);
+  const colorSaturationRef = useRef(colorSaturation);
+  colorSaturationRef.current = colorSaturation;
+  // Reusable object for getHSL/setHSL (avoids allocation per frame)
+  const hslTemp = useRef({ h: 0, s: 0, l: 0 });
   if (searchOpacitiesRef.current !== searchOpacities) {
     searchOpacitiesRef.current = searchOpacities;
     colorDirtyRef.current = true;
@@ -729,10 +738,23 @@ export function ChunksScene({
       mesh.setMatrixAt(i, matrixRef.current);
     }
 
-    if (colorChunksRef.current !== chunkColors || colorDirtyRef.current || !mesh.instanceColor) {
+    // Zoom + slider desaturation: additive, clamped to [0, 1]
+    const zoomDesat = calculateZoomDesaturation(
+      (camera as THREE.PerspectiveCamera).position.z,
+      DESAT_FAR_Z,
+      DESAT_MID_Z,
+      DESAT_NEAR_Z,
+    );
+    const effectiveDesaturation = Math.min(1, zoomDesat + (1 - colorSaturationRef.current));
+    const desatChanged = Math.abs(effectiveDesaturation - prevDesaturationRef.current) > 0.005;
+
+    if (colorChunksRef.current !== chunkColors || colorDirtyRef.current || desatChanged || !mesh.instanceColor) {
       const searchActive = searchOpacitiesRef.current.size > 0;
       for (let i = 0; i < Math.min(n, chunkColors.length); i++) {
-        tempColor.current.copy(chunkColors[i]);
+        // Apply desaturation to base color via HSL (fast, no chroma.js needed)
+        chunkColors[i].getHSL(hslTemp.current);
+        hslTemp.current.s *= (1 - effectiveDesaturation);
+        tempColor.current.setHSL(hslTemp.current.h, hslTemp.current.s, hslTemp.current.l);
         if (searchActive) {
           const opacity = searchOpacitiesRef.current.get(chunks[i].id) ?? 1.0;
           tempColor.current.multiplyScalar(opacity);
@@ -745,6 +767,7 @@ export function ChunksScene({
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
       colorChunksRef.current = chunkColors;
       colorDirtyRef.current = false;
+      prevDesaturationRef.current = effectiveDesaturation;
     }
 
     if (isManifoldFocus && lensActive && focusSeedsRef.current.length > 0) {

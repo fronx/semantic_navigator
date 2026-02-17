@@ -1,70 +1,52 @@
 import { describe, it, expect } from 'vitest';
 import {
-  calculateZoomBasedDesaturation,
+  calculateZoomDesaturation,
   calculateClusterLabelDesaturation,
   DEFAULT_ZOOM_PHASE_CONFIG,
 } from '../zoom-phase-config';
 
-describe('calculateZoomBasedDesaturation', () => {
+describe('calculateZoomDesaturation', () => {
   const config = DEFAULT_ZOOM_PHASE_CONFIG;
-  const clusterLevel = config.keywordLabels.start; // ~13961
-  const keywordLevel = config.chunkCrossfade.far; // ~3736
-  const detailLevel = config.chunkCrossfade.near; // ~2052
+  const farZ = config.keywordLabels.start; // ~13961
+  const midZ = config.chunkCrossfade.far; // ~3736
+  const nearZ = config.chunkCrossfade.near; // ~2052
 
   it('returns 0% desaturation when zoomed out to cluster level', () => {
-    const desaturation = calculateZoomBasedDesaturation(clusterLevel, config);
-    expect(desaturation).toBeCloseTo(0, 2);
+    expect(calculateZoomDesaturation(farZ, farZ, midZ, nearZ)).toBeCloseTo(0, 2);
   });
 
   it('returns 30% desaturation at keyword level', () => {
-    const desaturation = calculateZoomBasedDesaturation(keywordLevel, config);
-    expect(desaturation).toBeCloseTo(0.3, 2);
+    expect(calculateZoomDesaturation(midZ, farZ, midZ, nearZ)).toBeCloseTo(0.3, 2);
   });
 
   it('returns 65% desaturation at detail level', () => {
-    const desaturation = calculateZoomBasedDesaturation(detailLevel, config);
-    expect(desaturation).toBeCloseTo(0.65, 2);
+    expect(calculateZoomDesaturation(nearZ, farZ, midZ, nearZ)).toBeCloseTo(0.65, 2);
   });
 
   it('interpolates correctly between cluster and keyword levels', () => {
-    // Halfway between cluster and keyword should be 15%
-    const midpoint = (clusterLevel + keywordLevel) / 2;
-    const desaturation = calculateZoomBasedDesaturation(midpoint, config);
-    expect(desaturation).toBeCloseTo(0.15, 2);
+    const midpoint = (farZ + midZ) / 2;
+    expect(calculateZoomDesaturation(midpoint, farZ, midZ, nearZ)).toBeCloseTo(0.15, 2);
   });
 
   it('interpolates correctly between keyword and detail levels', () => {
-    // Halfway between keyword and detail should be 47.5% (30% + 35%/2)
-    const midpoint = (keywordLevel + detailLevel) / 2;
-    const desaturation = calculateZoomBasedDesaturation(midpoint, config);
-    expect(desaturation).toBeCloseTo(0.475, 2);
+    const midpoint = (midZ + nearZ) / 2;
+    expect(calculateZoomDesaturation(midpoint, farZ, midZ, nearZ)).toBeCloseTo(0.475, 2);
   });
 
   it('clamps values above cluster level to 0%', () => {
-    const desaturation = calculateZoomBasedDesaturation(clusterLevel + 1000, config);
-    expect(desaturation).toBeCloseTo(0, 2);
+    expect(calculateZoomDesaturation(farZ + 1000, farZ, midZ, nearZ)).toBeCloseTo(0, 2);
   });
 
   it('clamps values below detail level to 65%', () => {
-    const desaturation = calculateZoomBasedDesaturation(detailLevel - 1000, config);
-    expect(desaturation).toBeCloseTo(0.65, 2);
+    expect(calculateZoomDesaturation(nearZ - 1000, farZ, midZ, nearZ)).toBeCloseTo(0.65, 2);
   });
 
   it('returns values in valid range [0, 1]', () => {
-    const testValues = [
-      clusterLevel * 2,
-      clusterLevel,
-      (clusterLevel + keywordLevel) / 2,
-      keywordLevel,
-      (keywordLevel + detailLevel) / 2,
-      detailLevel,
-      detailLevel / 2,
-    ];
-
+    const testValues = [farZ * 2, farZ, (farZ + midZ) / 2, midZ, (midZ + nearZ) / 2, nearZ, nearZ / 2];
     testValues.forEach((z) => {
-      const desaturation = calculateZoomBasedDesaturation(z, config);
-      expect(desaturation).toBeGreaterThanOrEqual(0);
-      expect(desaturation).toBeLessThanOrEqual(1);
+      const d = calculateZoomDesaturation(z, farZ, midZ, nearZ);
+      expect(d).toBeGreaterThanOrEqual(0);
+      expect(d).toBeLessThanOrEqual(1);
     });
   });
 });
@@ -127,7 +109,7 @@ describe('calculateClusterLabelDesaturation', () => {
     // When zoomed out: cluster labels desaturated (gray), keywords not desaturated yet
     const farZ = clusterLevel;
     const clusterDesat = calculateClusterLabelDesaturation(farZ, config);
-    const keywordDesat = calculateZoomBasedDesaturation(farZ, config);
+    const keywordDesat = calculateZoomDesaturation(farZ, config.keywordLabels.start, config.chunkCrossfade.far, config.chunkCrossfade.near);
 
     expect(clusterDesat).toBeCloseTo(1.0, 2); // Cluster desaturated (gray)
     expect(keywordDesat).toBeCloseTo(0, 2); // Keywords saturated
