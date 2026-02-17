@@ -28,6 +28,7 @@ import {
 import { hashToHue } from "@/lib/chunks-utils";
 import { computeViewportZones } from "@/lib/edge-pulling";
 import { applyFisheyeCompression, computeCompressionExtents } from "@/lib/fisheye-viewport";
+import { projectCardToScreenRect, type ScreenRect } from "@/lib/screen-rect-projection";
 import { ChunkEdges } from "./ChunkEdges";
 import { ChunkTextLabels } from "./ChunkTextLabels";
 
@@ -35,6 +36,8 @@ import { ChunkTextLabels } from "./ChunkTextLabels";
 
 /** Constant world-space scale. At z=6000 cards are ~10px dots, at z=300 ~200px readable cards. */
 const CARD_SCALE = 0.3;
+/** Text rendered slightly in front of cards so depth test correctly occludes background text. */
+const TEXT_Z = 0.15;
 const EDGE_FADE_DURATION_MS = 500;
 
 // --- Props ---
@@ -142,6 +145,11 @@ export function ChunksScene({
   const quat = useRef(new THREE.Quaternion());
   const scaleVec = useRef(new THREE.Vector3(1, 1, 1));
   const tempColor = useRef(new THREE.Color());
+  // Screen rect computation (same pattern as ContentNodes.tsx)
+  const centerVec = useRef(new THREE.Vector3());
+  const edgeVecX = useRef(new THREE.Vector3());
+  const edgeVecY = useRef(new THREE.Vector3());
+  const chunkScreenRectsRef = useRef(new Map<number, ScreenRect>());
 
   // Track when colors need repainting
   const colorChunksRef = useRef<ChunkEmbeddingData[] | null>(null);
@@ -258,6 +266,7 @@ export function ChunksScene({
     }
 
     // --- Set instance matrices ---
+    chunkScreenRectsRef.current.clear();
     const renderPositions = lensActive && compressedPositionsRef.current.length > 0
       ? compressedPositionsRef.current
       : layoutPositions;
@@ -294,6 +303,15 @@ export function ChunksScene({
       scaleVec.current.setScalar(finalScale);
       matrixRef.current.compose(posVec.current, quat.current, scaleVec.current);
       mesh.setMatrixAt(i, matrixRef.current);
+
+      // Compute screen rect for text label positioning
+      chunkScreenRectsRef.current.set(i, projectCardToScreenRect(
+        x, y, TEXT_Z,
+        (CARD_WIDTH / 2) * finalScale,
+        (CARD_HEIGHT / 2) * finalScale,
+        camera, size,
+        centerVec.current, edgeVecX.current, edgeVecY.current,
+      ));
     }
 
     // Hide unused instances
@@ -358,10 +376,10 @@ export function ChunksScene({
       <ChunkTextLabels
         chunks={chunks}
         positions={displayPositions}
-        scales={null}
         cardWidth={CARD_WIDTH}
         cardHeight={CARD_HEIGHT}
-        cardScale={CARD_SCALE}
+        textZ={TEXT_Z}
+        screenRectsRef={chunkScreenRectsRef}
       />
     </>
   );

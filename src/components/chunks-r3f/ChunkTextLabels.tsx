@@ -2,14 +2,20 @@
  * Text labels for chunk cards in the UMAP visualization.
  * Shows full content text on cards when zoomed in close enough, visually clipped at card bottom.
  * Only renders labels for the nearest ~50 chunks to the camera center.
+ *
+ * Scaling pattern mirrors ContentTextLabels3D: screen-space rect drives text scale,
+ * so text automatically tracks card size (lens mode, animated transitions, zoom).
  */
 
 import { useCallback, useEffect, useRef, useMemo, useState } from "react";
+import type { MutableRefObject } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { useThreeTextGeometry } from "@/hooks/useThreeTextGeometry";
 import { useTextClippingPlane, type ClippingPlaneUpdater } from "@/hooks/useTextClippingPlane";
 import type { ChunkEmbeddingData } from "@/app/api/chunks/embeddings/route";
+import type { ScreenRect } from "@/lib/screen-rect-projection";
+import { computeUnitsPerPixel } from "@/lib/three-text-utils";
 
 const MAX_VISIBLE_LABELS = 50;
 const FONT_URL = "/fonts/source-code-pro-regular.woff2";
@@ -25,10 +31,10 @@ const FULL_OPACITY_Z = 200;
 interface ChunkTextLabelsProps {
   chunks: ChunkEmbeddingData[];
   positions: Float32Array;
-  scales?: Float32Array | null;
   cardWidth: number;
   cardHeight: number;
-  cardScale: number;
+  textZ: number;
+  screenRectsRef: MutableRefObject<Map<number, ScreenRect>>;
 }
 
 interface ChunkLabelRegistration {
@@ -42,12 +48,12 @@ interface ChunkLabelRegistration {
 export function ChunkTextLabels({
   chunks,
   positions,
-  scales,
   cardWidth,
   cardHeight,
-  cardScale,
+  textZ,
+  screenRectsRef,
 }: ChunkTextLabelsProps) {
-  const { camera, gl } = useThree();
+  const { camera, size, gl } = useThree();
   const labelRegistry = useRef(new Map<number, ChunkLabelRegistration>());
 
   // Determine which chunk indices should have visible labels.
@@ -55,8 +61,9 @@ export function ChunkTextLabels({
   // for chunks that have recently been visible.
   const [visibleIndices, setVisibleIndices] = useState<number[]>([]);
 
-  // Reusable vector for projection
+  // Reusable vectors for projection (avoid GC pressure in useFrame)
   const tempVec = useMemo(() => new THREE.Vector3(), []);
+  const cameraPos = useMemo(() => new THREE.Vector3(), []);
 
   // Inner text area dimensions (used for maxWidth in text geometry)
   const innerWidth = cardWidth * (1 - 2 * MARGIN_RATIO);
@@ -140,22 +147,29 @@ export function ChunkTextLabels({
         return;
       }
 
+      // Card must be visible (present in screenRectsRef) and large enough on screen
+      const screenRect = screenRectsRef.current.get(index);
+      if (!screenRect || screenRect.width < 40) {
+        group.visible = false;
+        return;
+      }
+
       const x = positions[index * 2];
       const y = positions[index * 2 + 1];
-      group.position.set(x, y, 0.1); // slightly above cards
+      group.position.set(x, y, textZ);
 
-      // Scale text to fit within card bounds
-      const nodeScale = scales?.[index] ?? 1;
-      const cardWorldWidth = cardWidth * cardScale * nodeScale;
-      const usableWidth = cardWorldWidth * (1 - 2 * MARGIN_RATIO);
-      const textScale = geometryWidth > 0 ? usableWidth / geometryWidth : cardScale;
-      group.scale.setScalar(textScale);
+      // Screen-space scaling: same pattern as ContentTextLabels3D
+      const worldPosition = group.getWorldPosition(tempVec);
+      const unitsPerPixel = computeUnitsPerPixel(camera, size, worldPosition, cameraPos);
+      const usableScreenWidth = screenRect.width * (1 - 2 * MARGIN_RATIO);
+      const targetScale = (usableScreenWidth * unitsPerPixel) / (geometryWidth > 0 ? geometryWidth : 1);
+      group.scale.setScalar(targetScale);
 
-      // Update clipping plane to clip at bottom edge of card
-      const cardWorldHeight = cardHeight * cardScale * nodeScale;
-      clippingUpdater.setBottomClip(y, cardWorldHeight);
+      // Clip at card bottom (convert screen height to world space)
+      const worldHeight = screenRect.height * unitsPerPixel;
+      clippingUpdater.setBottomClip(y, worldHeight);
 
-      // Set opacity (zoom only - search dims backgrounds, not text)
+      // Set opacity (zoom only)
       const clamped = THREE.MathUtils.clamp(zoomOpacity, 0, 1);
       if (Math.abs(material.opacity - clamped) > 0.01) {
         material.opacity = clamped;
@@ -244,8 +258,8 @@ function ChunkLabel({
         color: 0x000000,
         transparent: true,
         toneMapped: false,
-        depthTest: false,
-        depthWrite: false,
+        depthTest: true,   // Occluded by cards in front (was false)
+        depthWrite: false, // Prevents text self-occlusion
         opacity: 0,
         clippingPlanes: [clippingPlane],
       }),

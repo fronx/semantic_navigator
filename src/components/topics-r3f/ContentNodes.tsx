@@ -12,6 +12,7 @@ import type { ContentSimNode } from "@/lib/content-layout";
 import type { PCATransform } from "@/lib/semantic-colors";
 import type { ZoomRange } from "@/lib/zoom-phase-config";
 import type { ContentScreenRect } from "./R3FLabelContext";
+import { projectCardToScreenRect } from "@/lib/screen-rect-projection";
 import { CONTENT_Z_DEPTH } from "@/lib/content-zoom-config";
 import { calculateScales } from "@/lib/content-scale";
 import { getNodeColor, BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/rendering-utils/node-renderer";
@@ -112,6 +113,10 @@ export function ContentNodes({
   const quaternionRef = useRef(new THREE.Quaternion());
   const scaleRef = useRef(new THREE.Vector3(1, 1, 1));
   const colorRef = useRef(new THREE.Color());
+  // Pre-allocated scratch vectors for screen rect projection (avoid GC in hot loop)
+  const screenRectCenterVec = useRef(new THREE.Vector3());
+  const screenRectEdgeVecX = useRef(new THREE.Vector3());
+  const screenRectEdgeVecY = useRef(new THREE.Vector3());
 
   // Animated fade for content nodes entering/leaving visibility
   // Reads visibleContentIdsRef (written below in useFrame) — one frame behind, which is fine for smooth animation
@@ -369,43 +374,18 @@ export function ContentNodes({
       meshRef.current.setColorAt(i, colorRef.current);
 
       // Calculate screen rect for label positioning (data sharing with label system)
+      // Note: use nodeScale (includes search opacity) not contentScale for edge offsets
       if (contentScreenRectsRef) {
-        // Project center to screen space using front Z (where text labels should appear)
-        // This aligns text with the visual "front face" of the cube-like appearance
-        const centerWorld = new THREE.Vector3(x, y, textFrontZ);
-        centerWorld.project(camera);
-
-        // Project edge point to get accurate screen size (accounts for perspective)
-        // Use same Z as center for consistent text positioning
-        // Note: use nodeScale (includes search opacity) not contentScale
-        const edgeWorldX = new THREE.Vector3(x + halfWidth * nodeScale, y, textFrontZ);
-        const edgeWorldY = new THREE.Vector3(x, y + halfHeight * nodeScale, textFrontZ);
-        edgeWorldX.project(camera);
-        edgeWorldY.project(camera);
-
-        // Convert NDC to CSS pixels (not drawing buffer pixels)
-        // Note: size from R3F is in rendering pixels, may include DPR
-        // For CSS pixel accuracy, we use the ratio which cancels out DPR
-        const screenCenterX = ((centerWorld.x + 1) / 2) * size.width;
-        const screenCenterY = ((1 - centerWorld.y) / 2) * size.height;
-
-        const screenEdgeX = ((edgeWorldX.x + 1) / 2) * size.width;
-        const screenEdgeY = ((1 - edgeWorldY.y) / 2) * size.height;
-
-        // Calculate half-width from center to edge, then full width
-        const screenHalfWidth = Math.abs(screenEdgeX - screenCenterX);
-        const screenHalfHeight = Math.abs(screenEdgeY - screenCenterY);
-        const screenWidth = screenHalfWidth * 2;
-        const screenHeight = screenHalfHeight * 2;
-
+        const rect = projectCardToScreenRect(
+          x, y, textFrontZ,
+          halfWidth * nodeScale, halfHeight * nodeScale,
+          camera, size,
+          screenRectCenterVec.current,
+          screenRectEdgeVecX.current,
+          screenRectEdgeVecY.current,
+        );
         // Each content node appears only once (no duplicates), so use node.id directly
-        contentScreenRectsRef.current.set(node.id, {
-          x: screenCenterX,
-          y: screenCenterY,
-          width: screenWidth,
-          height: screenHeight,
-          z: textFrontZ, // Front Z for text alignment
-        });
+        contentScreenRectsRef.current.set(node.id, { ...rect, z: textFrontZ });
       }
     }
 
