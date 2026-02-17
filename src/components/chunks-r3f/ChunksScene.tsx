@@ -29,7 +29,7 @@ import {
   applyLensColorEmphasis,
 } from "@/lib/chunks-lens";
 import { hashToHue } from "@/lib/chunks-utils";
-import { loadPCATransform, centroidToColor, type PCATransform } from "@/lib/semantic-colors";
+import { loadPCATransform, centroidToColor, pcaProject, coordinatesToHSL, type PCATransform } from "@/lib/semantic-colors";
 import { calculateZoomDesaturation } from "@/lib/zoom-phase-config";
 import { computeViewportZones } from "@/lib/edge-pulling";
 import {
@@ -99,6 +99,7 @@ interface ChunksSceneProps {
   isRunning: boolean;
   onSelectChunk: (chunkId: string | null) => void;
   colorSaturation: number;
+  chunkColorMix: number;
   edgeThickness: number;
   edgeContrast: number;
   edgeMidpoint: number;
@@ -121,6 +122,7 @@ export function ChunksScene({
   isRunning,
   onSelectChunk,
   colorSaturation,
+  chunkColorMix,
   edgeThickness,
   edgeContrast,
   edgeMidpoint,
@@ -134,7 +136,14 @@ export function ChunksScene({
   const count = chunks.length;
   const [pcaTransform, setPcaTransform] = useState<PCATransform | null>(null);
   useEffect(() => {
-    loadPCATransform().then((t) => { if (t) setPcaTransform(t); });
+    loadPCATransform().then((t) => {
+      if (t) {
+        console.log("[ChunksScene] PCA transform loaded, switching to embedding-based colors");
+        setPcaTransform(t);
+      } else {
+        console.warn("[ChunksScene] PCA transform unavailable, using fallback hash colors (sat=0.7, l=0.55)");
+      }
+    });
   }, []);
 
   const { stableCount, meshKey } = useStableInstanceCount(count);
@@ -154,6 +163,7 @@ export function ChunksScene({
   // so zoom level can continuously modulate it without triggering useMemo.
   const chunkColors = useMemo(() => {
     if (!pcaTransform) {
+      console.log("[ChunksScene] chunkColors: using fallback hash-HSL colors (PCA not yet loaded)");
       return chunks.map((chunk) => new THREE.Color().setHSL(hashToHue(chunk.sourcePath), 0.7, 0.55));
     }
     const articleEmbeddings = new Map<string, number[][]>();
@@ -165,8 +175,14 @@ export function ChunksScene({
     for (const [sourcePath, embeddings] of articleEmbeddings) {
       articleColors.set(sourcePath, new THREE.Color(centroidToColor(embeddings, pcaTransform)));
     }
-    return chunks.map((chunk) => articleColors.get(chunk.sourcePath) ?? new THREE.Color(0.6, 0.6, 0.6));
-  }, [chunks, pcaTransform]);
+    return chunks.map((chunk) => {
+      const articleColor = articleColors.get(chunk.sourcePath) ?? new THREE.Color(0.6, 0.6, 0.6);
+      if (chunkColorMix === 0) return articleColor;
+      const [x, y] = pcaProject(chunk.embedding, pcaTransform);
+      const chunkColor = new THREE.Color(coordinatesToHSL(x, y));
+      return articleColor.clone().lerp(chunkColor, chunkColorMix);
+    });
+  }, [chunks, pcaTransform, chunkColorMix]);
 
   const [isDraggingNode, setIsDraggingNode] = useState(false);
 
