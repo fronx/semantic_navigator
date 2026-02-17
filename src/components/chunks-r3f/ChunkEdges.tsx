@@ -45,6 +45,7 @@ const VERTS_PER_EDGE = 2 * ARC_VERTEX_COUNT; // 34 vertices (ribbon left + right
 const INDICES_PER_EDGE = EDGE_SEGMENTS * 6; // 96 indices (2 triangles × 16 segments)
 const EDGE_COLOR = 0.533; // ~#888888
 const OUTBOUND_EDGE_OFFSET = 40;
+const VIEWPORT_FADE_SPEED = 0.08;
 
 // Width constants
 const FOV_HALF_TAN = Math.tan((5 * Math.PI) / 180); // half of 10° FOV
@@ -72,6 +73,7 @@ export function ChunkEdges({
   projectOutsideFocus = false,
 }: ChunkEdgesProps) {
   const meshRef = useRef<THREE.Mesh | null>(null);
+  const edgeFadeRef = useRef<Float32Array>(new Float32Array(0));
   const { camera, size } = useThree();
 
   const geometry = useMemo(() => {
@@ -161,12 +163,10 @@ export function ChunkEdges({
     const shouldProject = Boolean(
       projectOutsideFocus && focusNodeSet && focusNodeSet.size > 0
     );
-    const marginX = (viewport.right - viewport.left) * 0.2;
-    const marginY = (viewport.top - viewport.bottom) * 0.2;
-    const cullLeft = viewport.left - marginX;
-    const cullRight = viewport.right + marginX;
-    const cullBottom = viewport.bottom - marginY;
-    const cullTop = viewport.top + marginY;
+    const cullLeft = viewport.left;
+    const cullRight = viewport.right;
+    const cullBottom = viewport.bottom;
+    const cullTop = viewport.top;
 
     const projectPosition = (nodeIndex: number, x: number, y: number) => {
       if (!shouldProject || focusNodeSet!.has(nodeIndex)) return { x, y };
@@ -193,6 +193,13 @@ export function ChunkEdges({
       if (edge.weight > maxWeight) maxWeight = edge.weight;
     }
 
+    // --- Per-edge fade tracking ---
+    let edgeFade = edgeFadeRef.current;
+    if (edgeFade.length !== edges.length) {
+      edgeFade = new Float32Array(edges.length).fill(1);
+      edgeFadeRef.current = edgeFade;
+    }
+
     // --- Build ribbon geometry per edge ---
     for (let edgeIndex = 0; edgeIndex < edges.length; edgeIndex++) {
       const edge = edges[edgeIndex];
@@ -206,6 +213,7 @@ export function ChunkEdges({
         sourceIdx + 1 >= positions.length ||
         targetIdx + 1 >= positions.length
       ) {
+        edgeFade[edgeIndex] = 0;
         zeroEdge(posArray, colArray, vertBase);
         continue;
       }
@@ -218,14 +226,17 @@ export function ChunkEdges({
       const sourcePoint = projectPosition(edge.source, sourceRawX, sourceRawY);
       const targetPoint = projectPosition(edge.target, targetRawX, targetRawY);
 
-      // Viewport culling: skip edges entirely outside expanded viewport
+      // Viewport fade: lerp toward 0 when both endpoints are off-screen
       const sourceInView =
         sourcePoint.x >= cullLeft && sourcePoint.x <= cullRight &&
         sourcePoint.y >= cullBottom && sourcePoint.y <= cullTop;
       const targetInView =
         targetPoint.x >= cullLeft && targetPoint.x <= cullRight &&
         targetPoint.y >= cullBottom && targetPoint.y <= cullTop;
-      if (!sourceInView && !targetInView) {
+      const fadeTarget = (sourceInView || targetInView) ? 1 : 0;
+      edgeFade[edgeIndex] += (fadeTarget - edgeFade[edgeIndex]) * VIEWPORT_FADE_SPEED;
+      if (edgeFade[edgeIndex] < 0.005) {
+        edgeFade[edgeIndex] = 0;
         zeroEdge(posArray, colArray, vertBase);
         continue;
       }
@@ -261,8 +272,8 @@ export function ChunkEdges({
           tx = p.x - prev.x;
           ty = p.y - prev.y;
         } else {
-          const prev = arcPoints[i - 1]!;
-          const next = arcPoints[i + 1]!;
+          const prev = arcPoints[i - 1] ?? p;
+          const next = arcPoints[i + 1] ?? p;
           tx = next.x - prev.x;
           ty = next.y - prev.y;
         }
@@ -285,9 +296,9 @@ export function ChunkEdges({
         posArray[ri + 2] = 0;
       }
 
-      // Colors: RGBA with per-edge alpha encoding weight + overall opacity
+      // Colors: RGBA with per-edge alpha encoding weight + overall opacity + viewport fade
       const baseAlpha = 0.05 + normalizedWeight * 0.95;
-      const alpha = baseAlpha * opacity;
+      const alpha = baseAlpha * opacity * edgeFade[edgeIndex];
 
       for (let v = 0; v < VERTS_PER_EDGE; v++) {
         const ci = (vertBase + v) * 4;
