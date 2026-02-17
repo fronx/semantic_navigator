@@ -19,7 +19,11 @@ When fixing bugs or implementing features, always check for existing patterns/sy
 
 ## Project Tools
 
-This project has a code-simplifier agent. After implementing features or fixes, use the project's simplification tool rather than doing manual simplification. Ask the user before simplifying if unsure.
+**Code simplification:** After implementing features or fixes, use the code-simplifier agent via the Task tool rather than doing manual simplification. Invoke with:
+```
+Task tool, subagent_type: "code-simplifier:code-simplifier", prompt: "Simplify [file path]"
+```
+Ask the user before simplifying if unsure.
 
 ## Common Pitfalls
 
