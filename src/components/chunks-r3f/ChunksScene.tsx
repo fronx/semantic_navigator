@@ -99,6 +99,7 @@ interface ChunksSceneProps {
   isRunning: boolean;
   onSelectChunk: (chunkId: string | null) => void;
   colorSaturation: number;
+  minSaturation: number;
   chunkColorMix: number;
   edgeThickness: number;
   edgeContrast: number;
@@ -122,6 +123,7 @@ export function ChunksScene({
   isRunning,
   onSelectChunk,
   colorSaturation,
+  minSaturation,
   chunkColorMix,
   edgeThickness,
   edgeContrast,
@@ -525,8 +527,11 @@ export function ChunksScene({
   const searchOpacitiesRef = useRef(searchOpacities);
   const colorDirtyRef = useRef(false);
   const prevDesaturationRef = useRef(-1);
+  const prevMinSaturationRef = useRef(-1);
   const colorSaturationRef = useRef(colorSaturation);
   colorSaturationRef.current = colorSaturation;
+  const minSaturationRef = useRef(minSaturation);
+  minSaturationRef.current = minSaturation;
   // Reusable object for getHSL/setHSL (avoids allocation per frame)
   const hslTemp = useRef({ h: 0, s: 0, l: 0 });
   if (searchOpacitiesRef.current !== searchOpacities) {
@@ -836,14 +841,15 @@ export function ChunksScene({
       DESAT_NEAR_Z,
     );
     const effectiveDesaturation = Math.min(1, zoomDesat + (1 - colorSaturationRef.current));
-    const desatChanged = Math.abs(effectiveDesaturation - prevDesaturationRef.current) > 0.005;
+    const desatChanged = Math.abs(effectiveDesaturation - prevDesaturationRef.current) > 0.005
+      || minSaturationRef.current !== prevMinSaturationRef.current;
 
     if (colorChunksRef.current !== chunkColors || colorDirtyRef.current || desatChanged || !mesh.instanceColor) {
       const searchActive = searchOpacitiesRef.current.size > 0;
       for (let i = 0; i < Math.min(n, chunkColors.length); i++) {
         // Apply desaturation to base color via HSL (fast, no chroma.js needed)
         chunkColors[i].getHSL(hslTemp.current);
-        hslTemp.current.s *= (1 - effectiveDesaturation);
+        hslTemp.current.s = Math.max(minSaturationRef.current, hslTemp.current.s * (1 - effectiveDesaturation));
         tempColor.current.setHSL(hslTemp.current.h, hslTemp.current.s, hslTemp.current.l);
         if (searchActive) {
           const opacity = searchOpacitiesRef.current.get(chunks[i].id) ?? 1.0;
@@ -858,6 +864,7 @@ export function ChunksScene({
       colorChunksRef.current = chunkColors;
       colorDirtyRef.current = false;
       prevDesaturationRef.current = effectiveDesaturation;
+      prevMinSaturationRef.current = minSaturationRef.current;
     }
 
     if (isManifoldFocus && lensActive && focusSeedsRef.current.length > 0) {

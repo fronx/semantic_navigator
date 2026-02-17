@@ -15,6 +15,7 @@ export interface ChunksSettings {
   minDist: number;
   spread: number;
   colorSaturation: number;
+  minSaturation: number;
   chunkColorMix: number;
   edgeThickness: number;
   edgeContrast: number;
@@ -57,6 +58,14 @@ export function ChunksControlSidebar({ store }: ChunksControlSidebarProps): Reac
           label="Saturation"
           value={values.colorSaturation}
           onChange={(v) => update("colorSaturation", v)}
+          min={0}
+          max={1}
+          step={0.05}
+        />
+        <Slider
+          label="Min saturation"
+          value={values.minSaturation}
+          onChange={(v) => update("minSaturation", v)}
           min={0}
           max={1}
           step={0.05}
