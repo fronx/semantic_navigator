@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { getArticleByChunkId, loadAll } from "@/lib/article-reader-cache";
 
 export interface ArticleChunk {
   id: string;
@@ -21,9 +22,21 @@ export function useArticleReader(chunkId: string | null): {
   const [data, setData] = useState<ArticleReaderData | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Start background loading on mount (idempotent)
+  useEffect(() => { loadAll(); }, []);
+
   useEffect(() => {
     if (!chunkId) return;
 
+    // Cache hit — return instantly
+    const cached = getArticleByChunkId(chunkId);
+    if (cached) {
+      setData(cached);
+      setLoading(false);
+      return;
+    }
+
+    // Fallback: fetch on demand (cache not ready yet)
     let cancelled = false;
     setLoading(true);
 
