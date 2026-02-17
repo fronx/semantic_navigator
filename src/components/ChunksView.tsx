@@ -27,13 +27,15 @@ const CHUNKS_DEFAULTS: ChunksSettings = {
   colorSaturation: 0.6,
   chunkColorMix: 0.4,
   edgeThickness: 2,
-  edgeContrast: 10,
   edgeMidpoint: 0.6,
   lensCompressionStrength: DEFAULT_LENS_COMPRESSION_STRENGTH,
   lensCenterScale: DEFAULT_LENS_CENTER_SCALE,
   lensEdgeScale: DEFAULT_LENS_EDGE_SCALE,
   lpNormP: DEFAULT_LP_NORM_P,
   focusMode: "click",
+  nodeSizeMin: 0.6,
+  nodeSizeMax: 2.0,
+  nodeSizePivot: 30,
   sidebarCollapsed: false,
   sectionStates: {
     UMAP: true,
@@ -176,13 +178,15 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
             colorSaturation={store.values.colorSaturation}
             chunkColorMix={store.values.chunkColorMix}
             edgeThickness={store.values.edgeThickness}
-            edgeContrast={store.values.edgeContrast}
             edgeMidpoint={store.values.edgeMidpoint}
             lensCompressionStrength={store.values.lensCompressionStrength}
             lensCenterScale={store.values.lensCenterScale}
             lensEdgeScale={store.values.lensEdgeScale}
             lpNormP={store.values.lpNormP}
             focusMode={store.values.focusMode}
+            nodeSizeMin={store.values.nodeSizeMin}
+            nodeSizeMax={store.values.nodeSizeMax}
+            nodeSizePivot={store.values.nodeSizePivot}
           />
           <Reader chunkId={selectedChunkIds.at(-1) ?? null} onClose={() => handleSelectChunk(null)} />
         </div>

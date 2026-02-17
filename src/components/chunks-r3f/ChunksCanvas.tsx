@@ -22,13 +22,15 @@ interface ChunksCanvasProps {
   colorSaturation: number;
   chunkColorMix: number;
   edgeThickness: number;
-  edgeContrast: number;
   edgeMidpoint: number;
   lensCompressionStrength: number;
   lensCenterScale: number;
   lensEdgeScale: number;
   lpNormP: number;
   focusMode: "manifold" | "click";
+  nodeSizeMin: number;
+  nodeSizeMax: number;
+  nodeSizePivot: number;
 }
 
 export function ChunksCanvas({
@@ -42,13 +44,15 @@ export function ChunksCanvas({
   colorSaturation,
   chunkColorMix,
   edgeThickness,
-  edgeContrast,
   edgeMidpoint,
   lensCompressionStrength,
   lensCenterScale,
   lensEdgeScale,
   lpNormP,
   focusMode,
+  nodeSizeMin,
+  nodeSizeMax,
+  nodeSizePivot,
 }: ChunksCanvasProps) {
   const [backgroundColor, setBackgroundColor] = useState(getBackgroundColor);
   const backgroundClickRef = useRef<(() => void) | null>(null);
@@ -85,13 +89,15 @@ export function ChunksCanvas({
           colorSaturation={colorSaturation}
           chunkColorMix={chunkColorMix}
           edgeThickness={edgeThickness}
-          edgeContrast={edgeContrast}
           edgeMidpoint={edgeMidpoint}
           lensCompressionStrength={lensCompressionStrength}
           lensCenterScale={lensCenterScale}
           lensEdgeScale={lensEdgeScale}
           lpNormP={lpNormP}
           focusMode={focusMode}
+          nodeSizeMin={nodeSizeMin}
+          nodeSizeMax={nodeSizeMax}
+          nodeSizePivot={nodeSizePivot}
           backgroundClickRef={backgroundClickRef}
         />
       </Canvas>
