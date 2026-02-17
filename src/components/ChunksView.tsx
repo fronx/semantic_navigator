@@ -25,6 +25,8 @@ const CHUNKS_DEFAULTS: ChunksSettings = {
   minDist: 0.1,
   spread: 1.0,
   edgeThickness: 2,
+  edgeContrast: 10,
+  edgeMidpoint: 0.6,
   lensCompressionStrength: DEFAULT_LENS_COMPRESSION_STRENGTH,
   lensCenterScale: DEFAULT_LENS_CENTER_SCALE,
   lensEdgeScale: DEFAULT_LENS_EDGE_SCALE,
@@ -163,6 +165,8 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
             selectedChunkId={selectedChunkId}
             onSelectChunk={handleSelectChunk}
             edgeThickness={store.values.edgeThickness}
+            edgeContrast={store.values.edgeContrast}
+            edgeMidpoint={store.values.edgeMidpoint}
             lensCompressionStrength={store.values.lensCompressionStrength}
             lensCenterScale={store.values.lensCenterScale}
             lensEdgeScale={store.values.lensEdgeScale}

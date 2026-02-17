@@ -14,6 +14,8 @@ export interface ChunksSettings {
   minDist: number;
   spread: number;
   edgeThickness: number;
+  edgeContrast: number;
+  edgeMidpoint: number;
   lensCompressionStrength: number;
   lensCenterScale: number;
   lensEdgeScale: number;
@@ -84,6 +86,23 @@ export function ChunksControlSidebar({ store }: ChunksControlSidebarProps): Reac
           max={5}
           step={0.5}
           format={(v) => v.toFixed(1)}
+        />
+        <Slider
+          label="Contrast"
+          value={values.edgeContrast}
+          onChange={(v) => update("edgeContrast", v)}
+          min={0}
+          max={20}
+          step={1}
+          format={(v) => `${v}`}
+        />
+        <Slider
+          label="Midpoint"
+          value={values.edgeMidpoint}
+          onChange={(v) => update("edgeMidpoint", v)}
+          min={0.1}
+          max={0.9}
+          step={0.05}
         />
       </Section>
 

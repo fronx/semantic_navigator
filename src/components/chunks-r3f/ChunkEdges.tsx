@@ -53,12 +53,28 @@ const REFERENCE_Z = 3000;
 const MAX_PIXEL_WIDTH = 5;
 const MIN_PIXEL_WIDTH = 0.3;
 
+/**
+ * Normalized logistic S-curve on [0,1].
+ * At contrast=0 this returns `t` (linear). Increasing contrast pushes weak
+ * values toward 0 and strong values toward 1, creating visual separation.
+ * `midpoint` shifts the inflection point (0.5 = centered).
+ */
+function applySCurve(t: number, contrast: number, midpoint: number): number {
+  if (contrast <= 0) return t;
+  const lo = 1 / (1 + Math.exp(contrast * midpoint));
+  const hi = 1 / (1 + Math.exp(-contrast * (1 - midpoint)));
+  const raw = 1 / (1 + Math.exp(-contrast * (t - midpoint)));
+  return (raw - lo) / (hi - lo);
+}
+
 export interface ChunkEdgesProps {
   edges: UmapEdge[];
   edgesVersion: number;
   positions: Float32Array;
   opacity: number;
   edgeThickness: number;
+  edgeContrast: number;
+  edgeMidpoint: number;
   focusNodeSet?: Set<number> | null;
   projectOutsideFocus?: boolean;
 }
@@ -69,6 +85,8 @@ export function ChunkEdges({
   positions,
   opacity,
   edgeThickness,
+  edgeContrast,
+  edgeMidpoint,
   focusNodeSet,
   projectOutsideFocus = false,
 }: ChunkEdgesProps) {
@@ -251,9 +269,10 @@ export function ChunkEdges({
         sourcePoint, targetPoint, 0.15, direction, EDGE_SEGMENTS
       );
 
-      // Per-edge width from weight
+      // Per-edge width from weight (S-curve applied to both width and opacity)
       const normalizedWeight = maxWeight > 0 ? edge.weight / maxWeight : 0;
-      const weightFactor = 0.2 + 0.8 * normalizedWeight;
+      const curved = applySCurve(normalizedWeight, edgeContrast, edgeMidpoint);
+      const weightFactor = 0.2 + 0.8 * curved;
       const pixelWidth = Math.max(basePixelWidth * weightFactor, MIN_PIXEL_WIDTH);
       const halfWidth = (pixelWidth * worldPerPixel) / 2;
 
@@ -297,7 +316,7 @@ export function ChunkEdges({
       }
 
       // Colors: RGBA with per-edge alpha encoding weight + overall opacity + viewport fade
-      const baseAlpha = 0.05 + normalizedWeight * 0.95;
+      const baseAlpha = 0.05 + curved * 0.95;
       const alpha = baseAlpha * opacity * edgeFade[edgeIndex];
 
       for (let v = 0; v < VERTS_PER_EDGE; v++) {

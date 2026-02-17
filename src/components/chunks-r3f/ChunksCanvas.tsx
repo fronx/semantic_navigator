@@ -21,6 +21,8 @@ interface ChunksCanvasProps {
   selectedChunkId: string | null;
   onSelectChunk: (chunkId: string | null) => void;
   edgeThickness: number;
+  edgeContrast: number;
+  edgeMidpoint: number;
   lensCompressionStrength: number;
   lensCenterScale: number;
   lensEdgeScale: number;
@@ -37,6 +39,8 @@ export function ChunksCanvas({
   selectedChunkId,
   onSelectChunk,
   edgeThickness,
+  edgeContrast,
+  edgeMidpoint,
   lensCompressionStrength,
   lensCenterScale,
   lensEdgeScale,
@@ -75,6 +79,8 @@ export function ChunksCanvas({
           selectedChunkId={selectedChunkId}
           onSelectChunk={onSelectChunk}
           edgeThickness={edgeThickness}
+          edgeContrast={edgeContrast}
+          edgeMidpoint={edgeMidpoint}
           lensCompressionStrength={lensCompressionStrength}
           lensCenterScale={lensCenterScale}
           lensEdgeScale={lensEdgeScale}
