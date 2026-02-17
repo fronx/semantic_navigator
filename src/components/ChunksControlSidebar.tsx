@@ -8,6 +8,7 @@ import type { PersistedStore } from "@/hooks/usePersistedStore";
 import { CollapsibleSidebar } from "@/components/CollapsibleSidebar";
 import { Section } from "@/components/Section";
 import { Slider } from "@/components/Slider";
+import { SelectField } from "@/components/SelectField";
 
 export interface ChunksSettings {
   nNeighbors: number;
@@ -17,6 +18,7 @@ export interface ChunksSettings {
   lensCenterScale: number;
   lensEdgeScale: number;
   lpNormP: number;
+  focusMode: "manifold" | "click";
   sidebarCollapsed: boolean;
   sectionStates: Record<string, boolean>;
 }
@@ -75,6 +77,16 @@ export function ChunksControlSidebar({ store }: ChunksControlSidebarProps): Reac
       </Section>
 
       <Section {...sectionProps("Focus Lens")}>
+        <SelectField
+          label="Focus behavior"
+          value={values.focusMode}
+          onChange={(v) => update("focusMode", v as "manifold" | "click")}
+          options={[
+            { value: "click", label: "Click-based focus" },
+            { value: "manifold", label: "Manifold zoom focus" },
+          ]}
+        />
+        <div className="h-2" />
         <Slider
           label="Compression"
           value={values.lensCompressionStrength}

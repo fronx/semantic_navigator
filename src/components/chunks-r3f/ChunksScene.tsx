@@ -4,7 +4,7 @@
  * colored by source article. Constant world-space scale: dots when far, cards when close.
  */
 
-import { useRef, useMemo, useState, useEffect, useCallback } from "react";
+import { useRef, useMemo, useState, useEffect, useCallback, type MutableRefObject } from "react";
 import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 
@@ -29,7 +29,7 @@ import {
 } from "@/lib/chunks-lens";
 import { hashToHue } from "@/lib/chunks-utils";
 import { computeViewportZones } from "@/lib/edge-pulling";
-import { computeCompressionExtents, DEFAULT_LP_NORM_P } from "@/lib/fisheye-viewport";
+import { applyFisheyeCompression, computeCompressionExtents, DEFAULT_LP_NORM_P } from "@/lib/fisheye-viewport";
 import { projectCardToScreenRect, type ScreenRect } from "@/lib/screen-rect-projection";
 import { ChunkEdges } from "./ChunkEdges";
 import { ChunkTextLabels } from "./ChunkTextLabels";
@@ -87,6 +87,8 @@ interface ChunksSceneProps {
   lensCenterScale: number;
   lensEdgeScale: number;
   lpNormP: number;
+  focusMode: "manifold" | "click";
+  backgroundClickRef?: MutableRefObject<(() => void) | null>;
 }
 
 // --- Component ---
@@ -102,11 +104,15 @@ export function ChunksScene({
   lensCenterScale,
   lensEdgeScale,
   lpNormP,
+  focusMode,
+  backgroundClickRef,
 }: ChunksSceneProps) {
   const count = chunks.length;
   const { stableCount, meshKey } = useStableInstanceCount(count);
   const { meshRef, handleMeshRef } = useInstancedMeshMaterial(stableCount);
   const { camera, size } = useThree();
+  const isManifoldFocus = focusMode === "manifold";
+  const seedCapacity = isManifoldFocus ? MAX_FOVEA_SEEDS : 1;
 
   const geometry = useMemo(createCardGeometry, []);
 
@@ -149,6 +155,32 @@ export function ChunksScene({
     lastPanAnchorRef.current = null;
     setFocusSeeds([]);
   }, []);
+
+  useEffect(() => {
+    if (!backgroundClickRef) return;
+    const handler = () => {
+      if (focusSeedsRef.current.length > 0) {
+        clearFocus();
+      }
+    };
+    backgroundClickRef.current = handler;
+    return () => {
+      if (backgroundClickRef.current === handler) {
+        backgroundClickRef.current = null;
+      }
+    };
+  }, [backgroundClickRef, clearFocus]);
+
+  useEffect(() => {
+    lastPanAnchorRef.current = null;
+    if (!isManifoldFocus && focusSeedsRef.current.length > seedCapacity) {
+      setFocusSeeds((prev) => {
+        if (prev.length <= seedCapacity) return prev;
+        const next = prev.slice(-seedCapacity);
+        return next;
+      });
+    }
+  }, [isManifoldFocus, seedCapacity]);
 
   // Focus zoom exit hook - exits lens mode when zooming out
   const { handleZoomChange, captureEntryZoom } = useFocusZoomExit({
@@ -196,8 +228,8 @@ export function ChunksScene({
     updateBounds: updateFocusBounds,
   } = useFocusManifoldLayout({
     basePositions: layoutPositions,
-    focusNodeSet: lensNodeSet ?? null,
-    seedIndices: lensInfo?.focusIndices ?? [],
+    focusNodeSet: isManifoldFocus ? lensNodeSet ?? null : null,
+    seedIndices: isManifoldFocus ? (lensInfo?.focusIndices ?? []) : [],
     adjacency,
     compressionStrength: lensCompressionStrength,
   });
@@ -253,8 +285,8 @@ export function ChunksScene({
           origin,
         });
       }
-      if (next.length > MAX_FOVEA_SEEDS) {
-        next = trimSeeds(next, next.length - MAX_FOVEA_SEEDS);
+      if (next.length > seedCapacity) {
+        next = trimSeeds(next, next.length - seedCapacity);
       }
       return next;
     });
@@ -265,6 +297,7 @@ export function ChunksScene({
     maxAdd?: number;
     reason?: FoveaSeedOrigin;
   }) => {
+    if (!isManifoldFocus) return;
     const positions = layoutPositionsRef.current;
     const n = Math.min(count, positions.length / 2);
     if (n === 0) return;
@@ -306,7 +339,7 @@ export function ChunksScene({
     }
 
     candidates.sort((a, b) => a.score - b.score);
-    const maxAdd = options?.maxAdd ?? Math.max(1, MAX_FOVEA_SEEDS - focusSeedsRef.current.length);
+    const maxAdd = options?.maxAdd ?? Math.max(1, seedCapacity - focusSeedsRef.current.length);
     const toAdd: number[] = [];
     for (const candidate of candidates) {
       if (toAdd.length >= maxAdd) break;
@@ -317,9 +350,10 @@ export function ChunksScene({
     if (toAdd.length > 0) {
       addFocusSeeds(toAdd, options?.reason ?? "zoom");
     }
-  }, [adjacency, addFocusSeeds, count, lpNormP]);
+  }, [adjacency, addFocusSeeds, count, lpNormP, isManifoldFocus, seedCapacity]);
 
   const handleCameraTransform = useCallback((event: CameraTransformEvent) => {
+    if (!isManifoldFocus) return;
     if (event.type === "zoom") {
       if (event.direction === "in") {
         const radiusWorld = event.viewport.worldPerPx * FOVEA_ANCHOR_RADIUS_PX * Math.max(0.6, (lpNormP || DEFAULT_LP_NORM_P) / DEFAULT_LP_NORM_P);
@@ -343,7 +377,7 @@ export function ChunksScene({
         );
       }
     }
-  }, [queueAnchorSelection, lpNormP]);
+  }, [queueAnchorSelection, lpNormP, isManifoldFocus]);
 
   const focusEdges = useMemo(() => {
     if (!lensActive || !lensInfo) return neighborhoodEdges;
@@ -419,6 +453,7 @@ export function ChunksScene({
 
   // Buffer for focus-adjusted positions (overrides applied on top of layout positions)
   const focusAdjustedPositionsRef = useRef<Float32Array>(new Float32Array(0));
+  const compressedPositionsRef = useRef<Float32Array>(new Float32Array(0));
 
   const pickInstance = useCallback(
     (event: ThreeEvent<PointerEvent>): number | null => {
@@ -441,10 +476,27 @@ export function ChunksScene({
     onDragStateChange: setIsDraggingNode,
     onClick: (index) => {
       bringToFront(index);
-      addFocusSeeds([index], "manual");
-      const x = layoutPositionsRef.current[index * 2] ?? 0;
-      const y = layoutPositionsRef.current[index * 2 + 1] ?? 0;
-      lastPanAnchorRef.current = { x, y };
+      if (isManifoldFocus) {
+        addFocusSeeds([index], "manual");
+        const x = layoutPositionsRef.current[index * 2] ?? 0;
+        const y = layoutPositionsRef.current[index * 2 + 1] ?? 0;
+        lastPanAnchorRef.current = { x, y };
+      } else {
+        setFocusSeeds((prev) => {
+          const alreadyFocused = prev.length === 1 && prev[0].index === index;
+          if (alreadyFocused) return [];
+          const x = layoutPositionsRef.current[index * 2] ?? 0;
+          const y = layoutPositionsRef.current[index * 2 + 1] ?? 0;
+          const now = performance.now();
+          return [{
+            index,
+            anchorX: x,
+            anchorY: y,
+            addedAt: now,
+            origin: "manual",
+          }];
+        });
+      }
     },
   });
 
@@ -481,6 +533,8 @@ export function ChunksScene({
 
     if (lensActive && zones) {
       worldPerPxRef.current = zones.worldPerPx;
+    }
+    if (lensActive && zones && isManifoldFocus) {
       updateFocusBounds(zones.focusPullBounds);
     } else {
       updateFocusBounds(null);
@@ -492,8 +546,8 @@ export function ChunksScene({
       if (!visibleSet || visibleSet.has(i)) visibleNodeIndicesRef.current.add(i);
     }
 
-    let renderPositions = layoutPositions;
-    if (lensActive) {
+    let positionsWithOverrides = layoutPositions;
+    if (lensActive && isManifoldFocus) {
       const focusOverrides = focusPositionsRef.current;
       if (focusOverrides.size > 0) {
         if (focusAdjustedPositionsRef.current.length !== layoutPositions.length) {
@@ -506,8 +560,38 @@ export function ChunksScene({
           focusAdjustedPositionsRef.current[target] = pos.x;
           focusAdjustedPositionsRef.current[target + 1] = pos.y;
         });
-        renderPositions = focusAdjustedPositionsRef.current;
+        positionsWithOverrides = focusAdjustedPositionsRef.current;
       }
+    }
+
+    let renderPositions = positionsWithOverrides;
+    if (lensActive && zones && extents) {
+      if (compressedPositionsRef.current.length !== positionsWithOverrides.length) {
+        compressedPositionsRef.current = new Float32Array(positionsWithOverrides.length);
+      }
+      for (let i = 0; i < n; i++) {
+        let x = positionsWithOverrides[i * 2];
+        let y = positionsWithOverrides[i * 2 + 1];
+        if (lensNodeSet?.has(i)) {
+          const compressed = applyFisheyeCompression(
+            x,
+            y,
+            zones.viewport.camX,
+            zones.viewport.camY,
+            extents.compressionStartHalfWidth,
+            extents.compressionStartHalfHeight,
+            extents.horizonHalfWidth,
+            extents.horizonHalfHeight,
+            lensCompressionStrength,
+            lpNormP,
+          );
+          x = THREE.MathUtils.clamp(compressed.x, zones.pullBounds.left, zones.pullBounds.right);
+          y = THREE.MathUtils.clamp(compressed.y, zones.pullBounds.bottom, zones.pullBounds.top);
+        }
+        compressedPositionsRef.current[i * 2] = x;
+        compressedPositionsRef.current[i * 2 + 1] = y;
+      }
+      renderPositions = compressedPositionsRef.current;
     }
 
     chunkScreenRectsRef.current.clear();
@@ -595,7 +679,7 @@ export function ChunksScene({
       colorDirtyRef.current = false;
     }
 
-    if (lensActive && focusSeedsRef.current.length > 0) {
+    if (isManifoldFocus && lensActive && focusSeedsRef.current.length > 0) {
       const peripheryScores = peripheryScoresRef.current;
       const seedsSnapshot = [...focusSeedsRef.current];
       let removedThisFrame = false;
@@ -627,13 +711,19 @@ export function ChunksScene({
 
   const shouldRenderEdges = !isRunning && focusEdges.length > 0 && edgeOpacity > 0;
 
-  const useFocusOverrides = lensActive
+  const hasFocusOverrides = lensActive
+    && isManifoldFocus
     && focusPositionsRef.current.size > 0
     && focusAdjustedPositionsRef.current.length === layoutPositions.length
     && focusAdjustedPositionsRef.current.length > 0;
-  const displayPositions = useFocusOverrides
-    ? focusAdjustedPositionsRef.current
-    : layoutPositions;
+  const hasCompressedPositions = lensActive
+    && compressedPositionsRef.current.length === layoutPositions.length
+    && compressedPositionsRef.current.length > 0;
+  const displayPositions = hasCompressedPositions
+    ? compressedPositionsRef.current
+    : hasFocusOverrides
+      ? focusAdjustedPositionsRef.current
+      : layoutPositions;
 
   return (
     <>
