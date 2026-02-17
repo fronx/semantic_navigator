@@ -296,11 +296,12 @@ export async function ingestArticleWithChunks(
   const uniqueKeywords = [...new Set(allChunkKeywords)];
 
   // Collect ALL texts that need embeddings:
-  // [0]: article summary
+  // [0]: article summary text
   // [1..N]: chunk contents
   // [N+1..M]: unique keywords
+  const summaryText = articleSummary.teaser ?? articleSummary.content ?? '';
   const textsToEmbed: string[] = [
-    articleSummary,
+    summaryText,
     ...chunks.map(c => c.content),
     ...uniqueKeywords,
   ];
@@ -335,7 +336,7 @@ export async function ingestArticleWithChunks(
     .from("nodes")
     .insert({
       content: null,
-      summary: articleSummary,
+      summary: JSON.stringify(articleSummary),
       content_hash: articleContentHash,
       embedding: articleEmbedding,
       node_type: "article" as NodeType,

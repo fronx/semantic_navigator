@@ -9,13 +9,13 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 
-export interface PersistedStore<T extends Record<string, unknown>> {
+export interface PersistedStore<T extends Record<string, any>> {
   values: T;
   debounced: T;
   update: <K extends keyof T>(key: K, value: T[K]) => void;
 }
 
-export function usePersistedStore<T extends Record<string, unknown>>(
+export function usePersistedStore<T extends Record<string, any>>(
   storageKey: string,
   defaults: T,
   debounceMs = 0

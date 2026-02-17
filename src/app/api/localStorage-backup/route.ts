@@ -32,7 +32,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const { data, error } = await supabase
       .from(TABLE)
       .select("*")
-      .eq("id", backupId)
+      .eq("id", Number(backupId))
       .single();
 
     if (error || !data) {

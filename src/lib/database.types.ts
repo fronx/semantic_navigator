@@ -120,6 +120,42 @@ export type Database = {
           },
         ]
       }
+      keyword_occurrences: {
+        Row: {
+          keyword_id: string
+          node_id: string
+          node_type: string
+          created_at: string | null
+        }
+        Insert: {
+          keyword_id: string
+          node_id: string
+          node_type: string
+          created_at?: string | null
+        }
+        Update: {
+          keyword_id?: string
+          node_id?: string
+          node_type?: string
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "keyword_occurrences_keyword_id_fkey"
+            columns: ["keyword_id"]
+            isOneToOne: false
+            referencedRelation: "keywords"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "keyword_occurrences_node_id_fkey"
+            columns: ["node_id"]
+            isOneToOne: false
+            referencedRelation: "nodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       keyword_communities: {
         Row: {
           community_id: number
@@ -181,6 +217,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      localstorage_backups: {
+        Row: {
+          id: number
+          created_at: string
+          data: Json
+          keys: string[]
+          size_bytes: number
+        }
+        Insert: {
+          id?: number
+          created_at?: string
+          data: Json
+          keys: string[]
+          size_bytes: number
+        }
+        Update: {
+          id?: number
+          created_at?: string
+          data?: Json
+          keys?: string[]
+          size_bytes?: number
+        }
+        Relationships: []
       }
       keywords: {
         Row: {
@@ -356,6 +416,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      cleanup_old_localstorage_backups: {
+        Args: Record<string, never>
+        Returns: undefined
+      }
       find_similar_keywords_for_node: {
         Args: {
           match_count?: number

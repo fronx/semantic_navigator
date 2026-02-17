@@ -10,9 +10,14 @@ import type { Text as TroikaText } from "troika-three-text";
 
 type DreiTextProps = ComponentProps<typeof Text>;
 
+interface TextSegment {
+  text: string;
+  [key: string]: any;
+}
+
 export interface GraphTextLabelProps extends Omit<DreiTextProps, "children"> {
   text?: string;
-  textSegments?: DreiTextProps["textSegments"];
+  textSegments?: TextSegment[];
   color?: string;
   opacity?: number;
 }
@@ -55,7 +60,7 @@ export const GraphTextLabel = forwardRef<TroikaText, GraphTextLabelProps>(functi
       material-depthTest={false}
       material-depthWrite={false}
       text={resolvedText}
-      textSegments={textSegments}
+      {...{ textSegments } as any}
       {...rest}
     />
   );

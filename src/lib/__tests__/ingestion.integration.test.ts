@@ -147,7 +147,7 @@ describe("ingestion integration", { timeout: 30000 }, () => {
     }));
 
     mockedChunkText.mockReturnValue(mockChunkGenerator(chunks));
-    mockedGenerateArticleSummary.mockResolvedValue("Test article summary");
+    mockedGenerateArticleSummary.mockResolvedValue({ type: "test", teaser: "Test article summary" });
     mockedReduceKeywordsForArticle.mockResolvedValue(["test-keyword"]);
 
     // Generate embeddings: 1 article + N chunks + (N + 1) keywords
