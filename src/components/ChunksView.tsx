@@ -50,7 +50,7 @@ interface ChunksViewProps {
 export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
   const store = usePersistedStore("chunks-umap-v2", CHUNKS_DEFAULTS, 300);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedChunkId, setSelectedChunkId] = useState<string | null>(null);
+  const [selectedChunkIds, setSelectedChunkIds] = useState<string[]>([]);
 
   const embeddings = useMemo(
     () => chunks.map((c) => c.embedding),
@@ -103,7 +103,14 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
   }, [chunks, positions, neighborhoodEdges]);
 
   const handleSelectChunk = useCallback((chunkId: string | null) => {
-    setSelectedChunkId((prev) => (prev === chunkId ? null : chunkId));
+    if (chunkId === null) {
+      setSelectedChunkIds([]);
+      return;
+    }
+    setSelectedChunkIds((prev) => {
+      if (prev.includes(chunkId)) return prev.filter((id) => id !== chunkId);
+      return prev.length >= 2 ? [prev[1], chunkId] : [...prev, chunkId];
+    });
   }, []);
 
   return (
@@ -175,7 +182,7 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
             lpNormP={store.values.lpNormP}
             focusMode={store.values.focusMode}
           />
-          <Reader chunkId={selectedChunkId} onClose={() => handleSelectChunk(null)} />
+          <Reader chunkId={selectedChunkIds.at(-1) ?? null} onClose={() => handleSelectChunk(null)} />
         </div>
       </main>
     </div>

@@ -49,6 +49,7 @@
 - [Topics Loading Optimization](investigations/topics-loading-optimization-2026-02-08.md) - **IN PROGRESS** - Reducing `getKeywordBackbone()` from ~9s to ~2s via lean SQL, parallel queries, and fixing 1000-row PostgREST truncation
 - [Content Card Spacing](investigations/content-card-spacing.md) - Problem space analysis: simulation uses static world-space heuristics but correct spacing depends on zoom, viewport, and fisheye state
 - [Chunk Card Occlusion](investigations/chunk-card-occlusion-2026-02-17.md) - Cards must occlude overlapping cards' text; resolved via stable per-index z ordering (card i at z=i*step, text at z=i*step+step/2)
+- [Focus Activation Node Jump](investigations/focus-activation-node-jump.md) - **OPEN** - Nodes jump outward from screen center when first entering focus mode; subsequent focus changes are stable
 
 ### Implementation Notes
 

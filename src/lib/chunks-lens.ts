@@ -93,6 +93,72 @@ export function computeLensNodeScale(
 }
 
 /**
+ * BFS shortest path between two nodes. Returns path (including endpoints) or null if unreachable.
+ */
+export function bfsShortestPath(
+  start: number,
+  end: number,
+  adjacency: Map<number, number[]>,
+): number[] | null {
+  if (start === end) return [start];
+  const visited = new Set<number>([start]);
+  const parent = new Map<number, number>();
+  const queue = [start];
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    for (const neighbor of adjacency.get(current) ?? []) {
+      if (visited.has(neighbor)) continue;
+      visited.add(neighbor);
+      parent.set(neighbor, current);
+      if (neighbor === end) {
+        const path: number[] = [end];
+        let node = end;
+        while (node !== start) {
+          node = parent.get(node)!;
+          path.push(node);
+        }
+        return path.reverse();
+      }
+      queue.push(neighbor);
+    }
+  }
+  return null;
+}
+
+/**
+ * Dual-focus neighborhood: union of BFS neighborhoods + shortest path between 2 seeds.
+ * Path nodes get interpolated depth (0 at seeds, up to 0.5 at midpoint).
+ * With 1 or 3+ seeds, returns plain BFS result.
+ */
+export function computeDualFocusNeighborhood(
+  focusIndices: number | number[],
+  adjacency: Map<number, number[]>,
+  maxHops: number,
+): LensInfo {
+  const base = computeBfsNeighborhood(focusIndices, adjacency, maxHops);
+  const seeds = base.focusIndices;
+  if (seeds.length !== 2) return base;
+
+  const path = bfsShortestPath(seeds[0], seeds[1], adjacency);
+  if (!path || path.length <= 2) return base;
+
+  const pathLength = path.length - 1;
+  for (let i = 1; i < path.length - 1; i++) {
+    const node = path[i];
+    base.nodeSet.add(node);
+    const distToNearest = Math.min(i, pathLength - i);
+    const interpolatedDepth = distToNearest / pathLength;
+    const existing = base.depthMap.get(node);
+    if (existing === undefined || interpolatedDepth < existing) {
+      base.depthMap.set(node, interpolatedDepth);
+    }
+  }
+
+  return base;
+}
+
+/**
  * Apply lens-mode color emphasis: lerp toward white and brighten based on BFS depth.
  */
 export function applyLensColorEmphasis(color: THREE.Color, depth: number): void {

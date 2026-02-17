@@ -24,7 +24,7 @@ import { CARD_WIDTH, CARD_HEIGHT, createCardGeometry } from "@/lib/chunks-geomet
 import {
   LENS_MAX_HOPS,
   type LensInfo,
-  computeBfsNeighborhood,
+  computeDualFocusNeighborhood,
   computeLensNodeScale,
   applyLensColorEmphasis,
 } from "@/lib/chunks-lens";
@@ -136,7 +136,7 @@ export function ChunksScene({
   const { meshRef, handleMeshRef } = useInstancedMeshMaterial(stableCount);
   const { camera, size } = useThree();
   const isManifoldFocus = focusMode === "manifold";
-  const seedCapacity = isManifoldFocus ? MAX_FOVEA_SEEDS : 1;
+  const seedCapacity = isManifoldFocus ? MAX_FOVEA_SEEDS : 2;
 
   const geometry = useMemo(createCardGeometry, []);
 
@@ -204,6 +204,7 @@ export function ChunksScene({
     const handler = () => {
       if (focusSeedsRef.current.length > 0) {
         clearFocus();
+        onSelectChunk(null);
       }
     };
     backgroundClickRef.current = handler;
@@ -228,7 +229,7 @@ export function ChunksScene({
   // Focus zoom exit hook - exits lens mode when zooming out
   const { handleZoomChange, captureEntryZoom } = useFocusZoomExit({
     isFocused: focusSeeds.length > 0,
-    onExitFocus: clearFocus,
+    onExitFocus: () => { clearFocus(); onSelectChunk(null); },
     absoluteThreshold: 8000, // 80% of maxDistance=10000
     relativeMultiplier: 1.05,
   });
@@ -255,7 +256,7 @@ export function ChunksScene({
   }, [neighborhoodEdges]);
 
   const lensInfo = useMemo<LensInfo | null>(
-    () => focusSeedIndices.length === 0 ? null : computeBfsNeighborhood(focusSeedIndices, adjacency, LENS_MAX_HOPS),
+    () => focusSeedIndices.length === 0 ? null : computeDualFocusNeighborhood(focusSeedIndices, adjacency, LENS_MAX_HOPS),
     [focusSeedIndices, adjacency],
   );
 
@@ -533,20 +534,12 @@ export function ChunksScene({
         const y = layoutPositionsRef.current[index * 2 + 1] ?? 0;
         lastPanAnchorRef.current = { x, y };
       } else {
-        setFocusSeeds((prev) => {
-          const alreadyFocused = prev.length === 1 && prev[0].index === index;
-          if (alreadyFocused) return [];
-          const x = layoutPositionsRef.current[index * 2] ?? 0;
-          const y = layoutPositionsRef.current[index * 2 + 1] ?? 0;
-          const now = performance.now();
-          return [{
-            index,
-            anchorX: x,
-            anchorY: y,
-            addedAt: now,
-            origin: "manual",
-          }];
-        });
+        const alreadyFocused = focusSeedsRef.current.some((s) => s.index === index);
+        if (alreadyFocused) {
+          removeSeed(index);
+        } else {
+          addFocusSeeds([index], "manual");
+        }
       }
     },
   });
