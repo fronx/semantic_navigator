@@ -11,6 +11,9 @@ export const CORNER_RATIO = 0.08;
 /** Constant world-space scale applied to all chunk cards. */
 export const CARD_SCALE = 0.3;
 
+/** Half-diagonal of a card in world units — used as collision radius in d3 force. */
+export const CARD_COLLISION_RADIUS = Math.max(CARD_WIDTH, CARD_HEIGHT) / 2 * CARD_SCALE;
+
 /**
  * Create a rounded rectangle ShapeGeometry for chunk cards.
  */

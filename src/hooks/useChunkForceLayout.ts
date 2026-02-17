@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import * as d3 from "d3-force";
 import type { UmapEdge } from "@/hooks/useUmapLayout";
 import { createSimulationDrag, type SimulationDragHandlers } from "@/lib/simulation-drag";
+import { CARD_COLLISION_RADIUS } from "@/lib/chunks-geometry";
 
 interface ChunkNode extends d3.SimulationNodeDatum {
   index: number;
@@ -138,13 +139,13 @@ export function useChunkForceLayout({
         d3.forceCenter<ChunkNode>(0, 0)
       )
       .force(
-        "hoverCollision",
+        "collision",
         d3.forceCollide<ChunkNode>()
           .radius((node) => {
             const hs = hoveredStateRef.current;
-            // Use half the link rest length as the base territory so hover
-            // actually reaches neighbors (~40 units vs 4.5 physical card size).
-            return node.index === hs.index ? (defaultRestLength / 2) * hs.scaleFactor : 0;
+            return node.index === hs.index
+              ? CARD_COLLISION_RADIUS * hs.scaleFactor
+              : CARD_COLLISION_RADIUS;
           })
           .strength(0.8),
       )
@@ -162,14 +163,21 @@ export function useChunkForceLayout({
     (): SimulationDragHandlers => ({
       ...createSimulationDrag(simulationRef, (index) => nodesRef.current[index]),
       notifyHoverChange(index, scaleFactor) {
+        const indexChanged = hoveredStateRef.current.index !== index;
         hoveredStateRef.current = { index, scaleFactor };
         const sim = simulationRef.current;
         if (!sim) return;
         // forceCollide caches radii at init time — re-set the radius function
         // to force d3 to recompute from the updated hoveredStateRef.
-        const collision = sim.force("hoverCollision") as d3.ForceCollide<ChunkNode> | null;
+        const collision = sim.force("collision") as d3.ForceCollide<ChunkNode> | null;
         if (collision) collision.radius(collision.radius());
-        sim.alpha(Math.max(sim.alpha(), 0.5)).restart();
+        if (indexChanged) {
+          // Inject energy on hover start/end so nodes react
+          sim.alpha(Math.max(sim.alpha(), 0.1)).restart();
+        } else if (scaleFactor > 1) {
+          // During hover animation: keep sim alive for collision, don't re-inject energy
+          sim.alpha(Math.max(sim.alpha(), 0.05)).restart();
+        }
       },
     }),
     [],
