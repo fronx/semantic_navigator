@@ -14,22 +14,37 @@ export const DEFAULT_LENS_COMPRESSION_STRENGTH = 1.5;
 export const HIGHLIGHT_COLOR = new THREE.Color(1, 1, 1);
 
 export interface LensInfo {
-  focusIndex: number;
+  /** Ordered list of focus seed indices (typically 1-3 seeds). */
+  focusIndices: number[];
   nodeSet: Set<number>;
   depthMap: Map<number, number>;
 }
 
 /**
- * BFS from focusIndex up to maxHops, returning the reachable set and depth map.
+ * BFS from one or more focus indices up to maxHops, returning the reachable set and depth map.
  */
 export function computeBfsNeighborhood(
-  focusIndex: number,
+  focusIndices: number | number[],
   adjacency: Map<number, number[]>,
   maxHops: number,
 ): LensInfo {
-  const nodeSet = new Set<number>([focusIndex]);
-  const depthMap = new Map<number, number>([[focusIndex, 0]]);
-  const queue: Array<{ index: number; depth: number }> = [{ index: focusIndex, depth: 0 }];
+  const seeds = (Array.isArray(focusIndices) ? focusIndices : [focusIndices])
+    .filter((index) => index >= 0);
+
+  if (seeds.length === 0) {
+    return { focusIndices: [], nodeSet: new Set(), depthMap: new Map() };
+  }
+
+  const nodeSet = new Set<number>();
+  const depthMap = new Map<number, number>();
+  const queue: Array<{ index: number; depth: number }> = [];
+
+  for (const index of seeds) {
+    if (nodeSet.has(index)) continue;
+    nodeSet.add(index);
+    depthMap.set(index, 0);
+    queue.push({ index, depth: 0 });
+  }
 
   while (queue.length) {
     const current = queue.shift()!;
@@ -42,7 +57,7 @@ export function computeBfsNeighborhood(
     }
   }
 
-  return { focusIndex, nodeSet, depthMap };
+  return { focusIndices: seeds, nodeSet, depthMap };
 }
 
 /**

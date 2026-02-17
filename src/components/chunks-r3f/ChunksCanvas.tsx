@@ -18,8 +18,6 @@ interface ChunksCanvasProps {
   neighborhoodEdges: UmapEdge[];
   neighborhoodEdgesVersion: number;
   isRunning: boolean;
-  selectedChunkId: string | null;
-  onSelectChunk: (chunkId: string | null) => void;
   lensCompressionStrength: number;
   lensCenterScale: number;
   lensEdgeScale: number;
@@ -33,8 +31,6 @@ export function ChunksCanvas({
   neighborhoodEdges,
   neighborhoodEdgesVersion,
   isRunning,
-  selectedChunkId,
-  onSelectChunk,
   lensCompressionStrength,
   lensCenterScale,
   lensEdgeScale,
@@ -60,7 +56,6 @@ export function ChunksCanvas({
         }}
         gl={{ antialias: true, alpha: false }}
         style={{ width: "100%", height: "100%" }}
-        onPointerMissed={() => onSelectChunk(null)}
       >
         <color attach="background" args={[backgroundColor]} />
         <ChunksScene
@@ -70,8 +65,6 @@ export function ChunksCanvas({
           neighborhoodEdges={neighborhoodEdges}
           neighborhoodEdgesVersion={neighborhoodEdgesVersion}
           isRunning={isRunning}
-          selectedChunkId={selectedChunkId}
-          onSelectChunk={onSelectChunk}
           lensCompressionStrength={lensCompressionStrength}
           lensCenterScale={lensCenterScale}
           lensEdgeScale={lensEdgeScale}

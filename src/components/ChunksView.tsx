@@ -44,7 +44,6 @@ interface ChunksViewProps {
 export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
   const store = usePersistedStore("chunks-umap-v2", CHUNKS_DEFAULTS, 300);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedChunkId, setSelectedChunkId] = useState<string | null>(null);
 
   const embeddings = useMemo(
     () => chunks.map((c) => c.embedding),
@@ -95,10 +94,6 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
     }
     exportUmapGraph(chunks, positions, neighborhoodEdges);
   }, [chunks, positions, neighborhoodEdges]);
-
-  const handleSelectChunk = useCallback((chunkId: string | null) => {
-    setSelectedChunkId((prev) => (prev === chunkId ? null : chunkId));
-  }, []);
 
   return (
     <div className="flex flex-col h-screen bg-zinc-50 dark:bg-zinc-950">
@@ -158,8 +153,6 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
             neighborhoodEdges={neighborhoodEdges}
             neighborhoodEdgesVersion={neighborhoodEdgesVersion}
             isRunning={isRunning}
-            selectedChunkId={selectedChunkId}
-            onSelectChunk={handleSelectChunk}
             lensCompressionStrength={store.values.lensCompressionStrength}
             lensCenterScale={store.values.lensCenterScale}
             lensEdgeScale={store.values.lensEdgeScale}
