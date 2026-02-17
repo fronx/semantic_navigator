@@ -14,13 +14,14 @@ import type { CameraTransformEvent } from "@/components/topics-r3f/CameraControl
 import { useChunkForceLayout } from "@/hooks/useChunkForceLayout";
 import { useClickFocusSimilarityLayout } from "@/hooks/useClickFocusSimilarityLayout";
 import { useInstancedMeshDrag } from "@/hooks/useInstancedMeshDrag";
+import type { SimulationDragHandlers } from "@/lib/simulation-drag";
 import { useInstancedMeshMaterial } from "@/hooks/useInstancedMeshMaterial";
 import { useStableInstanceCount } from "@/hooks/useStableInstanceCount";
 import { useFadingScale } from "@/hooks/useFadingScale";
 import { useFocusZoomExit } from "@/hooks/useFocusZoomExit";
 import { useFocusManifoldLayout } from "@/hooks/useFocusManifoldLayout";
 import type { UmapEdge } from "@/hooks/useUmapLayout";
-import { CARD_WIDTH, CARD_HEIGHT, createCardGeometry } from "@/lib/chunks-geometry";
+import { CARD_WIDTH, CARD_HEIGHT, CARD_SCALE, createCardGeometry } from "@/lib/chunks-geometry";
 import {
   LENS_MAX_HOPS,
   type LensInfo,
@@ -45,8 +46,6 @@ import { ChunkTextLabels } from "./ChunkTextLabels";
 
 // --- Constants ---
 
-/** Constant world-space scale. At z=6000 cards are ~10px dots, at z=300 ~200px readable cards. */
-const CARD_SCALE = 0.3;
 /**
  * Total z-depth budget across all cards (world units).
  * Card 0 is at z=0 (farthest from camera); card N-1 is at z=CARD_Z_RANGE (closest).
@@ -54,6 +53,7 @@ const CARD_SCALE = 0.3;
  * always behind the next card forward. step = CARD_Z_RANGE / count.
  */
 const CARD_Z_RANGE = 20;
+const HOVER_SCALE_MULTIPLIER = 2;
 const EDGE_FADE_DURATION_MS = 500;
 const MAX_FOVEA_SEEDS = 3;
 const FOVEA_ANCHOR_RADIUS_PX = 180;
@@ -165,12 +165,14 @@ export function ChunksScene({
   }, [chunks, pcaTransform, colorSaturation]);
 
   const [isDraggingNode, setIsDraggingNode] = useState(false);
+  const hoveredIndexRef = useRef<number | null>(null);
+  const prevHoveredRef = useRef<number | null>(null);
+  // Animated hover progress per card: 0=normal scale, 1=full hover scale.
+  const hoverProgressRef = useRef<Map<number, number>>(new Map());
 
   const {
     positions: layoutPositions,
-    startDrag,
-    drag,
-    endDrag,
+    dragHandlers: baseDragHandlers,
   } = useChunkForceLayout({
     basePositions: umapPositions,
     edges: neighborhoodEdges,
@@ -270,6 +272,7 @@ export function ChunksScene({
   const {
     positionsRef: focusPositionsRef,
     updateBounds: updateFocusBounds,
+    dragHandlers: manifoldDragHandlers,
   } = useFocusManifoldLayout({
     basePositions: layoutPositions,
     focusNodeSet: isManifoldFocus ? lensNodeSet ?? null : null,
@@ -278,7 +281,10 @@ export function ChunksScene({
     compressionStrength: lensCompressionStrength,
   });
 
-  const clickFocusPositionsRef = useClickFocusSimilarityLayout({
+  const {
+    positionsRef: clickFocusPositionsRef,
+    dragHandlers: clickFocusDragHandlers,
+  } = useClickFocusSimilarityLayout({
     basePositions: layoutPositions,
     focusNodeSet: !isManifoldFocus ? lensNodeSet ?? null : null,
     seedIndices: focusSeedIndices,
@@ -457,6 +463,7 @@ export function ChunksScene({
     const ranks = new Map<number, number>();
     for (let i = 0; i < n; i++) ranks.set(i, i);
     zRankRef.current = ranks;
+    hoverProgressRef.current.clear();
   }, [chunks]);
 
   // Promote card to rank n-1 (front). All cards previously above it shift down by 1.
@@ -506,23 +513,48 @@ export function ChunksScene({
   const focusAdjustedPositionsRef = useRef<Float32Array>(new Float32Array(0));
   const compressedPositionsRef = useRef<Float32Array>(new Float32Array(0));
 
+  // Route drag to whichever simulation owns the node's position.
+  // Uses a ref so useInstancedMeshDrag callbacks stay stable.
+  const activeDragRef = useRef<SimulationDragHandlers>(baseDragHandlers);
+  activeDragRef.current = lensActive
+    ? (isManifoldFocus ? manifoldDragHandlers : clickFocusDragHandlers)
+    : baseDragHandlers;
+
+  // Track which node is being dragged so useFrame can skip compression for it.
+  // Drag world coords are in compressed (rendered) space; skipping compression
+  // prevents double-compression and makes the node follow the cursor exactly.
+  const draggedIndexRef = useRef<number | null>(null);
+
   const pickInstance = useCallback(
     (event: ThreeEvent<PointerEvent>): number | null => {
-      const instanceId = event.instanceId;
-      if (instanceId == null || instanceId < 0 || instanceId >= chunks.length) return null;
-      return instanceId;
+      // Among all intersected instances, pick the one with the highest z-rank
+      // (the card rendered on top wins over cards underneath it).
+      let bestId: number | null = null;
+      let bestRank = -1;
+      for (const hit of event.intersections) {
+        if (hit.object !== meshRef.current) continue;
+        const id = (hit as typeof hit & { instanceId?: number }).instanceId;
+        if (id == null || id < 0 || id >= chunks.length) continue;
+        const rank = zRankRef.current.get(id) ?? id;
+        if (rank > bestRank) { bestRank = rank; bestId = id; }
+      }
+      return bestId;
     },
-    [chunks.length],
+    [chunks.length, meshRef],
   );
 
   const dragHandlers = useInstancedMeshDrag({
     pickInstance,
     onDragStart: (index) => {
       bringToFront(index);
-      startDrag(index);
+      draggedIndexRef.current = index;
+      activeDragRef.current.startDrag(index);
     },
-    onDrag: drag,
-    onDragEnd: endDrag,
+    onDrag: (index, x, y) => activeDragRef.current.drag(index, x, y),
+    onDragEnd: (index) => {
+      draggedIndexRef.current = null;
+      activeDragRef.current.endDrag(index);
+    },
     enabled: !isRunning,
     onDragStateChange: setIsDraggingNode,
     onClick: (index) => {
@@ -544,6 +576,28 @@ export function ChunksScene({
     },
   });
 
+  // Hover: track which instance the pointer is over (read in useFrame, no React state).
+  // Pick the highest z-rank instance so the visually front card wins over cards underneath.
+  const handleHoverMove = useCallback(
+    (event: ThreeEvent<PointerEvent>) => {
+      if (isDraggingNode) return;
+      let bestId: number | null = null;
+      let bestRank = -1;
+      for (const hit of event.intersections) {
+        if (hit.object !== meshRef.current) continue;
+        const id = (hit as typeof hit & { instanceId?: number }).instanceId;
+        if (id == null || id < 0 || id >= chunks.length) continue;
+        const rank = zRankRef.current.get(id) ?? id;
+        if (rank > bestRank) { bestRank = rank; bestId = id; }
+      }
+      hoveredIndexRef.current = bestId;
+    },
+    [chunks.length, isDraggingNode, meshRef],
+  );
+  const handleHoverLeave = useCallback(() => {
+    hoveredIndexRef.current = null;
+  }, []);
+
   // Edge opacity fade-in over EDGE_FADE_DURATION_MS when simulation stops.
   // Uses a bounded rAF loop (not useFrame) so React re-renders propagate opacity to ChunkEdges.
   const [edgeOpacity, setEdgeOpacity] = useState(0);
@@ -564,7 +618,8 @@ export function ChunksScene({
     return () => { if (raf) cancelAnimationFrame(raf); };
   }, [isRunning]);
 
-  useFrame(() => {
+  const HOVER_DURATION = 0.25; // seconds
+  useFrame((_state, delta) => {
     const mesh = meshRef.current;
     if (!mesh || layoutPositions.length === 0) return;
 
@@ -619,7 +674,7 @@ export function ChunksScene({
       for (let i = 0; i < n; i++) {
         let x = positionsWithOverrides[i * 2];
         let y = positionsWithOverrides[i * 2 + 1];
-      if (lensNodeSet?.has(i)) {
+      if (lensNodeSet?.has(i) && i !== draggedIndexRef.current) {
         const compressed = applyFisheyeCompression(
           x,
           y,
@@ -655,6 +710,28 @@ export function ChunksScene({
       renderPositions = compressedPositionsRef.current;
     }
 
+    // Bring hovered card to front and notify the active simulation (once per hover change).
+    const hovered = hoveredIndexRef.current;
+    if (hovered !== prevHoveredRef.current) {
+      if (hovered !== null) bringToFront(hovered);
+      activeDragRef.current.notifyHoverChange?.(hovered, HOVER_SCALE_MULTIPLIER);
+    }
+    prevHoveredRef.current = hovered;
+
+    // Animate hover scale: progress 0→1 on hover-in, 1→0 on hover-out, over HOVER_DURATION.
+    const hoverProgress = hoverProgressRef.current;
+    if (hovered !== null && !hoverProgress.has(hovered)) hoverProgress.set(hovered, 0);
+    const step = delta / HOVER_DURATION;
+    const toDelete: number[] = [];
+    for (const [idx, progress] of hoverProgress) {
+      const newProgress = idx === hovered
+        ? Math.min(1, progress + step)
+        : Math.max(0, progress - step);
+      if (newProgress <= 0) toDelete.push(idx);
+      else hoverProgress.set(idx, newProgress);
+    }
+    for (const idx of toDelete) hoverProgress.delete(idx);
+
     chunkScreenRectsRef.current.clear();
     const cardZStep = n > 1 ? CARD_Z_RANGE / n : CARD_Z_RANGE;
 
@@ -689,7 +766,11 @@ export function ChunksScene({
         );
       }
 
-      const finalScale = CARD_SCALE * lensScale * animatedScale;
+      const rawProgress = hoverProgressRef.current.get(i) ?? 0;
+      // smoothstep easing: slow at start and end, fast in the middle
+      const t = rawProgress * rawProgress * (3 - 2 * rawProgress);
+      const hoverScale = 1 + (HOVER_SCALE_MULTIPLIER - 1) * t;
+      const finalScale = CARD_SCALE * lensScale * animatedScale * hoverScale;
       const rank = zRankRef.current.get(i) ?? i;
       const cardZ = rank * cardZStep;
       const textZForCard = cardZ + cardZStep / 2;
@@ -813,6 +894,8 @@ export function ChunksScene({
         args={[geometry, undefined, stableCount]}
         frustumCulled={false}
         {...dragHandlers}
+        onPointerMove={handleHoverMove}
+        onPointerLeave={handleHoverLeave}
       />
       <ChunkTextLabels
         chunks={chunks}

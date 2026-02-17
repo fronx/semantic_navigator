@@ -8,6 +8,9 @@ export const CARD_WIDTH = 30;
 export const CARD_HEIGHT = 20;
 export const CORNER_RATIO = 0.08;
 
+/** Constant world-space scale applied to all chunk cards. */
+export const CARD_SCALE = 0.3;
+
 /**
  * Create a rounded rectangle ShapeGeometry for chunk cards.
  */

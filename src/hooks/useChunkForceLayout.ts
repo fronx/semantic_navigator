@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import * as d3 from "d3-force";
 import type { UmapEdge } from "@/hooks/useUmapLayout";
+import { createSimulationDrag, type SimulationDragHandlers } from "@/lib/simulation-drag";
 
 interface ChunkNode extends d3.SimulationNodeDatum {
   index: number;
@@ -24,9 +25,7 @@ interface ChunkForceLayoutOptions {
 
 interface ChunkForceLayout {
   positions: Float32Array;
-  startDrag: (index: number) => void;
-  drag: (index: number, x: number, y: number) => void;
-  endDrag: (index: number) => void;
+  dragHandlers: SimulationDragHandlers;
 }
 
 const EMPTY_POSITIONS = new Float32Array(0);
@@ -37,6 +36,7 @@ function clonePositions(source: Float32Array): Float32Array {
   return out;
 }
 
+
 export function useChunkForceLayout({
   basePositions,
   edges,
@@ -46,6 +46,7 @@ export function useChunkForceLayout({
   const nodesRef = useRef<ChunkNode[]>([]);
   const simulationRef = useRef<d3.Simulation<ChunkNode, ChunkForceEdge> | null>(null);
   const positionsRef = useRef<Float32Array>(EMPTY_POSITIONS);
+  const hoveredStateRef = useRef<{ index: number | null; scaleFactor: number }>({ index: null, scaleFactor: 1 });
 
   const defaultRestLength = useMemo(() => {
     // Rough heuristic: derive from bounding radius (approx 500) but keep non-zero.
@@ -136,6 +137,17 @@ export function useChunkForceLayout({
         "center",
         d3.forceCenter<ChunkNode>(0, 0)
       )
+      .force(
+        "hoverCollision",
+        d3.forceCollide<ChunkNode>()
+          .radius((node) => {
+            const hs = hoveredStateRef.current;
+            // Use half the link rest length as the base territory so hover
+            // actually reaches neighbors (~40 units vs 4.5 physical card size).
+            return node.index === hs.index ? (defaultRestLength / 2) * hs.scaleFactor : 0;
+          })
+          .strength(0.8),
+      )
       .on("tick", syncPositions);
 
     simulationRef.current = simulation;
@@ -146,33 +158,21 @@ export function useChunkForceLayout({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [basePositions.length, edgesVersion, isRunning, defaultRestLength, edges]);
 
-  const startDrag = (index: number) => {
-    const node = nodesRef.current[index];
-    if (!node) return;
-    node.fx = node.x;
-    node.fy = node.y;
-    simulationRef.current?.alphaTarget(0.3).restart();
-  };
-
-  const drag = (index: number, x: number, y: number) => {
-    const node = nodesRef.current[index];
-    if (!node) return;
-    node.fx = x;
-    node.fy = y;
-  };
-
-  const endDrag = (index: number) => {
-    const node = nodesRef.current[index];
-    if (!node) return;
-    node.fx = null;
-    node.fy = null;
-    simulationRef.current?.alphaTarget(0);
-  };
+  const dragHandlers = useMemo(
+    (): SimulationDragHandlers => ({
+      ...createSimulationDrag(simulationRef, (index) => nodesRef.current[index]),
+      notifyHoverChange(index, scaleFactor) {
+        hoveredStateRef.current = { index, scaleFactor };
+        const sim = simulationRef.current;
+        if (!sim) return;
+        sim.alpha(Math.max(sim.alpha(), 0.5)).restart();
+      },
+    }),
+    [],
+  );
 
   return {
     positions: positionsRef.current,
-    startDrag,
-    drag,
-    endDrag,
+    dragHandlers,
   };
 }

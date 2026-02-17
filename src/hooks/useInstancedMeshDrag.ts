@@ -1,10 +1,13 @@
 /**
  * Generic hook for dragging instances in an instancedMesh.
- * Handles pointer capture, NDC-to-world coordinate conversion at z=0 plane,
- * and provides stable event handlers that work during fast mouse movement.
+ *
+ * Only onPointerDown uses R3F's raycasting (to pick which instance was hit).
+ * Once a drag starts, move/end tracking switches to DOM-level pointer events
+ * on the canvas so the drag continues even when the cursor leaves all instances
+ * (common in focus mode where only a few instances are visible).
  */
 
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useEffect } from "react";
 import { useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 
@@ -27,7 +30,7 @@ export interface UseInstancedMeshDragOptions {
 
 /**
  * Returns event handlers for dragging instances in an instancedMesh.
- * Attach to onPointerDown, onPointerMove, onPointerUp, onPointerCancel.
+ * Attach onPointerDown to the mesh. Move/end tracking is handled at the DOM level.
  */
 export function useInstancedMeshDrag({
   pickInstance,
@@ -39,6 +42,11 @@ export function useInstancedMeshDrag({
   onClick,
 }: UseInstancedMeshDragOptions) {
   const { camera, gl } = useThree();
+
+  // Store callbacks in refs so DOM handlers always call the latest versions
+  // without needing to re-attach listeners on every render.
+  const callbacksRef = useRef({ onDragStart, onDrag, onDragEnd, onDragStateChange, onClick });
+  callbacksRef.current = { onDragStart, onDrag, onDragEnd, onDragStateChange, onClick };
 
   // Track active drag state
   const dragStateRef = useRef<{
@@ -54,6 +62,37 @@ export function useInstancedMeshDrag({
   const ndcVec = useRef(new THREE.Vector3());
   const dirVec = useRef(new THREE.Vector3());
   const DRAG_THRESHOLD_PX = 4;
+
+  /** Convert client coords to world coords at z=0 plane. */
+  const clientToWorld = useCallback(
+    (clientX: number, clientY: number) => {
+      const rect = gl.domElement.getBoundingClientRect();
+      const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
+      const ndcY = -((clientY - rect.top) / rect.height) * 2 + 1;
+      ndcVec.current.set(ndcX, ndcY, 0).unproject(camera);
+      dirVec.current.copy(ndcVec.current).sub(camera.position);
+      const t = -camera.position.z / dirVec.current.z;
+      return {
+        x: camera.position.x + dirVec.current.x * t,
+        y: camera.position.y + dirVec.current.y * t,
+      };
+    },
+    [camera, gl],
+  );
+
+  // Clean up DOM listeners if the component unmounts mid-drag.
+  const domListenersRef = useRef<{ move: (e: PointerEvent) => void; end: (e: PointerEvent) => void } | null>(null);
+  useEffect(() => {
+    return () => {
+      if (domListenersRef.current) {
+        const canvas = gl.domElement;
+        canvas.removeEventListener("pointermove", domListenersRef.current.move);
+        canvas.removeEventListener("pointerup", domListenersRef.current.end);
+        canvas.removeEventListener("pointercancel", domListenersRef.current.end);
+        domListenersRef.current = null;
+      }
+    };
+  }, [gl]);
 
   const handlePointerDown = useCallback(
     (event: ThreeEvent<PointerEvent>) => {
@@ -73,74 +112,66 @@ export function useInstancedMeshDrag({
         dragStarted: false,
       };
       (event.target as HTMLElement).setPointerCapture?.(event.pointerId);
-    },
-    [enabled, pickInstance]
-  );
 
-  const handlePointerMove = useCallback(
-    (event: ThreeEvent<PointerEvent>) => {
-      if (!enabled) return;
+      const canvas = gl.domElement;
 
-      const state = dragStateRef.current;
-      if (!state || state.pointerId !== event.pointerId) return;
+      // DOM-level move handler — survives even when the pointer leaves all instances.
+      const domMove = (e: PointerEvent) => {
+        const state = dragStateRef.current;
+        if (!state || e.pointerId !== state.pointerId) return;
 
-      if (!state.moved) {
-        const dx = event.nativeEvent.clientX - state.startX;
-        const dy = event.nativeEvent.clientY - state.startY;
-        if (dx * dx + dy * dy >= DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) {
-          state.moved = true;
+        if (!state.moved) {
+          const dx = e.clientX - state.startX;
+          const dy = e.clientY - state.startY;
+          if (dx * dx + dy * dy >= DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) {
+            state.moved = true;
+          }
         }
-      }
 
-      if (state.moved && !state.dragStarted) {
-        state.dragStarted = true;
-        onDragStart(state.index);
-        onDragStateChange?.(true);
-      }
+        if (state.moved && !state.dragStarted) {
+          state.dragStarted = true;
+          callbacksRef.current.onDragStart(state.index);
+          callbacksRef.current.onDragStateChange?.(true);
+        }
 
-      if (!state.dragStarted) return;
+        if (!state.dragStarted) return;
 
-      // Convert mouse position to NDC using native event for accuracy during fast movement
-      const rect = gl.domElement.getBoundingClientRect();
-      const ndcX = ((event.nativeEvent.clientX - rect.left) / rect.width) * 2 - 1;
-      const ndcY = -((event.nativeEvent.clientY - rect.top) / rect.height) * 2 + 1;
+        const world = clientToWorld(e.clientX, e.clientY);
+        callbacksRef.current.onDrag(state.index, world.x, world.y);
+      };
 
-      // Unproject NDC to world, then intersect with z=0 plane
-      ndcVec.current.set(ndcX, ndcY, 0).unproject(camera);
-      dirVec.current.copy(ndcVec.current).sub(camera.position);
-      const t = -camera.position.z / dirVec.current.z;
-      const worldX = camera.position.x + dirVec.current.x * t;
-      const worldY = camera.position.y + dirVec.current.y * t;
+      // DOM-level up/cancel handler.
+      const domEnd = (e: PointerEvent) => {
+        const state = dragStateRef.current;
+        if (!state || e.pointerId !== state.pointerId) return;
 
-      onDrag(state.index, worldX, worldY);
+        if (state.dragStarted) {
+          callbacksRef.current.onDragEnd(state.index);
+          callbacksRef.current.onDragStateChange?.(false);
+        }
+        try {
+          (event.target as HTMLElement).releasePointerCapture?.(e.pointerId);
+        } catch { /* already released */ }
+        if (!state.dragStarted && callbacksRef.current.onClick) {
+          callbacksRef.current.onClick(state.index);
+        }
+        dragStateRef.current = null;
+
+        canvas.removeEventListener("pointermove", domMove);
+        canvas.removeEventListener("pointerup", domEnd);
+        canvas.removeEventListener("pointercancel", domEnd);
+        domListenersRef.current = null;
+      };
+
+      canvas.addEventListener("pointermove", domMove);
+      canvas.addEventListener("pointerup", domEnd);
+      canvas.addEventListener("pointercancel", domEnd);
+      domListenersRef.current = { move: domMove, end: domEnd };
     },
-    [enabled, onDrag, camera, gl]
-  );
-
-  const handlePointerEnd = useCallback(
-    (event: ThreeEvent<PointerEvent>) => {
-      if (!enabled) return;
-
-      const state = dragStateRef.current;
-      if (!state || state.pointerId !== event.pointerId) return;
-
-      if (state.dragStarted) {
-        onDragEnd(state.index);
-        onDragStateChange?.(false);
-      }
-      (event.target as HTMLElement).releasePointerCapture?.(event.pointerId);
-      if (!state.dragStarted && onClick) {
-        onClick(state.index);
-      }
-      dragStateRef.current = null;
-    },
-    [enabled, onDragEnd, onDragStateChange, onClick]
+    [enabled, pickInstance, clientToWorld, gl],
   );
 
   return {
     onPointerDown: enabled ? handlePointerDown : undefined,
-    onPointerMove: enabled ? handlePointerMove : undefined,
-    onPointerUp: enabled ? handlePointerEnd : undefined,
-    onPointerCancel: enabled ? handlePointerEnd : undefined,
   };
 }

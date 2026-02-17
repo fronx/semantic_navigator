@@ -1,5 +1,6 @@
-import { useEffect, useRef, useCallback, type MutableRefObject } from "react";
+import { useEffect, useRef, useCallback, useMemo, type MutableRefObject } from "react";
 import * as d3 from "d3-force";
+import { createSimulationDrag, type SimulationDragHandlers } from "@/lib/simulation-drag";
 
 interface FocusNode extends d3.SimulationNodeDatum {
   index: number;
@@ -9,8 +10,8 @@ interface FocusNode extends d3.SimulationNodeDatum {
 }
 
 interface FocusLink extends d3.SimulationLinkDatum<FocusNode> {
-  source: number;
-  target: number;
+  source: FocusNode;
+  target: FocusNode;
   priority: number;
 }
 
@@ -32,6 +33,7 @@ interface FocusManifoldLayoutOptions {
 interface FocusManifoldLayoutResult {
   positionsRef: MutableRefObject<Map<number, { x: number; y: number }>>;
   updateBounds: (bounds: FocusBounds | null) => void;
+  dragHandlers: SimulationDragHandlers;
 }
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
@@ -47,6 +49,8 @@ export function useFocusManifoldLayout({
   const boundsRef = useRef<FocusBounds | null>(null);
   const basePositionsRef = useRef(basePositions);
   const simulationRef = useRef<d3.Simulation<FocusNode, FocusLink> | null>(null);
+  const nodeMapRef = useRef<Map<number, FocusNode>>(new Map());
+  const hoveredStateRef = useRef<{ index: number | null; scaleFactor: number }>({ index: null, scaleFactor: 1 });
 
   useEffect(() => {
     basePositionsRef.current = basePositions;
@@ -63,6 +67,7 @@ export function useFocusManifoldLayout({
     const nodeIndices = focusNodeSet ? Array.from(focusNodeSet) : [];
     if (nodeIndices.length === 0) {
       positionsRef.current.clear();
+      nodeMapRef.current.clear();
       return;
     }
 
@@ -89,6 +94,7 @@ export function useFocusManifoldLayout({
     const nodeSet = new Set(nodeIndices);
     const nodeMap = new Map<number, FocusNode>();
     nodes.forEach((node) => nodeMap.set(node.index, node));
+    nodeMapRef.current = nodeMap;
     const links: FocusLink[] = [];
     for (const index of nodeIndices) {
       const neighbors = adjacency.get(index) ?? [];
@@ -145,7 +151,12 @@ export function useFocusManifoldLayout({
       )
       .force(
         "collision",
-        d3.forceCollide<FocusNode>().radius(50).strength(0.9),
+        d3.forceCollide<FocusNode>()
+          .radius((node) => {
+            const hs = hoveredStateRef.current;
+            return node.index === hs.index ? 50 * hs.scaleFactor : 50;
+          })
+          .strength(0.9),
       );
 
     simulation.on("tick", () => {
@@ -168,8 +179,22 @@ export function useFocusManifoldLayout({
     };
   }, [focusNodeSet, seedIndices, adjacency, compressionStrength]);
 
+  const dragHandlers = useMemo(
+    (): SimulationDragHandlers => ({
+      ...createSimulationDrag(simulationRef, (index) => nodeMapRef.current.get(index)),
+      notifyHoverChange(index, scaleFactor) {
+        hoveredStateRef.current = { index, scaleFactor };
+        const sim = simulationRef.current;
+        if (!sim) return;
+        sim.alpha(Math.max(sim.alpha(), 0.5)).restart();
+      },
+    }),
+    [],
+  );
+
   return {
     positionsRef,
     updateBounds,
+    dragHandlers,
   };
 }
