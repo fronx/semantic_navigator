@@ -3,7 +3,7 @@
  * Minimal setup: camera, background, scene.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Canvas } from "@react-three/fiber";
 import { getBackgroundColor, watchThemeChanges } from "@/lib/theme";
 import { CAMERA_FOV_DEGREES } from "@/lib/rendering-utils/zoom-to-cursor";
@@ -18,7 +18,6 @@ interface ChunksCanvasProps {
   neighborhoodEdges: UmapEdge[];
   neighborhoodEdgesVersion: number;
   isRunning: boolean;
-  selectedChunkId: string | null;
   onSelectChunk: (chunkId: string | null) => void;
   edgeThickness: number;
   edgeContrast: number;
@@ -27,6 +26,7 @@ interface ChunksCanvasProps {
   lensCenterScale: number;
   lensEdgeScale: number;
   lpNormP: number;
+  focusMode: "manifold" | "click";
 }
 
 export function ChunksCanvas({
@@ -36,7 +36,6 @@ export function ChunksCanvas({
   neighborhoodEdges,
   neighborhoodEdgesVersion,
   isRunning,
-  selectedChunkId,
   onSelectChunk,
   edgeThickness,
   edgeContrast,
@@ -45,8 +44,10 @@ export function ChunksCanvas({
   lensCenterScale,
   lensEdgeScale,
   lpNormP,
+  focusMode,
 }: ChunksCanvasProps) {
   const [backgroundColor, setBackgroundColor] = useState(getBackgroundColor);
+  const backgroundClickRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     return watchThemeChanges((isDark) => {
@@ -66,7 +67,7 @@ export function ChunksCanvas({
         }}
         gl={{ antialias: true, alpha: false }}
         style={{ width: "100%", height: "100%" }}
-        onPointerMissed={() => onSelectChunk(null)}
+        onPointerMissed={() => backgroundClickRef.current?.()}
       >
         <color attach="background" args={[backgroundColor]} />
         <ChunksScene
@@ -76,7 +77,6 @@ export function ChunksCanvas({
           neighborhoodEdges={neighborhoodEdges}
           neighborhoodEdgesVersion={neighborhoodEdgesVersion}
           isRunning={isRunning}
-          selectedChunkId={selectedChunkId}
           onSelectChunk={onSelectChunk}
           edgeThickness={edgeThickness}
           edgeContrast={edgeContrast}
@@ -85,6 +85,8 @@ export function ChunksCanvas({
           lensCenterScale={lensCenterScale}
           lensEdgeScale={lensEdgeScale}
           lpNormP={lpNormP}
+          focusMode={focusMode}
+          backgroundClickRef={backgroundClickRef}
         />
       </Canvas>
     </div>

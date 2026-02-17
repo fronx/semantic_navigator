@@ -31,6 +31,7 @@ const CHUNKS_DEFAULTS: ChunksSettings = {
   lensCenterScale: DEFAULT_LENS_CENTER_SCALE,
   lensEdgeScale: DEFAULT_LENS_EDGE_SCALE,
   lpNormP: DEFAULT_LP_NORM_P,
+  focusMode: "click",
   sidebarCollapsed: false,
   sectionStates: {
     UMAP: true,
@@ -162,7 +163,6 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
             neighborhoodEdges={neighborhoodEdges}
             neighborhoodEdgesVersion={neighborhoodEdgesVersion}
             isRunning={isRunning}
-            selectedChunkId={selectedChunkId}
             onSelectChunk={handleSelectChunk}
             edgeThickness={store.values.edgeThickness}
             edgeContrast={store.values.edgeContrast}
@@ -171,6 +171,7 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
             lensCenterScale={store.values.lensCenterScale}
             lensEdgeScale={store.values.lensEdgeScale}
             lpNormP={store.values.lpNormP}
+            focusMode={store.values.focusMode}
           />
           <Reader chunkId={selectedChunkId} onClose={() => handleSelectChunk(null)} />
         </div>

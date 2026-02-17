@@ -9,10 +9,10 @@ import { useRef, useEffect, useCallback, type RefObject } from "react";
 import { OrbitControls } from "@react-three/drei";
 import { useThree, useFrame } from "@react-three/fiber";
 import type { OrbitControls as OrbitControlsType } from "three-stdlib";
-import type { Camera, WebGLRenderer } from "three";
+import type { Camera, WebGLRenderer, PerspectiveCamera } from "three";
 import { CAMERA_Z_SCALE_BASE } from "@/lib/rendering-utils/camera-controller";
 import { CAMERA_Z_MIN, CAMERA_Z_MAX } from "@/lib/content-zoom-config";
-import { calculateZoomToCursor, calculateZoomFactor } from "@/lib/rendering-utils/zoom-to-cursor";
+import { calculateZoomToCursor, calculateZoomFactor, CAMERA_FOV_DEGREES } from "@/lib/rendering-utils/zoom-to-cursor";
 import { createPanHandler } from "@/lib/rendering-utils/pan-handler";
 import { classifyWheelGesture } from "@/lib/rendering-utils/gesture-classifier";
 import { calculatePan } from "@/lib/rendering-utils/pan-camera";
@@ -24,6 +24,47 @@ export interface CameraControllerProps {
   flyToRef?: React.MutableRefObject<((x: number, y: number) => void) | null>;
   /** Enable drag-panning (default: true). Set to false to rely on scroll-panning only. */
   enableDragPan?: boolean;
+  /** Callback fired whenever the camera pans or zooms (with world-space metadata). */
+  onTransform?: (event: CameraTransformEvent) => void;
+}
+
+export interface CameraTransformViewport {
+  width: number;
+  height: number;
+  worldPerPx: number;
+}
+
+export type CameraTransformEvent =
+  | {
+      type: "pan";
+      cameraX: number;
+      cameraY: number;
+      cameraZ: number;
+      worldDelta: { x: number; y: number };
+      viewport: CameraTransformViewport;
+    }
+  | {
+      type: "zoom";
+      cameraX: number;
+      cameraY: number;
+      cameraZ: number;
+      anchor: { x: number; y: number };
+      direction: "in" | "out";
+      zoomFactor: number;
+      viewport: CameraTransformViewport;
+    };
+
+function computeViewportInfo(camera: Camera, width: number, height: number): CameraTransformViewport {
+  const perspective = camera as PerspectiveCamera;
+  const fovRadians = ((perspective?.fov ?? CAMERA_FOV_DEGREES) * Math.PI) / 180;
+  const cameraZ = (camera.position?.z ?? 1);
+  const visibleHeight = 2 * cameraZ * Math.tan(fovRadians / 2);
+  const visibleWidth = visibleHeight * (width / Math.max(height, 1));
+  return {
+    width,
+    height,
+    worldPerPx: width > 0 ? visibleWidth / width : 0,
+  };
 }
 
 /**
@@ -34,7 +75,9 @@ function usePanHandler(
   camera: Camera,
   gl: WebGLRenderer,
   controlsRef: RefObject<OrbitControlsType | null>,
+  size: { width: number; height: number },
   onZoomChange?: (zoomScale: number) => void,
+  onTransform?: (event: CameraTransformEvent) => void,
   enabled: boolean = true
 ) {
   useEffect(() => {
@@ -61,14 +104,31 @@ function usePanHandler(
           const zoomScale = CAMERA_Z_SCALE_BASE / camera.position.z;
           onZoomChange(zoomScale);
         }
+
+        if (onTransform) {
+          onTransform({
+            type: "pan",
+            cameraX: camera.position.x,
+            cameraY: camera.position.y,
+            cameraZ: camera.position.z,
+            worldDelta: { x: worldDeltaX, y: worldDeltaY },
+            viewport: computeViewportInfo(camera, size.width, size.height),
+          });
+        }
       },
     });
 
     return cleanupPanHandler;
-  }, [camera, gl, controlsRef, onZoomChange, enabled]);
+  }, [camera, gl, controlsRef, size.width, size.height, onZoomChange, onTransform, enabled]);
 }
 
-export function CameraController({ onZoomChange, maxDistance = CAMERA_Z_MAX, flyToRef, enableDragPan = true }: CameraControllerProps) {
+export function CameraController({
+  onZoomChange,
+  maxDistance = CAMERA_Z_MAX,
+  flyToRef,
+  enableDragPan = true,
+  onTransform,
+}: CameraControllerProps) {
   const controlsRef = useRef<OrbitControlsType>(null);
   const { camera, gl, size } = useThree();
 
@@ -78,6 +138,7 @@ export function CameraController({ onZoomChange, maxDistance = CAMERA_Z_MAX, fly
     targetX: number; targetY: number;
     startTime: number; duration: number;
   } | null>(null);
+  const lastFlyToPosRef = useRef<{ x: number; y: number } | null>(null);
 
   // Ease-out cubic: decelerates smoothly
   const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
@@ -85,7 +146,10 @@ export function CameraController({ onZoomChange, maxDistance = CAMERA_Z_MAX, fly
   // Animate flyTo per frame
   useFrame(() => {
     const anim = flyToAnimRef.current;
-    if (!anim) return;
+    if (!anim) {
+      lastFlyToPosRef.current = null;
+      return;
+    }
 
     const elapsed = performance.now() - anim.startTime;
     const t = Math.min(1, elapsed / anim.duration);
@@ -107,8 +171,24 @@ export function CameraController({ onZoomChange, maxDistance = CAMERA_Z_MAX, fly
       onZoomChange(zoomScale);
     }
 
+    const prev = lastFlyToPosRef.current;
+    const deltaX = prev ? x - prev.x : 0;
+    const deltaY = prev ? y - prev.y : 0;
+    if (onTransform && (Math.abs(deltaX) > 1e-3 || Math.abs(deltaY) > 1e-3)) {
+      onTransform({
+        type: "pan",
+        cameraX: camera.position.x,
+        cameraY: camera.position.y,
+        cameraZ: camera.position.z,
+        worldDelta: { x: deltaX, y: deltaY },
+        viewport: computeViewportInfo(camera, size.width, size.height),
+      });
+    }
+    lastFlyToPosRef.current = { x, y };
+
     if (t >= 1) {
       flyToAnimRef.current = null;
+      lastFlyToPosRef.current = null;
     }
   });
 
@@ -140,7 +220,7 @@ export function CameraController({ onZoomChange, maxDistance = CAMERA_Z_MAX, fly
   };
 
   // Handle pan events with shared handler (only if drag panning is enabled)
-  usePanHandler(camera, gl, controlsRef, onZoomChange, enableDragPan);
+  usePanHandler(camera, gl, controlsRef, size, onZoomChange, onTransform, enableDragPan);
 
   // Implement unified gesture handling: scroll-to-pan, pinch/modifier-to-zoom
   useEffect(() => {
@@ -175,6 +255,17 @@ export function CameraController({ onZoomChange, maxDistance = CAMERA_Z_MAX, fly
 
         // Notify zoom change (for state updates)
         handleChange();
+
+        if (onTransform) {
+          onTransform({
+            type: "pan",
+            cameraX: camera.position.x,
+            cameraY: camera.position.y,
+            cameraZ: camera.position.z,
+            worldDelta: { x: worldDeltaX, y: worldDeltaY },
+            viewport: computeViewportInfo(camera, size.width, size.height),
+          });
+        }
       } else {
         // 'pinch' or 'scroll-zoom' → zoom to cursor
         const controls = controlsRef.current;
@@ -216,6 +307,19 @@ export function CameraController({ onZoomChange, maxDistance = CAMERA_Z_MAX, fly
 
         // Notify zoom change
         handleChange();
+
+        if (onTransform) {
+          onTransform({
+            type: "zoom",
+            cameraX: camera.position.x,
+            cameraY: camera.position.y,
+            cameraZ: camera.position.z,
+            anchor: result.fixedPoint,
+            direction: newZ < oldZ ? "in" : "out",
+            zoomFactor,
+            viewport: computeViewportInfo(camera, size.width, size.height),
+          });
+        }
       }
     };
 
@@ -224,7 +328,7 @@ export function CameraController({ onZoomChange, maxDistance = CAMERA_Z_MAX, fly
     return () => {
       canvas.removeEventListener('wheel', handleWheel);
     };
-  }, [camera, gl, size, onZoomChange, maxDistance]);
+  }, [camera, gl, size, onZoomChange, maxDistance, onTransform]);
 
   return (
     <OrbitControls
