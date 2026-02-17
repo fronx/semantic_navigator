@@ -287,13 +287,13 @@ export function ChunkEdges({
         const li = (vertBase + i * 2) * 3;
         posArray[li] = p.x + nx * halfWidth;
         posArray[li + 1] = p.y + ny * halfWidth;
-        posArray[li + 2] = 0;
+        posArray[li + 2] = -1;
 
         // "Right" vertex (index 2*i + 1)
         const ri = (vertBase + i * 2 + 1) * 3;
         posArray[ri] = p.x - nx * halfWidth;
         posArray[ri + 1] = p.y - ny * halfWidth;
-        posArray[ri + 2] = 0;
+        posArray[ri + 2] = -1;
       }
 
       // Colors: RGBA with per-edge alpha encoding weight + overall opacity + viewport fade
@@ -322,7 +322,7 @@ export function ChunkEdges({
       <meshBasicMaterial
         vertexColors
         transparent
-        depthTest={false}
+        depthWrite={false}
         side={THREE.DoubleSide}
       />
     </mesh>
