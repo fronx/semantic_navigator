@@ -56,6 +56,7 @@ interface ChunksSceneProps {
   isRunning: boolean;
   selectedChunkId: string | null;
   onSelectChunk: (chunkId: string | null) => void;
+  edgeThickness: number;
   lensCompressionStrength: number;
   lensCenterScale: number;
   lensEdgeScale: number;
@@ -73,6 +74,7 @@ export function ChunksScene({
   isRunning,
   selectedChunkId,
   onSelectChunk,
+  edgeThickness,
   lensCompressionStrength,
   lensCenterScale,
   lensEdgeScale,
@@ -410,6 +412,7 @@ export function ChunksScene({
           edgesVersion={focusEdgesVersion}
           positions={displayPositions}
           opacity={edgeOpacity * 0.35}
+          edgeThickness={edgeThickness}
         />
       )}
       <CameraController

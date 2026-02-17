@@ -13,6 +13,7 @@ export interface ChunksSettings {
   nNeighbors: number;
   minDist: number;
   spread: number;
+  edgeThickness: number;
   lensCompressionStrength: number;
   lensCenterScale: number;
   lensEdgeScale: number;
@@ -70,6 +71,18 @@ export function ChunksControlSidebar({ store }: ChunksControlSidebarProps): Reac
           min={0.1}
           max={5}
           step={0.1}
+          format={(v) => v.toFixed(1)}
+        />
+      </Section>
+
+      <Section {...sectionProps("Edges")}>
+        <Slider
+          label="Thickness"
+          value={values.edgeThickness}
+          onChange={(v) => update("edgeThickness", v)}
+          min={0.5}
+          max={5}
+          step={0.5}
           format={(v) => v.toFixed(1)}
         />
       </Section>
