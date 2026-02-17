@@ -14,6 +14,7 @@ export interface ChunksSettings {
   nNeighbors: number;
   minDist: number;
   spread: number;
+  colorSaturation: number;
   edgeThickness: number;
   edgeContrast: number;
   edgeMidpoint: number;
@@ -50,6 +51,17 @@ export function ChunksControlSidebar({ store }: ChunksControlSidebarProps): Reac
       collapsed={values.sidebarCollapsed}
       onToggle={() => update("sidebarCollapsed", !values.sidebarCollapsed)}
     >
+      <Section {...sectionProps("Colors")}>
+        <Slider
+          label="Saturation"
+          value={values.colorSaturation}
+          onChange={(v) => update("colorSaturation", v)}
+          min={0}
+          max={1}
+          step={0.05}
+        />
+      </Section>
+
       <Section {...sectionProps("UMAP")}>
         <Slider
           label="Neighbors"

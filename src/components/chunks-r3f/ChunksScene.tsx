@@ -29,6 +29,7 @@ import {
   applyLensColorEmphasis,
 } from "@/lib/chunks-lens";
 import { hashToHue } from "@/lib/chunks-utils";
+import { loadPCATransform, centroidToColor, type PCATransform } from "@/lib/semantic-colors";
 import { computeViewportZones } from "@/lib/edge-pulling";
 import {
   applyDirectionalRangeCompression,
@@ -92,6 +93,7 @@ interface ChunksSceneProps {
   neighborhoodEdgesVersion: number;
   isRunning: boolean;
   onSelectChunk: (chunkId: string | null) => void;
+  colorSaturation: number;
   edgeThickness: number;
   edgeContrast: number;
   edgeMidpoint: number;
@@ -113,6 +115,7 @@ export function ChunksScene({
   neighborhoodEdgesVersion,
   isRunning,
   onSelectChunk,
+  colorSaturation,
   edgeThickness,
   edgeContrast,
   edgeMidpoint,
@@ -124,6 +127,11 @@ export function ChunksScene({
   backgroundClickRef,
 }: ChunksSceneProps) {
   const count = chunks.length;
+  const [pcaTransform, setPcaTransform] = useState<PCATransform | null>(null);
+  useEffect(() => {
+    loadPCATransform().then((t) => { if (t) setPcaTransform(t); });
+  }, []);
+
   const { stableCount, meshKey } = useStableInstanceCount(count);
   const { meshRef, handleMeshRef } = useInstancedMeshMaterial(stableCount);
   const { camera, size } = useThree();
@@ -137,10 +145,24 @@ export function ChunksScene({
     [chunks],
   );
 
-  const chunkColors = useMemo(
-    () => chunks.map((chunk) => new THREE.Color().setHSL(hashToHue(chunk.sourcePath), 0.7, 0.55)),
-    [chunks],
-  );
+  const chunkColors = useMemo(() => {
+    const desaturation = 1 - colorSaturation;
+    if (!pcaTransform) {
+      return chunks.map((chunk) => new THREE.Color().setHSL(hashToHue(chunk.sourcePath), colorSaturation * 0.7, 0.55));
+    }
+    // Group chunk embeddings by article
+    const articleEmbeddings = new Map<string, number[][]>();
+    for (const chunk of chunks) {
+      if (!articleEmbeddings.has(chunk.sourcePath)) articleEmbeddings.set(chunk.sourcePath, []);
+      articleEmbeddings.get(chunk.sourcePath)!.push(chunk.embedding);
+    }
+    // Compute PCA centroid color per article
+    const articleColors = new Map<string, THREE.Color>();
+    for (const [sourcePath, embeddings] of articleEmbeddings) {
+      articleColors.set(sourcePath, new THREE.Color(centroidToColor(embeddings, pcaTransform, desaturation)));
+    }
+    return chunks.map((chunk) => articleColors.get(chunk.sourcePath) ?? new THREE.Color(0.6, 0.6, 0.6));
+  }, [chunks, pcaTransform, colorSaturation]);
 
   const [isDraggingNode, setIsDraggingNode] = useState(false);
 
@@ -471,7 +493,7 @@ export function ChunksScene({
   const chunkScreenRectsRef = useRef(new Map<number, ScreenRect>());
 
   // Track when colors need repainting
-  const colorChunksRef = useRef<ChunkEmbeddingData[] | null>(null);
+  const colorChunksRef = useRef<THREE.Color[] | null>(null);
   const searchOpacitiesRef = useRef(searchOpacities);
   const colorDirtyRef = useRef(false);
   if (searchOpacitiesRef.current !== searchOpacities) {
@@ -707,7 +729,7 @@ export function ChunksScene({
       mesh.setMatrixAt(i, matrixRef.current);
     }
 
-    if (colorChunksRef.current !== chunks || colorDirtyRef.current || !mesh.instanceColor) {
+    if (colorChunksRef.current !== chunkColors || colorDirtyRef.current || !mesh.instanceColor) {
       const searchActive = searchOpacitiesRef.current.size > 0;
       for (let i = 0; i < Math.min(n, chunkColors.length); i++) {
         tempColor.current.copy(chunkColors[i]);
@@ -721,7 +743,7 @@ export function ChunksScene({
         mesh.setColorAt(i, tempColor.current);
       }
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-      colorChunksRef.current = chunks;
+      colorChunksRef.current = chunkColors;
       colorDirtyRef.current = false;
     }
 
@@ -783,6 +805,7 @@ export function ChunksScene({
           edgeThickness={edgeThickness}
           edgeContrast={edgeContrast}
           edgeMidpoint={edgeMidpoint}
+          nodeColors={chunkColors}
         />
       )}
       <CameraController

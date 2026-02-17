@@ -19,6 +19,7 @@ interface ChunksCanvasProps {
   neighborhoodEdgesVersion: number;
   isRunning: boolean;
   onSelectChunk: (chunkId: string | null) => void;
+  colorSaturation: number;
   edgeThickness: number;
   edgeContrast: number;
   edgeMidpoint: number;
@@ -37,6 +38,7 @@ export function ChunksCanvas({
   neighborhoodEdgesVersion,
   isRunning,
   onSelectChunk,
+  colorSaturation,
   edgeThickness,
   edgeContrast,
   edgeMidpoint,
@@ -78,6 +80,7 @@ export function ChunksCanvas({
           neighborhoodEdgesVersion={neighborhoodEdgesVersion}
           isRunning={isRunning}
           onSelectChunk={onSelectChunk}
+          colorSaturation={colorSaturation}
           edgeThickness={edgeThickness}
           edgeContrast={edgeContrast}
           edgeMidpoint={edgeMidpoint}

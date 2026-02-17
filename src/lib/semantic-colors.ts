@@ -83,7 +83,8 @@ export function coordinatesToHSL(x: number, y: number, desaturation: number = 0)
  */
 export function centroidToColor(
   memberEmbeddings: number[][],
-  transform: PCATransform
+  transform: PCATransform,
+  desaturation: number = 0
 ): string {
   if (memberEmbeddings.length === 0) {
     return "hsl(0, 0%, 50%)"; // Gray fallback
@@ -91,7 +92,7 @@ export function centroidToColor(
 
   const centroid = computeCentroidLocal(memberEmbeddings);
   const [x, y] = pcaProject(centroid, transform);
-  return coordinatesToHSL(x, y);
+  return coordinatesToHSL(x, y, desaturation);
 }
 
 /**

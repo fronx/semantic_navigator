@@ -77,6 +77,7 @@ export interface ChunkEdgesProps {
   edgeMidpoint: number;
   focusNodeSet?: Set<number> | null;
   projectOutsideFocus?: boolean;
+  nodeColors?: THREE.Color[];
 }
 
 export function ChunkEdges({
@@ -89,6 +90,7 @@ export function ChunkEdges({
   edgeMidpoint,
   focusNodeSet,
   projectOutsideFocus = false,
+  nodeColors,
 }: ChunkEdgesProps) {
   const meshRef = useRef<THREE.Mesh | null>(null);
   const edgeFadeRef = useRef<Float32Array>(new Float32Array(0));
@@ -319,11 +321,27 @@ export function ChunkEdges({
       const baseAlpha = 0.05 + curved * 0.95;
       const alpha = baseAlpha * opacity * edgeFade[edgeIndex];
 
+      // Blend source and target node colors; fall back to flat grey
+      let er = EDGE_COLOR, eg = EDGE_COLOR, eb = EDGE_COLOR;
+      if (nodeColors) {
+        const sc = nodeColors[edge.source];
+        const tc = nodeColors[edge.target];
+        if (sc && tc) {
+          er = (sc.r + tc.r) / 2;
+          eg = (sc.g + tc.g) / 2;
+          eb = (sc.b + tc.b) / 2;
+        } else if (sc) {
+          er = sc.r; eg = sc.g; eb = sc.b;
+        } else if (tc) {
+          er = tc.r; eg = tc.g; eb = tc.b;
+        }
+      }
+
       for (let v = 0; v < VERTS_PER_EDGE; v++) {
         const ci = (vertBase + v) * 4;
-        colArray[ci] = EDGE_COLOR;
-        colArray[ci + 1] = EDGE_COLOR;
-        colArray[ci + 2] = EDGE_COLOR;
+        colArray[ci] = er;
+        colArray[ci + 1] = eg;
+        colArray[ci + 2] = eb;
         colArray[ci + 3] = alpha;
       }
     }
