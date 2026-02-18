@@ -33,3 +33,11 @@ export function createCardGeometry(): THREE.ShapeGeometry {
   shape.quadraticCurveTo(-hw, -hh, -hw + radius, -hh);
   return new THREE.ShapeGeometry(shape);
 }
+
+/**
+ * Create a plain rectangle PlaneGeometry for chunk cards.
+ * Used with a ShaderMaterial that defines the visible shape via SDF.
+ */
+export function createCardPlaneGeometry(): THREE.PlaneGeometry {
+  return new THREE.PlaneGeometry(CARD_WIDTH, CARD_HEIGHT);
+}
