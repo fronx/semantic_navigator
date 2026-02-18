@@ -7,6 +7,7 @@
 - [Chunk Ingestion Pipeline](guides/running-chunk-ingestion.md) - Reference guide for the ingestion pipeline: phases, caching, incremental runs, REPL commands, and troubleshooting
 - [TypeScript REPL](guides/typescript-repl.md) - Interactive development with TypeScript REPL for experimenting with import infrastructure, querying the database, and prototyping changes
 - [Clustering Systems](guides/clustering-systems.md) - Understanding the two clustering systems (MapView vs TopicsView), inspection tools, and maintenance
+- [Cluster Label Iteration](guides/cluster-label-iteration.md) - How to iterate on the LLM prompt for chunk cluster labels using the iteration script
 - [Local NPM Packages](guides/local-npm-packages.md) - Developing with locally checked-out packages (umapper)
 
 ## Patterns

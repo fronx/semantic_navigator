@@ -4,6 +4,7 @@ import path from "path";
 import { createServerClient } from "@/lib/supabase";
 import { clusterUmapGraph } from "@/lib/chunks-clustering";
 import { generateChunkClusterLabels } from "@/lib/llm";
+import { getCachedOfflineData } from "@/lib/offline-data-cache";
 
 const CACHE_PATH = path.join(process.cwd(), "data", "chunks-layout.json");
 const EXCERPT_LENGTH = 200;
@@ -38,15 +39,28 @@ async function writeCache(cache: CachedLayout): Promise<void> {
   await fs.writeFile(CACHE_PATH, JSON.stringify(cache));
 }
 
-/** Fetch chunk content excerpts from Supabase, keyed by chunk ID */
+/** Fetch chunk content excerpts, keyed by chunk ID.
+ *  Tries offline cache first; falls back to Supabase. */
 async function fetchChunkExcerpts(
   chunkIds: string[]
 ): Promise<Map<string, string>> {
-  const supabase = createServerClient();
   const excerpts = new Map<string, string>();
 
-  // Paginate to handle >1000 chunks
-  const PAGE_SIZE = 500;
+  // Try offline cache first
+  const offline = getCachedOfflineData<{ nodes: Array<{ id: string; content: string | null }> }>("nodes-chunk.json");
+  if (offline) {
+    const needed = new Set(chunkIds);
+    for (const node of offline.nodes) {
+      if (needed.has(node.id) && node.content) {
+        excerpts.set(node.id, node.content.slice(0, EXCERPT_LENGTH));
+      }
+    }
+    if (excerpts.size > 0) return excerpts;
+  }
+
+  // Fall back to Supabase — paginate with small batches (large .in() queries hit URL length limits)
+  const supabase = createServerClient();
+  const PAGE_SIZE = 50;
   for (let i = 0; i < chunkIds.length; i += PAGE_SIZE) {
     const batch = chunkIds.slice(i, i + PAGE_SIZE);
     const { data, error } = await supabase

@@ -21,6 +21,8 @@ When fixing bugs or implementing features, always check for existing patterns/sy
 
 ## Project Tools
 
+**Database access:** Use the Supabase MCP to query the database directly during conversations (load with ToolSearch "supabase execute sql", project ID `nczxgvsupuiomtkrsreu`). Do not write one-off diagnostic scripts to check DB state — use the MCP instead.
+
 **Code simplification:** After implementing features or fixes, use the code-simplifier agent via the Task tool rather than doing manual simplification. Invoke with:
 ```
 Task tool, subagent_type: "code-simplifier:code-simplifier", prompt: "Simplify [file path]"
