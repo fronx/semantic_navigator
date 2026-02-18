@@ -42,6 +42,11 @@ export function useInstancedMeshMaterial(instanceCount: number) {
       const opacities = new Float32Array(count).fill(1.0);
       mesh.geometry.setAttribute('instanceOpacity', new THREE.InstancedBufferAttribute(opacities, 1));
 
+      // Per-instance corner ratio: 0.08 = rectangle, 1.0 = circle.
+      // Written each frame from the scale loop based on effective screen size.
+      const cornerRatios = new Float32Array(count).fill(1.0);
+      mesh.geometry.setAttribute('instanceCornerRatio', new THREE.InstancedBufferAttribute(cornerRatios, 1));
+
       // SECOND: Create and attach material AFTER instanceColor exists
       // This ensures the shader compiles with USE_INSTANCING_COLOR defined.
 

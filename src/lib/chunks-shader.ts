@@ -1,10 +1,10 @@
 /**
- * Custom ShaderMaterial for chunk cards with zoom-dependent shape morphing.
+ * Custom ShaderMaterial for chunk cards with per-instance shape morphing.
  *
  * Uses a 2D rounded-rectangle SDF to define the visible shape.
- * u_cornerRatio uniform morphs corners:
- *   1.0 → capsule/circle (zoomed out)
- *   0.08 → rectangle (zoomed in, text readable)
+ * instanceCornerRatio attribute morphs corners per instance based on effective screen size:
+ *   1.0 → capsule/circle (small/zoomed out)
+ *   0.08 → rectangle (large/zoomed in, text readable)
  *
  * Handles instanceColor automatically via Three.js USE_INSTANCING_COLOR.
  */
@@ -15,14 +15,20 @@ const CHUNK_VERTEX_SHADER = /* glsl */ `
   varying vec2 vUv;
   varying vec3 vColor;
   varying float vOpacity;
+  varying float vCornerRatio;
 
   // Per-instance opacity — 1.0 normally, <1.0 when dimmed (search, hover preview, edge pull).
   // Stored separately from instanceColor so dimming fades to transparent, not black.
   attribute float instanceOpacity;
 
+  // Per-instance corner ratio: 0.08 = rectangle, 1.0 = circle.
+  // Driven by effective screen size so hovered/focused nodes morph independently.
+  attribute float instanceCornerRatio;
+
   void main() {
     vUv = uv;
     vOpacity = instanceOpacity;
+    vCornerRatio = instanceCornerRatio;
 
     #ifdef USE_INSTANCING_COLOR
       vColor = instanceColor;
@@ -42,11 +48,10 @@ const CHUNK_VERTEX_SHADER = /* glsl */ `
 // Card dimensions matching CARD_WIDTH=30, CARD_HEIGHT=20 from chunks-geometry.ts.
 // Baked into the shader as constants — change both together if card size changes.
 const CHUNK_FRAGMENT_SHADER = /* glsl */ `
-  uniform float u_cornerRatio;
-
   varying vec2 vUv;
   varying vec3 vColor;
   varying float vOpacity;
+  varying float vCornerRatio;
 
   float roundedBoxSDF(vec2 p, vec2 b, float r) {
     vec2 q = abs(p) - b + r;
@@ -61,7 +66,7 @@ const CHUNK_FRAGMENT_SHADER = /* glsl */ `
     // min(halfWidth, halfHeight) = 10.0.
     // At ratio=1.0: r=10 → capsule/stadium shape (looks circular when small).
     // At ratio=0.08: r=0.8 → near-rectangle (matches previous ShapeGeometry).
-    float r = u_cornerRatio * 10.0;
+    float r = vCornerRatio * 10.0;
 
     float sdf = roundedBoxSDF(p, vec2(15.0, 10.0), r);
 
@@ -77,14 +82,12 @@ const CHUNK_FRAGMENT_SHADER = /* glsl */ `
 
 export function createChunkShaderMaterial(): THREE.ShaderMaterial {
   const material = new THREE.ShaderMaterial({
-    uniforms: {
-      u_cornerRatio: { value: 1.0 },
-    },
+    uniforms: {},
     vertexShader: CHUNK_VERTEX_SHADER,
     fragmentShader: CHUNK_FRAGMENT_SHADER,
     transparent: true,
     depthTest: true,
-    depthWrite: false,
+    depthWrite: true,
   });
   material.toneMapped = false;
   return material;

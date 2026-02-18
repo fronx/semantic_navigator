@@ -55,6 +55,8 @@ export interface ClusterLabels3DProps {
   useSemanticFonts?: boolean;
   /** When set, non-matching cluster labels dim to 0.15 opacity multiplier. */
   hoveredClusterIdRef?: MutableRefObject<number | null>;
+  /** When true, hide ALL labels while hoveredClusterIdRef is non-null (for ChunksView where hovered card should dominate). */
+  hideAllOnHover?: boolean;
 }
 
 const DEFAULT_MIN_SCREEN_PX = 14;
@@ -92,6 +94,7 @@ export function ClusterLabels3D({
   shadowStrength = 0.8,
   useSemanticFonts = true,
   hoveredClusterIdRef,
+  hideAllOnHover = false,
 }: ClusterLabels3DProps) {
   const { camera, size } = useThree();
   const labelRegistry = useRef(new Map<number, LabelRegistration>());
@@ -139,7 +142,9 @@ export function ClusterLabels3D({
       const sizeFade = labelFadeT > 0.5 ? 1 - smoothstep(fadeT) : 1.0;
       const baseResult = baseOpacity * sizeFade * fadeInT * (1 - labelFadeT);
       const hoveredId = hoveredClusterIdRef?.current ?? null;
-      const dimMul = hoveredId !== null && entry.communityId !== hoveredId ? 0.15 : 1;
+      const dimMul = hoveredId !== null
+        ? (hideAllOnHover ? 0 : entry.communityId !== hoveredId ? 0.15 : 1)
+        : 1;
       const finalOpacity = baseResult * dimMul;
 
       for (const mat of [material, shadowMaterial]) {

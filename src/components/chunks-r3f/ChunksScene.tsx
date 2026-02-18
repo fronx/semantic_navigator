@@ -32,7 +32,7 @@ import {
 import { hashToHue } from "@/lib/chunks-utils";
 import { setChunkColors } from "@/lib/chunk-color-registry";
 import { loadPCATransform, centroidToColor, pcaProject, coordinatesToHSL, computeClusterColors, type PCATransform, type ClusterColorInfo } from "@/lib/semantic-colors";
-import { calculateZoomDesaturation, normalizeZoom } from "@/lib/zoom-phase-config";
+import { calculateZoomDesaturation } from "@/lib/zoom-phase-config";
 import { computeChunkPullState, isChunkNodeVisible, findNearestVisibleChunk, type PulledChunkNode, type ChunkVisibilityParams } from "@/lib/chunks-pull-state";
 import { computeViewportZones, PULLED_SCALE_FACTOR, PULLED_COLOR_FACTOR } from "@/lib/edge-pulling";
 import { applyFocusGlow, initGlowTarget } from "@/lib/node-color-effects";
@@ -52,18 +52,28 @@ const DESAT_NEAR_Z = 400;   // 65% desaturation when zoomed in to read cards
  * always behind the next card forward. step = CARD_Z_RANGE / count.
  */
 const CARD_Z_RANGE = 2;
-const HOVER_SCALE_MULTIPLIER = 2;
+const HOVER_SCALE_MULTIPLIER = 5;
 const EDGE_FADE_DURATION_MS = 500;
-const HOVER_DURATION = 0.25; // seconds
+const HOVER_DURATION = 0.45; // seconds
 const MAX_FOCUS_SEEDS = 2;
 /** Pulled ghost nodes at viewport edges are small navigation hints — shrink more than PULLED_SCALE_FACTOR. */
 const CHUNK_PULL_ZONE_SCALE = PULLED_SCALE_FACTOR * 0.5;
 /** Max fraction of viewport height any card may occupy on screen (prevents unbounded growth when zoomed in). */
 const MAX_CARD_SCREEN_FRACTION = 0.6;
+/** Max fraction for hovered or focused cards — allow them to grow large enough to read. */
+const MAX_PROMINENT_SCREEN_FRACTION = 0.85;
 /** Pulled ghost nodes are tiny navigation hints — cap much smaller. */
 const MAX_PULLED_SCREEN_FRACTION = 0.1;
+/** Scale boost applied to focus seed nodes so they stand out from the crowd. */
+const FOCUS_SEED_SCALE = 2;
 /** Focus-set pulled nodes must be at least this large so they're clearly clickable. */
 const MIN_FOCUS_PULLED_SCREEN_FRACTION = 0.07;
+/**
+ * Screen height thresholds (px) for per-instance shape morphing.
+ * Above NEAR_PX → rectangle (readable card). Below FAR_PX → circle (dot).
+ */
+const SHAPE_MORPH_NEAR_PX = 60;
+const SHAPE_MORPH_FAR_PX = 12;
 const glowTarget = new THREE.Color();
 
 /** Update React state from useFrame only when the value drifts by more than `threshold`. */
@@ -142,8 +152,6 @@ interface ChunksSceneProps {
   nodeSizeMin: number;
   nodeSizeMax: number;
   nodeSizePivot: number;
-  shapeMorphNear: number;
-  shapeMorphFar: number;
   backgroundClickRef?: MutableRefObject<(() => void) | null>;
   onLayoutSettled?: (positions: Float32Array) => void;
   coarseClusters: Record<number, number> | null;
@@ -173,8 +181,6 @@ export function ChunksScene({
   nodeSizeMin,
   nodeSizeMax,
   nodeSizePivot,
-  shapeMorphNear,
-  shapeMorphFar,
   backgroundClickRef,
   onLayoutSettled,
   coarseClusters,
@@ -199,7 +205,7 @@ export function ChunksScene({
   }, []);
 
   const { stableCount, meshKey } = useStableInstanceCount(count);
-  const { meshRef, materialRef, handleMeshRef } = useInstancedMeshMaterial(stableCount);
+  const { meshRef, handleMeshRef } = useInstancedMeshMaterial(stableCount);
   const { camera, size, gl } = useThree();
 
   const geometry = useMemo(createCardPlaneGeometry, []);
@@ -770,12 +776,6 @@ export function ChunksScene({
     const camZ = camera.position.z;
     const fovRad = THREE.MathUtils.degToRad((camera as THREE.PerspectiveCamera).fov);
 
-    // Shape morph: circle when far, rectangle when near enough to read text
-    if (materialRef.current) {
-      const t = normalizeZoom(camZ, { near: shapeMorphNear, far: shapeMorphFar }); // 0=near(rect), 1=far(circle)
-      materialRef.current.uniforms.u_cornerRatio.value = 0.08 + t * (1.0 - 0.08);
-    }
-
     // Cluster label fades — update React state only when changed by >1%
     updateIfChanged(computeLabelFade(camZ, labelFades.coarseFadeIn), coarseFadeInRef, setCoarseFadeInT);
     updateIfChanged(computeLabelFade(camZ, labelFades.coarseFadeOut), coarseFadeOutRef, setCoarseFadeOutT);
@@ -789,6 +789,7 @@ export function ChunksScene({
 
     const vpHeight = size.height / gl.getPixelRatio();
     const unitsPerPixel = (2 * Math.tan(fovRad / 2) * Math.max(camZ, 1e-3)) / vpHeight;
+    const cornerAttr = mesh.geometry.getAttribute('instanceCornerRatio') as THREE.BufferAttribute | null;
 
     for (let i = 0; i < n; i++) {
       const animatedScale = nodeScalesRef.current.get(i) ?? 0;
@@ -820,25 +821,48 @@ export function ChunksScene({
 
       const rawProgress = hoverProgressRef.current.get(i) ?? 0;
       const t = rawProgress * rawProgress * (3 - 2 * rawProgress); // smoothstep
-      const hoverScale = 1 + (HOVER_SCALE_MULTIPLIER - 1) * t;
       const baseScale = CARD_SCALE * countScale * pushScale * animatedScale;
-      // Height: pulled=compact, focus seed=full, others=animated with hover progress
+      // Smoothly blend hover scale between a small indicator (zoomed out, text unreadable)
+      // and the full enlargement (zoomed in, text readable). Both the multiplier and the
+      // height expansion use the same eased factor so neither snaps.
+      const baseScreenH = (baseScale * CARD_HEIGHT) / unitsPerPixel;
+      const hoverMulRaw = Math.max(0, Math.min(1,
+        (baseScreenH - SHAPE_MORPH_FAR_PX / HOVER_SCALE_MULTIPLIER) /
+        (SHAPE_MORPH_NEAR_PX / HOVER_SCALE_MULTIPLIER - SHAPE_MORPH_FAR_PX / HOVER_SCALE_MULTIPLIER),
+      ));
+      const hoverMulT = hoverMulRaw * hoverMulRaw * (3 - 2 * hoverMulRaw); // smoothstep
+      const effectiveHoverMul = 1.5 + hoverMulT * (HOVER_SCALE_MULTIPLIER - 1.5);
+      const hoverScale = 1 + (effectiveHoverMul - 1) * t;
+      // Height: pulled=compact, focus seed=full, others expand in proportion to zoom-readiness.
       const actualHeightRatio = heightRatiosRef.current[i] ?? 1;
       const isFocusSeed = lensInfoRef.current?.depthMap.get(i) === 0;
+      const isHoveredNode = hoveredIndexRef.current === i;
       const heightRatio = isPulled ? 1
         : isFocusSeed ? actualHeightRatio
-        : 1 + (actualHeightRatio - 1) * t;
-      // Cap hover growth so the card never exceeds 50% of viewport height.
-      const maxHoverForVP = Math.max(1, (vpHeight * 0.5 * unitsPerPixel) / (CARD_HEIGHT * baseScale * heightRatio));
+          : 1 + (actualHeightRatio - 1) * t * hoverMulT;
+      // Hovered and focused cards get a larger viewport budget so they can grow to readable size.
+      const vpTarget = (isHoveredNode || isFocusSeed) ? MAX_PROMINENT_SCREEN_FRACTION : 0.5;
+      const maxHoverForVP = Math.max(1, (vpHeight * vpTarget * unitsPerPixel) / (CARD_HEIGHT * baseScale * heightRatio));
       const pulledScale = isPulled ? CHUNK_PULL_ZONE_SCALE : 1;
-      const screenFraction = isPulled ? MAX_PULLED_SCREEN_FRACTION : MAX_CARD_SCREEN_FRACTION;
+      const screenFraction = isPulled ? MAX_PULLED_SCREEN_FRACTION
+        : (isHoveredNode || isFocusSeed) ? MAX_PROMINENT_SCREEN_FRACTION
+          : MAX_CARD_SCREEN_FRACTION;
       const maxFinalScale = (vpHeight * screenFraction * unitsPerPixel) / (CARD_HEIGHT * heightRatio);
       const isFocusPulled = isPulled && !!lensNodeSet?.has(i);
       const minFinalScale = isFocusPulled ? Math.min((vpHeight * MIN_FOCUS_PULLED_SCREEN_FRACTION * unitsPerPixel) / (CARD_HEIGHT * heightRatio), baseScale) : 0;
-      const finalScale = Math.max(Math.min(baseScale * Math.min(hoverScale, maxHoverForVP) * pulledScale, maxFinalScale), minFinalScale);
+      // Don't boost a focus seed that's currently hovered — hover scale is already large enough.
+      const focusSeedBoost = (isFocusSeed && !isHoveredNode) ? FOCUS_SEED_SCALE : 1;
+      const finalScale = Math.max(Math.min(baseScale * Math.min(hoverScale, maxHoverForVP) * pulledScale * focusSeedBoost, maxFinalScale), minFinalScale);
       const finalScaleY = finalScale * heightRatio;
+
+      // Per-instance shape: morph to rectangle as effective screen height grows.
+      const screenHeightPx = (finalScaleY * CARD_HEIGHT) / unitsPerPixel;
+      const morphT = Math.max(0, Math.min(1, (screenHeightPx - SHAPE_MORPH_NEAR_PX) / (SHAPE_MORPH_FAR_PX - SHAPE_MORPH_NEAR_PX)));
+      if (cornerAttr) (cornerAttr.array as Float32Array)[i] = 0.08 + morphT * 0.92;
+
       const rank = zRankRef.current.get(i) ?? i;
-      const cardZ = rank * cardZStep;
+      // Hovered card floats above all other cards and cluster labels.
+      const cardZ = isHoveredNode ? CARD_Z_RANGE * 10 : rank * cardZStep;
       const textZForCard = cardZ + cardZStep / 2;
 
       posVec.current.set(x, y, cardZ);
@@ -864,6 +888,8 @@ export function ChunksScene({
         );
       }
     }
+
+    if (cornerAttr) cornerAttr.needsUpdate = true;
 
     for (let i = n; i < stableCount; i++) {
       scaleVec.current.setScalar(0);
@@ -990,6 +1016,7 @@ export function ChunksScene({
           useSemanticFonts={false}
           colorDesaturation={coarseDesaturation}
           hoveredClusterIdRef={hoveredCoarseClusterIdRef}
+          hideAllOnHover
         />
       )}
       {fineLabels && fineNodeToCluster.size > 0 && !isRunning && (
@@ -1004,6 +1031,7 @@ export function ChunksScene({
           useSemanticFonts={false}
           colorDesaturation={fineDesaturation}
           hoveredClusterIdRef={hoveredFineClusterIdRef}
+          hideAllOnHover
         />
       )}
     </>

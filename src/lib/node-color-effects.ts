@@ -7,7 +7,7 @@ import * as THREE from "three";
 
 // --- Glow blend factors ---
 /** Focused node glow: lerp toward theme highlight */
-export const FOCUS_GLOW_FACTOR = 0.245;
+export const FOCUS_GLOW_FACTOR = 0.5;
 /** Hovered (not focused) node glow */
 export const HOVER_GLOW_FACTOR = 0.35;
 /** Hovered + focused node: additional hover lerp (stacks with focus) */
