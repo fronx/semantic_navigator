@@ -11,7 +11,8 @@ import * as THREE from "three";
 import type { ChunkEmbeddingData } from "@/app/api/chunks/embeddings/route";
 import { CameraController } from "@/components/topics-r3f/CameraController";
 import { ClusterLabels3D } from "@/components/topics-r3f/ClusterLabels3D";
-import { computeLabelFade, type LabelFadeRange } from "@/lib/label-fade-coordinator";
+import type { LabelFadeConfig } from "@/components/ChunksControlSidebar";
+import { computeLabelFade } from "@/lib/label-fade-coordinator";
 import type { SimNode } from "@/lib/map-renderer";
 import { useChunkForceLayout } from "@/hooks/useChunkForceLayout";
 import { useFocusPushAnimation } from "@/hooks/useFocusPushAnimation";
@@ -78,14 +79,13 @@ interface ChunksSceneProps {
   nodeSizeMax: number;
   nodeSizePivot: number;
   backgroundClickRef?: MutableRefObject<(() => void) | null>;
+  onLayoutSettled?: (positions: Float32Array) => void;
   coarseClusters: Record<number, number> | null;
   fineClusters: Record<number, number> | null;
   coarseLabels: Record<number, string> | null;
   fineLabels: Record<number, string> | null;
-  coarseFadeStart: number;
-  coarseFadeEnd: number;
-  fineFadeStart: number;
-  fineFadeEnd: number;
+  labelFades: LabelFadeConfig;
+  onCameraZChange?: (z: number) => void;
 }
 
 // --- Component ---
@@ -107,14 +107,13 @@ export function ChunksScene({
   nodeSizeMax,
   nodeSizePivot,
   backgroundClickRef,
+  onLayoutSettled,
   coarseClusters,
   fineClusters,
   coarseLabels,
   fineLabels,
-  coarseFadeStart,
-  coarseFadeEnd,
-  fineFadeStart,
-  fineFadeEnd,
+  labelFades,
+  onCameraZChange,
 }: ChunksSceneProps) {
   const count = chunks.length;
   const [pcaTransform, setPcaTransform] = useState<PCATransform | null>(null);
@@ -198,6 +197,10 @@ export function ChunksScene({
     absoluteThreshold: 8000, // 80% of maxDistance=10000
     relativeMultiplier: 1.05,
   });
+  useEffect(() => {
+    if (cameraZ != null && onCameraZChange) onCameraZChange(cameraZ);
+  }, [cameraZ, onCameraZChange]);
+
   const prevFocusActiveRef = useRef(false);
   useEffect(() => {
     const isActive = focusSeeds.length > 0;
@@ -215,6 +218,7 @@ export function ChunksScene({
     edges: neighborhoodEdges,
     edgesVersion: neighborhoodEdgesVersion,
     isRunning,
+    onSettled: onLayoutSettled,
     cameraZ,
   });
 
@@ -302,6 +306,10 @@ export function ChunksScene({
   const displayPositionsRef = useRef<Float32Array>(new Float32Array(0));
   const pulledChunkMapRef = useRef<Map<number, PulledChunkNode>>(new Map());
   const flyToRef = useRef<((x: number, y: number) => void) | null>(null);
+
+  // Stable ref for focus-mode card text label filtering
+  const lensVisibleIdsRef = useRef<Set<string | number>>(new Set());
+  lensVisibleIdsRef.current = (lensNodeSet as Set<string | number> | null) ?? new Set();
 
   // Persistent z-order: each click/drag pushes a card to the top without disturbing
   // the relative order of all other cards (including previously elevated cards).
@@ -458,12 +466,14 @@ export function ChunksScene({
   }, []);
 
   // Cluster label fade state — updated from useFrame only when value changes significantly
-  const [coarseLabelFadeT, setCoarseLabelFadeT] = useState(0);
-  const [fineLabelFadeT, setFineLabelFadeT] = useState(0);
-  const [fineFadeInT, setFineFadeInT] = useState(0);
-  const coarseFadeRef = useRef(0);
-  const fineFadeRef = useRef(0);
-  const fineFadeInRef = useRef(0);
+  const [coarseFadeInT,  setCoarseFadeInT]  = useState(1);
+  const [coarseFadeOutT, setCoarseFadeOutT] = useState(0);
+  const [fineFadeInT,    setFineFadeInT]    = useState(0);
+  const [fineFadeOutT,   setFineFadeOutT]   = useState(0);
+  const coarseFadeInRef  = useRef(1);
+  const coarseFadeOutRef = useRef(0);
+  const fineFadeInRef    = useRef(0);
+  const fineFadeOutRef   = useRef(0);
 
   // Proxy SimNode arrays for ClusterLabels3D — positions read live from displayPositionsRef
   const { coarseLabelNodes, coarseNodeToCluster, fineLabelNodes, fineNodeToCluster } = useMemo(() => {
@@ -495,11 +505,12 @@ export function ChunksScene({
     const fineHubAssigned = new Set<number>();
 
     for (let i = 0; i < chunks.length; i++) {
+      const inLens = !lensNodeSet || lensNodeSet.has(i);
       if (coarseClusters) {
         const cid = coarseClusters[i];
         if (cid !== undefined) {
-          coarseMap.set(chunks[i].id, cid);
-          if (!coarseHubAssigned.has(cid) && coarseLabels?.[cid]) {
+          if (inLens) coarseMap.set(chunks[i].id, cid);
+          if (inLens && !coarseHubAssigned.has(cid) && coarseLabels?.[cid]) {
             coarseNodes[i].hullLabel = coarseLabels[cid];
             (coarseNodes[i] as SimNode & { communityMembers: string[] }).communityMembers = [chunks[i].id];
             coarseHubAssigned.add(cid);
@@ -509,8 +520,8 @@ export function ChunksScene({
       if (fineClusters) {
         const cid = fineClusters[i];
         if (cid !== undefined) {
-          fineMap.set(chunks[i].id, cid);
-          if (!fineHubAssigned.has(cid) && fineLabels?.[cid]) {
+          if (inLens) fineMap.set(chunks[i].id, cid);
+          if (inLens && !fineHubAssigned.has(cid) && fineLabels?.[cid]) {
             fineNodes[i].hullLabel = fineLabels[cid];
             (fineNodes[i] as SimNode & { communityMembers: string[] }).communityMembers = [chunks[i].id];
             fineHubAssigned.add(cid);
@@ -525,7 +536,7 @@ export function ChunksScene({
       fineLabelNodes: fineNodes,
       fineNodeToCluster: fineMap,
     };
-  }, [chunks, coarseClusters, fineClusters, coarseLabels, fineLabels]);
+  }, [chunks, coarseClusters, fineClusters, coarseLabels, fineLabels, lensNodeSet]);
 
   // Edge opacity fade-in over EDGE_FADE_DURATION_MS when simulation stops.
   // Uses a bounded rAF loop (not useFrame) so React re-renders propagate opacity to ChunkEdges.
@@ -640,23 +651,14 @@ export function ChunksScene({
     const fovRad = THREE.MathUtils.degToRad((camera as THREE.PerspectiveCamera).fov);
 
     // Cluster label fades — update React state only when changed by >1%
-    const coarseRange: LabelFadeRange = { start: coarseFadeStart, full: coarseFadeEnd };
-    const fineRange: LabelFadeRange = { start: fineFadeStart, full: fineFadeEnd };
-    const newCoarseFade = computeLabelFade(camZ, coarseRange);
-    const newFineFade = computeLabelFade(camZ, fineRange);
-    const newFineFadeIn = newCoarseFade;
-    if (Math.abs(newCoarseFade - coarseFadeRef.current) > 0.01) {
-      coarseFadeRef.current = newCoarseFade;
-      setCoarseLabelFadeT(newCoarseFade);
-    }
-    if (Math.abs(newFineFade - fineFadeRef.current) > 0.01) {
-      fineFadeRef.current = newFineFade;
-      setFineLabelFadeT(newFineFade);
-    }
-    if (Math.abs(newFineFadeIn - fineFadeInRef.current) > 0.01) {
-      fineFadeInRef.current = newFineFadeIn;
-      setFineFadeInT(newFineFadeIn);
-    }
+    const newCoarseFadeIn  = computeLabelFade(camZ, labelFades.coarseFadeIn);
+    const newCoarseFadeOut = computeLabelFade(camZ, labelFades.coarseFadeOut);
+    const newFineFadeIn    = computeLabelFade(camZ, labelFades.fineFadeIn);
+    const newFineFadeOut   = computeLabelFade(camZ, labelFades.fineFadeOut);
+    if (Math.abs(newCoarseFadeIn  - coarseFadeInRef.current)  > 0.01) { coarseFadeInRef.current  = newCoarseFadeIn;  setCoarseFadeInT(newCoarseFadeIn);   }
+    if (Math.abs(newCoarseFadeOut - coarseFadeOutRef.current) > 0.01) { coarseFadeOutRef.current = newCoarseFadeOut; setCoarseFadeOutT(newCoarseFadeOut); }
+    if (Math.abs(newFineFadeIn    - fineFadeInRef.current)    > 0.01) { fineFadeInRef.current    = newFineFadeIn;    setFineFadeInT(newFineFadeIn);       }
+    if (Math.abs(newFineFadeOut   - fineFadeOutRef.current)   > 0.01) { fineFadeOutRef.current   = newFineFadeOut;   setFineFadeOutT(newFineFadeOut);     }
     const unitsPerPixel = (2 * Math.tan(fovRad / 2) * Math.max(camZ, 1e-3)) / (size.height / gl.getPixelRatio());
 
     for (let i = 0; i < n; i++) {
@@ -708,21 +710,23 @@ export function ChunksScene({
       matrixRef.current.compose(posVec.current, quat.current, scaleVec.current);
       mesh.setMatrixAt(i, matrixRef.current);
 
-      chunkScreenRectsRef.current.set(
-        i,
-        projectCardToScreenRect(
-          x,
-          y,
-          textZForCard,
-          (CARD_WIDTH / 2) * finalScale,
-          (CARD_HEIGHT / 2) * finalScale,
-          camera,
-          size,
-          centerVec.current,
-          edgeVecX.current,
-          edgeVecY.current,
-        ),
-      );
+      if (!isPulled) {
+        chunkScreenRectsRef.current.set(
+          i,
+          projectCardToScreenRect(
+            x,
+            y,
+            textZForCard,
+            (CARD_WIDTH / 2) * finalScale,
+            (CARD_HEIGHT / 2) * finalScale,
+            camera,
+            size,
+            centerVec.current,
+            edgeVecX.current,
+            edgeVecY.current,
+          ),
+        );
+      }
     }
 
     for (let i = n; i < stableCount; i++) {
@@ -818,16 +822,18 @@ export function ChunksScene({
           getPosition={getPositionRef}
           screenRectsRef={chunkScreenRectsRef}
           textMaxWidth={CARD_WIDTH * 0.76}
-          maxVisible={50}
+          maxVisible={lensActive ? undefined : 50}
+          visibleIdsRef={lensActive ? lensVisibleIdsRef : undefined}
         />
       )}
       {coarseLabels && coarseNodeToCluster.size > 0 && !isRunning && (
         <ClusterLabels3D
           nodes={coarseLabelNodes}
           nodeToCluster={coarseNodeToCluster}
-          labelFadeT={coarseLabelFadeT}
+          fadeInT={coarseFadeInT}
+          labelFadeT={coarseFadeOutT}
           labelZ={CARD_Z_RANGE + 0.5}
-          baseFontSize={60}
+          baseFontSize={10}
           useSemanticFonts={false}
         />
       )}
@@ -835,10 +841,10 @@ export function ChunksScene({
         <ClusterLabels3D
           nodes={fineLabelNodes}
           nodeToCluster={fineNodeToCluster}
-          labelFadeT={fineLabelFadeT}
           fadeInT={fineFadeInT}
+          labelFadeT={fineFadeOutT}
           labelZ={CARD_Z_RANGE + 0.3}
-          baseFontSize={40}
+          baseFontSize={7}
           useSemanticFonts={false}
         />
       )}

@@ -9,6 +9,7 @@ import { getBackgroundColor, watchThemeChanges } from "@/lib/theme";
 import { CAMERA_FOV_DEGREES } from "@/lib/rendering-utils/zoom-to-cursor";
 import { ChunksScene } from "./ChunksScene";
 import type { ChunkEmbeddingData } from "@/app/api/chunks/embeddings/route";
+import type { LabelFadeConfig } from "@/components/ChunksControlSidebar";
 import type { UmapEdge } from "@/hooks/useUmapLayout";
 
 interface ChunksCanvasProps {
@@ -31,10 +32,9 @@ interface ChunksCanvasProps {
   fineClusters: Record<number, number> | null;
   coarseLabels: Record<number, string> | null;
   fineLabels: Record<number, string> | null;
-  coarseFadeStart: number;
-  coarseFadeEnd: number;
-  fineFadeStart: number;
-  fineFadeEnd: number;
+  labelFades: LabelFadeConfig;
+  onLayoutSettled?: (positions: Float32Array) => void;
+  onCameraZChange?: (z: number) => void;
 }
 
 export function ChunksCanvas({
@@ -57,10 +57,9 @@ export function ChunksCanvas({
   fineClusters,
   coarseLabels,
   fineLabels,
-  coarseFadeStart,
-  coarseFadeEnd,
-  fineFadeStart,
-  fineFadeEnd,
+  labelFades,
+  onLayoutSettled,
+  onCameraZChange,
 }: ChunksCanvasProps) {
   const [backgroundColor, setBackgroundColor] = useState(getBackgroundColor);
   const backgroundClickRef = useRef<(() => void) | null>(null);
@@ -107,10 +106,9 @@ export function ChunksCanvas({
           fineClusters={fineClusters}
           coarseLabels={coarseLabels}
           fineLabels={fineLabels}
-          coarseFadeStart={coarseFadeStart}
-          coarseFadeEnd={coarseFadeEnd}
-          fineFadeStart={fineFadeStart}
-          fineFadeEnd={fineFadeEnd}
+          labelFades={labelFades}
+          onLayoutSettled={onLayoutSettled}
+          onCameraZChange={onCameraZChange}
         />
       </Canvas>
     </div>

@@ -23,6 +23,7 @@ interface ChunkForceLayoutOptions {
   edges: UmapEdge[];
   edgesVersion: number;
   isRunning: boolean;
+  onSettled?: (positions: Float32Array) => void;
   cameraZ?: number;
 }
 
@@ -45,12 +46,15 @@ export function useChunkForceLayout({
   edges,
   edgesVersion,
   isRunning,
+  onSettled,
   cameraZ,
 }: ChunkForceLayoutOptions): ChunkForceLayout {
   const nodesRef = useRef<ChunkNode[]>([]);
   const simulationRef = useRef<d3.Simulation<ChunkNode, ChunkForceEdge> | null>(null);
   const positionsRef = useRef<Float32Array>(EMPTY_POSITIONS);
   const hoveredStateRef = useRef<{ index: number | null; scaleFactor: number }>({ index: null, scaleFactor: 1 });
+  const onSettledRef = useRef(onSettled);
+  onSettledRef.current = onSettled;
 
   const defaultRestLength = useMemo(() => {
     // Rough heuristic: derive from bounding radius (approx 500) but keep non-zero.
@@ -152,7 +156,8 @@ export function useChunkForceLayout({
           })
           .strength(0.8),
       )
-      .on("tick", syncPositions);
+      .on("tick", syncPositions)
+      .on("end", () => onSettledRef.current?.(positionsRef.current));
 
     simulationRef.current = simulation;
 

@@ -5,9 +5,19 @@
 
 import type { ReactElement } from "react";
 import type { PersistedStore } from "@/hooks/usePersistedStore";
+import type { LabelFadeRange } from "@/lib/label-fade-coordinator";
 import { CollapsibleSidebar } from "@/components/CollapsibleSidebar";
 import { Section } from "@/components/Section";
 import { Slider } from "@/components/Slider";
+import { ZoomSlider } from "@/components/ZoomSlider";
+
+/** Bundled fade-in/out ranges for coarse and fine cluster labels. */
+export interface LabelFadeConfig {
+  coarseFadeIn: LabelFadeRange;
+  coarseFadeOut: LabelFadeRange;
+  fineFadeIn: LabelFadeRange;
+  fineFadeOut: LabelFadeRange;
+}
 
 export interface ChunksSettings {
   nNeighbors: number;
@@ -23,10 +33,10 @@ export interface ChunksSettings {
   nodeSizePivot: number;
   coarseResolution: number;
   fineResolution: number;
-  coarseFadeStart: number;
-  coarseFadeEnd: number;
-  fineFadeStart: number;
-  fineFadeEnd: number;
+  coarseFadeIn: LabelFadeRange;
+  coarseFadeOut: LabelFadeRange;
+  fineFadeIn: LabelFadeRange;
+  fineFadeOut: LabelFadeRange;
   sidebarCollapsed: boolean;
   sectionStates: Record<string, boolean>;
 }
@@ -34,9 +44,10 @@ export interface ChunksSettings {
 interface ChunksControlSidebarProps {
   store: PersistedStore<ChunksSettings>;
   onRedoUmap?: () => void;
+  cameraZ?: number;
 }
 
-export function ChunksControlSidebar({ store, onRedoUmap }: ChunksControlSidebarProps): ReactElement {
+export function ChunksControlSidebar({ store, onRedoUmap, cameraZ }: ChunksControlSidebarProps): ReactElement {
   const { values, update } = store;
 
   function sectionProps(title: string) {
@@ -181,42 +192,60 @@ export function ChunksControlSidebar({ store, onRedoUmap }: ChunksControlSidebar
           step={0.1}
           format={(v) => v.toFixed(1)}
         />
-        <Slider
-          label="Coarse fade start Z"
-          value={values.coarseFadeStart}
-          onChange={(v) => update("coarseFadeStart", v)}
-          min={100}
-          max={8000}
-          step={100}
-          format={(v) => `${v}`}
-        />
-        <Slider
-          label="Coarse fade end Z"
-          value={values.coarseFadeEnd}
-          onChange={(v) => update("coarseFadeEnd", v)}
-          min={100}
-          max={8000}
-          step={100}
-          format={(v) => `${v}`}
-        />
-        <Slider
-          label="Fine fade start Z"
-          value={values.fineFadeStart}
-          onChange={(v) => update("fineFadeStart", v)}
-          min={100}
-          max={8000}
-          step={100}
-          format={(v) => `${v}`}
-        />
-        <Slider
-          label="Fine fade end Z"
-          value={values.fineFadeEnd}
-          onChange={(v) => update("fineFadeEnd", v)}
-          min={100}
-          max={8000}
-          step={100}
-          format={(v) => `${v}`}
-        />
+        {cameraZ != null && (
+          <div className="flex items-center justify-between text-[11px] text-zinc-500 py-0.5">
+            <span>Camera Z</span>
+            <span className="tabular-nums">{Math.round(cameraZ)}</span>
+          </div>
+        )}
+        <div className="space-y-3 mt-1">
+          <div className="space-y-1">
+            <div className="text-[10px] uppercase tracking-wider text-zinc-400 font-medium">Coarse Labels</div>
+            <ZoomSlider
+              label="Fade in"
+              value={values.coarseFadeIn.start}
+              onChange={(z) => update("coarseFadeIn", { ...values.coarseFadeIn, start: z })}
+            />
+            <ZoomSlider
+              label="Full"
+              value={values.coarseFadeIn.full}
+              onChange={(z) => update("coarseFadeIn", { ...values.coarseFadeIn, full: z })}
+            />
+            <ZoomSlider
+              label="Fade out"
+              value={values.coarseFadeOut.start}
+              onChange={(z) => update("coarseFadeOut", { ...values.coarseFadeOut, start: z })}
+            />
+            <ZoomSlider
+              label="Gone"
+              value={values.coarseFadeOut.full}
+              onChange={(z) => update("coarseFadeOut", { ...values.coarseFadeOut, full: z })}
+            />
+          </div>
+          <div className="space-y-1">
+            <div className="text-[10px] uppercase tracking-wider text-zinc-400 font-medium">Fine Labels</div>
+            <ZoomSlider
+              label="Fade in"
+              value={values.fineFadeIn.start}
+              onChange={(z) => update("fineFadeIn", { ...values.fineFadeIn, start: z })}
+            />
+            <ZoomSlider
+              label="Full"
+              value={values.fineFadeIn.full}
+              onChange={(z) => update("fineFadeIn", { ...values.fineFadeIn, full: z })}
+            />
+            <ZoomSlider
+              label="Fade out"
+              value={values.fineFadeOut.start}
+              onChange={(z) => update("fineFadeOut", { ...values.fineFadeOut, start: z })}
+            />
+            <ZoomSlider
+              label="Gone"
+              value={values.fineFadeOut.full}
+              onChange={(z) => update("fineFadeOut", { ...values.fineFadeOut, full: z })}
+            />
+          </div>
+        </div>
         {onRedoUmap && (
           <button
             onClick={onRedoUmap}

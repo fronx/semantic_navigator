@@ -13,7 +13,7 @@ const DEFAULT_FINE_RESOLUTION = 1.5;
 
 interface CachedLayout {
   positions: number[];
-  edges: Array<{ source: number; target: number; weight: number }>;
+  edges: Array<{ source: number; target: number; weight: number; restLength?: number | null }>;
   chunkIds: string[];
   coarseResolution: number;
   fineResolution: number;
@@ -112,6 +112,15 @@ async function clusterAndLabel(
   for (const [k, v] of fineMap) fineClusters[k] = v;
 
   return { coarseClusters, fineClusters, coarseLabels, fineLabels };
+}
+
+export async function DELETE() {
+  try {
+    await fs.unlink(CACHE_PATH);
+  } catch {
+    // Ignore if file doesn't exist
+  }
+  return NextResponse.json({ ok: true });
 }
 
 export async function GET() {
