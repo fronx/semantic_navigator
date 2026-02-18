@@ -31,7 +31,7 @@ import {
 } from "@/lib/chunks-lens";
 import { hashToHue } from "@/lib/chunks-utils";
 import { setChunkColors } from "@/lib/chunk-color-registry";
-import { loadPCATransform, centroidToColor, pcaProject, coordinatesToHSL, type PCATransform } from "@/lib/semantic-colors";
+import { loadPCATransform, centroidToColor, pcaProject, coordinatesToHSL, computeClusterColors, type PCATransform, type ClusterColorInfo } from "@/lib/semantic-colors";
 import { calculateZoomDesaturation, normalizeZoom } from "@/lib/zoom-phase-config";
 import { computeChunkPullState, type PulledChunkNode } from "@/lib/chunks-pull-state";
 import { computeViewportZones, PULLED_SCALE_FACTOR, PULLED_COLOR_FACTOR } from "@/lib/edge-pulling";
@@ -564,6 +564,28 @@ export function ChunksScene({
     };
   }, [chunks, coarseClusters, fineClusters, coarseLabels, fineLabels, lensNodeSet]);
 
+  // Semantic colors for cluster labels (centroid of chunk embeddings per cluster → PCA → HSL)
+  const { coarseClusterColors, fineClusterColors } = useMemo(() => {
+    if (!pcaTransform) return { coarseClusterColors: undefined, fineClusterColors: undefined };
+
+    const colorsFor = (clusters: Record<number, number>) => {
+      const grouped = new Map<number, ChunkEmbeddingData[]>();
+      for (let i = 0; i < chunks.length; i++) {
+        const cid = clusters[i];
+        if (cid === undefined) continue;
+        let arr = grouped.get(cid);
+        if (!arr) { arr = []; grouped.set(cid, arr); }
+        arr.push(chunks[i]);
+      }
+      return computeClusterColors(grouped, pcaTransform);
+    };
+
+    return {
+      coarseClusterColors: coarseClusters ? colorsFor(coarseClusters) : undefined,
+      fineClusterColors: fineClusters ? colorsFor(fineClusters) : undefined,
+    };
+  }, [chunks, coarseClusters, fineClusters, pcaTransform]);
+
   // Edge opacity fade-in over EDGE_FADE_DURATION_MS when simulation stops.
   // Uses a bounded rAF loop (not useFrame) so React re-renders propagate opacity to ChunkEdges.
   const [edgeOpacity, setEdgeOpacity] = useState(0);
@@ -877,6 +899,7 @@ export function ChunksScene({
         <ClusterLabels3D
           nodes={coarseLabelNodes}
           nodeToCluster={coarseNodeToCluster}
+          clusterColors={coarseClusterColors}
           fadeInT={coarseFadeInT}
           labelFadeT={coarseFadeOutT}
           labelZ={CARD_Z_RANGE + 0.5}
@@ -888,6 +911,7 @@ export function ChunksScene({
         <ClusterLabels3D
           nodes={fineLabelNodes}
           nodeToCluster={fineNodeToCluster}
+          clusterColors={fineClusterColors}
           fadeInT={fineFadeInT}
           labelFadeT={fineFadeOutT}
           labelZ={CARD_Z_RANGE + 0.3}
