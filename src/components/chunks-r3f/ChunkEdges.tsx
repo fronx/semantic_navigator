@@ -44,6 +44,8 @@ const ARC_VERTEX_COUNT = EDGE_SEGMENTS + 1;
 const VERTS_PER_EDGE = 2 * ARC_VERTEX_COUNT; // 34 vertices (ribbon left + right)
 const INDICES_PER_EDGE = EDGE_SEGMENTS * 6; // 96 indices (2 triangles × 16 segments)
 const EDGE_COLOR = 0.533; // ~#888888
+/** Edges share the z-plane of the farthest card layer to minimize parallax. */
+const EDGE_Z = 0;
 const OUTBOUND_EDGE_OFFSET = 40;
 const VIEWPORT_FADE_SPEED = 0.08;
 
@@ -314,13 +316,13 @@ export function ChunkEdges({
         const li = (vertBase + i * 2) * 3;
         posArray[li] = p.x + nx * halfWidth;
         posArray[li + 1] = p.y + ny * halfWidth;
-        posArray[li + 2] = -1;
+        posArray[li + 2] = EDGE_Z;
 
         // "Right" vertex (index 2*i + 1)
         const ri = (vertBase + i * 2 + 1) * 3;
         posArray[ri] = p.x - nx * halfWidth;
         posArray[ri + 1] = p.y - ny * halfWidth;
-        posArray[ri + 2] = -1;
+        posArray[ri + 2] = EDGE_Z;
       }
 
       // Colors: RGBA with per-edge alpha encoding weight + overall opacity + viewport fade

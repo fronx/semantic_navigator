@@ -57,7 +57,7 @@ const DESAT_NEAR_Z = 400;   // 65% desaturation when zoomed in to read cards
  * Text for card i sits at z = i*step + step/2 — always in front of its own card,
  * always behind the next card forward. step = CARD_Z_RANGE / count.
  */
-const CARD_Z_RANGE = 20;
+const CARD_Z_RANGE = 2;
 const HOVER_SCALE_MULTIPLIER = 2;
 const EDGE_FADE_DURATION_MS = 500;
 const MAX_FOVEA_SEEDS = 3;
