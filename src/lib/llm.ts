@@ -229,32 +229,35 @@ export async function generateChunkClusterLabels(
     return result;
   }
 
-  const clusterDescriptions = clusters.map((c) => {
-    const samples = c.excerpts.slice(0, 15).map((e) => `  - ${e}`).join("\n");
-    return `Cluster ${c.id}:\n${samples}`;
-  });
+  const clusterDescriptions = clusters
+    .map((c) => `Cluster ${c.id}:\n${c.excerpts.slice(0, 15).map((e) => `  - ${e}`).join("\n")}`)
+    .join("\n\n");
 
   const response = await anthropic.messages.create({
-    model: "claude-haiku-4-5-20251001",
+    model: "claude-sonnet-4-6",
     max_tokens: 1000,
     messages: [
       {
         role: "user",
-        content: `You are labeling clusters of text chunks for a knowledge base visualization.
+        content: `Label these clusters of personal writing for a 2D map. Labels float over regions like chapter titles.
 
-Each cluster contains semantically related text passages. Generate a SHORT label (2-4 words) that captures the common theme.
+Format: 2 words strongly preferred. 3 only when truly necessary. Lowercase. No "the" to start. No commas.
 
-${clusterDescriptions.join("\n\n")}
+Style: treat the writing as philosophical poetry, not academic text. Don't retheorize — resonate.
+Noun phrases preferred. If you use a verb, make it blunt and specific, not poetic or soft.
+No verb gerunds (words acting as verbs: "forming", "questioning", "breaking"). Nouns ending in -ing are fine ("sneezing", "meaning").
+Do not lift words directly from the excerpts — find your own angle on what the cluster is about.
+Aim to intrigue, not summarize. A reader should think "what's that?" not "I see".
 
-Return a JSON object mapping cluster IDs to labels, like:
-{"0": "neural network training", "1": "web authentication", "2": "data modeling"}
+Bad (soft verb): "thoughts drift", "patterns emerge", "habits return"
+Bad (verb gerund): "pattern forming", "self questioning", "habit breaking"
+Bad (too long): "what sneezing reveals", "how stories shape us", "the cost of clarity"
+Bad (flat pair): "concept limit", "value reach", "idea count"
+Good: "two hungers", "borrowed time", "maps lie", "static breaks", "artful sneezing", "fault inside"
 
-Labels should be:
-- Descriptive but concise (2-4 words)
-- In lowercase
-- Capture the common theme, not quote specific text
+${clusterDescriptions}
 
-Return ONLY the JSON object.`,
+Return ONLY a JSON object: {"0": "label", "1": "label", ...}`,
       },
     ],
   });
