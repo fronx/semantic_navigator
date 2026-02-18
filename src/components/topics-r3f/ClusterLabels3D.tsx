@@ -363,6 +363,8 @@ function ClusterLabelSprite({
     return null;
   }
 
+  const shadowOffset = baseFontSize * (2 / DEFAULT_BASE_FONT_SIZE);
+
   return (
     <Billboard ref={setBillboardRef} position={position} follow={false} lockZ>
       <group position={[-anchorOffset[0], -anchorOffset[1], 0]}>
@@ -371,7 +373,7 @@ function ClusterLabelSprite({
           <mesh
             geometry={geometryEntry.geometry}
             material={shadowMaterial}
-            position={[2, -2, -0.13]}
+            position={[shadowOffset, -shadowOffset, -0.13]}
             frustumCulled={false}
           />
         )}
