@@ -120,3 +120,47 @@ export function computeChunkPullState({
 
   return { pulledMap, primarySet };
 }
+
+export interface ChunkVisibilityParams {
+  pullResult: ChunkPullResult;
+  lensActive: boolean;
+  lensNodeSet: Set<number> | null;
+  /** Only needs .has() — accepts Map or Set. */
+  focusPushSet: { has(key: number): boolean };
+}
+
+/**
+ * Returns true if chunk i is rendered (visible) this frame.
+ * Single source of truth used by both the render loop and proximity hover scan.
+ */
+export function isChunkNodeVisible(i: number, p: ChunkVisibilityParams): boolean {
+  const isPulled = p.pullResult.pulledMap.has(i) && !p.focusPushSet.has(i);
+  const isRelevantPulled = isPulled && (!p.lensActive || !!p.lensNodeSet?.has(i));
+  return isRelevantPulled || p.pullResult.primarySet.has(i);
+}
+
+/**
+ * Returns the index of the nearest visible chunk to (worldX, worldY) within
+ * radiusSq squared distance, or null if none qualifies.
+ */
+export function findNearestVisibleChunk(
+  worldX: number,
+  worldY: number,
+  radiusSq: number,
+  renderPositions: Float32Array,
+  n: number,
+  isVisible: (i: number) => boolean,
+): number | null {
+  let bestDist = radiusSq;
+  let bestIdx: number | null = null;
+  for (let i = 0; i < n; i++) {
+    if (!isVisible(i)) continue;
+    const px = renderPositions[i * 2];
+    const py = renderPositions[i * 2 + 1];
+    const dx = px - worldX;
+    const dy = py - worldY;
+    const dSq = dx * dx + dy * dy;
+    if (dSq < bestDist) { bestDist = dSq; bestIdx = i; }
+  }
+  return bestIdx;
+}

@@ -33,7 +33,7 @@ import { hashToHue } from "@/lib/chunks-utils";
 import { setChunkColors } from "@/lib/chunk-color-registry";
 import { loadPCATransform, centroidToColor, pcaProject, coordinatesToHSL, computeClusterColors, type PCATransform, type ClusterColorInfo } from "@/lib/semantic-colors";
 import { calculateZoomDesaturation, normalizeZoom } from "@/lib/zoom-phase-config";
-import { computeChunkPullState, type PulledChunkNode } from "@/lib/chunks-pull-state";
+import { computeChunkPullState, isChunkNodeVisible, findNearestVisibleChunk, type PulledChunkNode, type ChunkVisibilityParams } from "@/lib/chunks-pull-state";
 import { computeViewportZones, PULLED_SCALE_FACTOR, PULLED_COLOR_FACTOR } from "@/lib/edge-pulling";
 import { applyFocusGlow, initGlowTarget } from "@/lib/node-color-effects";
 import { projectCardToScreenRect, type ScreenRect } from "@/lib/screen-rect-projection";
@@ -685,6 +685,7 @@ export function ChunksScene({
       lensNodeSet: lensActive ? lensNodeSet : null,
     });
     pulledChunkMapRef.current = pullResult.pulledMap;
+    const visibilityParams: ChunkVisibilityParams = { pullResult, lensActive, lensNodeSet, focusPushSet: focusPushRef.current };
 
     // Merge push overrides into render positions
     let renderPositions = layoutPositions;
@@ -724,17 +725,7 @@ export function ChunksScene({
       const worldX = camera.position.x + state.pointer.x * halfW;
       const worldY = camera.position.y + state.pointer.y * halfH;
       const radiusSq = hoverRadiusRef.current * hoverRadiusRef.current;
-      let bestDist = radiusSq;
-      let bestIdx: number | null = null;
-      for (let i = 0; i < n; i++) {
-        const px = renderPositions[i * 2];
-        const py = renderPositions[i * 2 + 1];
-        const dx = px - worldX;
-        const dy = py - worldY;
-        const dSq = dx * dx + dy * dy;
-        if (dSq < bestDist) { bestDist = dSq; bestIdx = i; }
-      }
-      hoveredIndexRef.current = bestIdx;
+      hoveredIndexRef.current = findNearestVisibleChunk(worldX, worldY, radiusSq, renderPositions, n, (i) => isChunkNodeVisible(i, visibilityParams));
     }
 
     // All nodes are visible; margins are small dots, not hidden
@@ -808,22 +799,19 @@ export function ChunksScene({
         continue;
       }
 
+      if (!isChunkNodeVisible(i, visibilityParams)) {
+        scaleVec.current.setScalar(0);
+        matrixRef.current.compose(posVec.current, quat.current, scaleVec.current);
+        mesh.setMatrixAt(i, matrixRef.current);
+        continue;
+      }
+
       // Edge pulling: detect pulled ghost nodes (focus push takes priority)
       const pulledData = focusPushRef.current.has(i) ? undefined : pullResult.pulledMap.get(i);
       const isPulled = !!pulledData;
 
       const x = pulledData?.x ?? renderPositions[i * 2];
       const y = pulledData?.y ?? renderPositions[i * 2 + 1];
-
-      // In lens mode, pulled nodes outside the focus set are irrelevant — hide them.
-      // Only primary viewport nodes and relevant pulled edge indicators are visible.
-      const isRelevantPulled = isPulled && (!lensActive || !!lensNodeSet?.has(i));
-      if (!isRelevantPulled && !pullResult.primarySet.has(i)) {
-        scaleVec.current.setScalar(0);
-        matrixRef.current.compose(posVec.current, quat.current, scaleVec.current);
-        mesh.setMatrixAt(i, matrixRef.current);
-        continue;
-      }
 
       // Push-based scale: margin nodes shrink as they animate to viewport edge
       const pushOverride = focusPushRef.current.get(i);
