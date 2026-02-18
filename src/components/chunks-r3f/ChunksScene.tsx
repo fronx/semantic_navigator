@@ -23,7 +23,7 @@ import { useStableInstanceCount } from "@/hooks/useStableInstanceCount";
 import { useFadingScale } from "@/hooks/useFadingScale";
 import { useFocusZoomExit } from "@/hooks/useFocusZoomExit";
 import type { UmapEdge } from "@/hooks/useUmapLayout";
-import { CARD_WIDTH, CARD_HEIGHT, CARD_SCALE, createCardPlaneGeometry } from "@/lib/chunks-geometry";
+import { CARD_WIDTH, CARD_HEIGHT, CARD_SCALE, CARD_V_MARGIN_RATIO, createCardPlaneGeometry, computeHeightRatio, heightRatioFromGeomHeight } from "@/lib/chunks-geometry";
 import {
   LENS_MAX_HOPS,
   type LensInfo,
@@ -33,7 +33,7 @@ import { hashToHue } from "@/lib/chunks-utils";
 import { loadPCATransform, centroidToColor, pcaProject, coordinatesToHSL, type PCATransform } from "@/lib/semantic-colors";
 import { calculateZoomDesaturation, normalizeZoom } from "@/lib/zoom-phase-config";
 import { computeChunkPullState, type PulledChunkNode } from "@/lib/chunks-pull-state";
-import { computeViewportZones, PULLED_SCALE_FACTOR, PULLED_COLOR_FACTOR, isInViewport, isInCliffZone } from "@/lib/edge-pulling";
+import { computeViewportZones, PULLED_SCALE_FACTOR, PULLED_COLOR_FACTOR } from "@/lib/edge-pulling";
 import { applyFocusGlow, initGlowTarget } from "@/lib/node-color-effects";
 import { projectCardToScreenRect, type ScreenRect } from "@/lib/screen-rect-projection";
 import { isDarkMode } from "@/lib/theme";
@@ -56,6 +56,14 @@ const CARD_Z_RANGE = 2;
 const HOVER_SCALE_MULTIPLIER = 2;
 const EDGE_FADE_DURATION_MS = 500;
 const MAX_FOCUS_SEEDS = 2;
+/** Pulled ghost nodes at viewport edges are small navigation hints — shrink more than PULLED_SCALE_FACTOR. */
+const CHUNK_PULL_ZONE_SCALE = PULLED_SCALE_FACTOR * 0.5;
+/** Max fraction of viewport height any card may occupy on screen (prevents unbounded growth when zoomed in). */
+const MAX_CARD_SCREEN_FRACTION = 0.6;
+/** Pulled ghost nodes are tiny navigation hints — cap much smaller. */
+const MAX_PULLED_SCREEN_FRACTION = 0.1;
+/** Focus-set pulled nodes must be at least this large so they're clearly clickable. */
+const MIN_FOCUS_PULLED_SCREEN_FRACTION = 0.07;
 const glowTarget = new THREE.Color();
 
 interface FocusSeed {
@@ -374,6 +382,16 @@ export function ChunksScene({
   const edgeVecY = useRef(new THREE.Vector3());
   const chunkScreenRectsRef = useRef<Map<string | number, ScreenRect>>(new Map());
 
+  // Start with character-count predictions; CardTextLabels corrects each entry once
+  // actual text geometry is built (onItemGeomHeight callback below).
+  const predictedHeightRatios = useMemo(() => chunks.map((c) => computeHeightRatio(c.content)), [chunks]);
+  const heightRatiosRef = useRef<number[]>(predictedHeightRatios);
+  useEffect(() => { heightRatiosRef.current = [...predictedHeightRatios]; }, [predictedHeightRatios]);
+
+  const onItemGeomHeight = useCallback((index: number, textGeomHeight: number) => {
+    heightRatiosRef.current[index] = heightRatioFromGeomHeight(textGeomHeight, CARD_V_MARGIN_RATIO);
+  }, []);
+
   const contentItems = useMemo<CardTextItem[]>(
     () => chunks.map((chunk, i) => ({ id: i, content: chunk.content })),
     [chunks]
@@ -477,14 +495,14 @@ export function ChunksScene({
   }, []);
 
   // Cluster label fade state — updated from useFrame only when value changes significantly
-  const [coarseFadeInT,  setCoarseFadeInT]  = useState(1);
+  const [coarseFadeInT, setCoarseFadeInT] = useState(1);
   const [coarseFadeOutT, setCoarseFadeOutT] = useState(0);
-  const [fineFadeInT,    setFineFadeInT]    = useState(0);
-  const [fineFadeOutT,   setFineFadeOutT]   = useState(0);
-  const coarseFadeInRef  = useRef(1);
+  const [fineFadeInT, setFineFadeInT] = useState(0);
+  const [fineFadeOutT, setFineFadeOutT] = useState(0);
+  const coarseFadeInRef = useRef(1);
   const coarseFadeOutRef = useRef(0);
-  const fineFadeInRef    = useRef(0);
-  const fineFadeOutRef   = useRef(0);
+  const fineFadeInRef = useRef(0);
+  const fineFadeOutRef = useRef(0);
 
   // Proxy SimNode arrays for ClusterLabels3D — positions read live from displayPositionsRef
   const { coarseLabelNodes, coarseNodeToCluster, fineLabelNodes, fineNodeToCluster } = useMemo(() => {
@@ -668,14 +686,14 @@ export function ChunksScene({
     }
 
     // Cluster label fades — update React state only when changed by >1%
-    const newCoarseFadeIn  = computeLabelFade(camZ, labelFades.coarseFadeIn);
+    const newCoarseFadeIn = computeLabelFade(camZ, labelFades.coarseFadeIn);
     const newCoarseFadeOut = computeLabelFade(camZ, labelFades.coarseFadeOut);
-    const newFineFadeIn    = computeLabelFade(camZ, labelFades.fineFadeIn);
-    const newFineFadeOut   = computeLabelFade(camZ, labelFades.fineFadeOut);
-    if (Math.abs(newCoarseFadeIn  - coarseFadeInRef.current)  > 0.01) { coarseFadeInRef.current  = newCoarseFadeIn;  setCoarseFadeInT(newCoarseFadeIn);   }
+    const newFineFadeIn = computeLabelFade(camZ, labelFades.fineFadeIn);
+    const newFineFadeOut = computeLabelFade(camZ, labelFades.fineFadeOut);
+    if (Math.abs(newCoarseFadeIn - coarseFadeInRef.current) > 0.01) { coarseFadeInRef.current = newCoarseFadeIn; setCoarseFadeInT(newCoarseFadeIn); }
     if (Math.abs(newCoarseFadeOut - coarseFadeOutRef.current) > 0.01) { coarseFadeOutRef.current = newCoarseFadeOut; setCoarseFadeOutT(newCoarseFadeOut); }
-    if (Math.abs(newFineFadeIn    - fineFadeInRef.current)    > 0.01) { fineFadeInRef.current    = newFineFadeIn;    setFineFadeInT(newFineFadeIn);       }
-    if (Math.abs(newFineFadeOut   - fineFadeOutRef.current)   > 0.01) { fineFadeOutRef.current   = newFineFadeOut;   setFineFadeOutT(newFineFadeOut);     }
+    if (Math.abs(newFineFadeIn - fineFadeInRef.current) > 0.01) { fineFadeInRef.current = newFineFadeIn; setFineFadeInT(newFineFadeIn); }
+    if (Math.abs(newFineFadeOut - fineFadeOutRef.current) > 0.01) { fineFadeOutRef.current = newFineFadeOut; setFineFadeOutT(newFineFadeOut); }
     const unitsPerPixel = (2 * Math.tan(fovRad / 2) * Math.max(camZ, 1e-3)) / (size.height / gl.getPixelRatio());
 
     for (let i = 0; i < n; i++) {
@@ -695,10 +713,11 @@ export function ChunksScene({
       const x = pulledData?.x ?? renderPositions[i * 2];
       const y = pulledData?.y ?? renderPositions[i * 2 + 1];
 
-      // Hide cliff zone chunks that are NOT pulled (visible but near edge)
-      if (!isPulled && !focusPushRef.current.has(i)
-          && isInViewport(renderPositions[i * 2], renderPositions[i * 2 + 1], zones.viewport)
-          && isInCliffZone(renderPositions[i * 2], renderPositions[i * 2 + 1], zones.pullBounds)) {
+      // In lens mode, pulled nodes outside the focus set are irrelevant — hide them.
+      const isRelevantPulled = isPulled && (!lensActive || !!lensNodeSet?.has(i));
+      // Only primary viewport nodes and relevant pulled edge indicators are visible.
+      // Focus-pushed margin nodes (tiny dots animating to edge) are intentionally hidden.
+      if (!isRelevantPulled && !pullResult.primarySet.has(i)) {
         scaleVec.current.setScalar(0);
         matrixRef.current.compose(posVec.current, quat.current, scaleVec.current);
         mesh.setMatrixAt(i, matrixRef.current);
@@ -714,16 +733,24 @@ export function ChunksScene({
       const t = rawProgress * rawProgress * (3 - 2 * rawProgress);
       const hoverScale = 1 + (HOVER_SCALE_MULTIPLIER - 1) * t;
       const baseScale = CARD_SCALE * countScale * pushScale * animatedScale;
+      // Pulled ghosts are navigation hints — keep compact regardless of content length.
+      const heightRatio = isPulled ? 1 : (heightRatiosRef.current[i] ?? 1);
       // Cap hover growth so the card never exceeds 50% of viewport height.
-      const maxHoverForVP = Math.max(1, (size.height / gl.getPixelRatio() * 0.5 * unitsPerPixel) / (CARD_HEIGHT * baseScale));
-      const pulledScale = isPulled ? PULLED_SCALE_FACTOR : 1;
-      const finalScale = baseScale * Math.min(hoverScale, maxHoverForVP) * pulledScale;
+      const maxHoverForVP = Math.max(1, (size.height / gl.getPixelRatio() * 0.5 * unitsPerPixel) / (CARD_HEIGHT * baseScale * heightRatio));
+      const pulledScale = isPulled ? CHUNK_PULL_ZONE_SCALE : 1;
+      const screenFraction = isPulled ? MAX_PULLED_SCREEN_FRACTION : MAX_CARD_SCREEN_FRACTION;
+      const vpHeight = size.height / gl.getPixelRatio();
+      const maxFinalScale = (vpHeight * screenFraction * unitsPerPixel) / (CARD_HEIGHT * heightRatio);
+      const isFocusPulled = isPulled && !!lensNodeSet?.has(i);
+      const minFinalScale = isFocusPulled ? Math.min((vpHeight * MIN_FOCUS_PULLED_SCREEN_FRACTION * unitsPerPixel) / (CARD_HEIGHT * heightRatio), baseScale) : 0;
+      const finalScale = Math.max(Math.min(baseScale * Math.min(hoverScale, maxHoverForVP) * pulledScale, maxFinalScale), minFinalScale);
+      const finalScaleY = finalScale * heightRatio;
       const rank = zRankRef.current.get(i) ?? i;
       const cardZ = rank * cardZStep;
       const textZForCard = cardZ + cardZStep / 2;
 
       posVec.current.set(x, y, cardZ);
-      scaleVec.current.setScalar(finalScale);
+      scaleVec.current.set(finalScale, finalScaleY, finalScale);
       matrixRef.current.compose(posVec.current, quat.current, scaleVec.current);
       mesh.setMatrixAt(i, matrixRef.current);
 
@@ -735,7 +762,7 @@ export function ChunksScene({
             y,
             textZForCard,
             (CARD_WIDTH / 2) * finalScale,
-            (CARD_HEIGHT / 2) * finalScale,
+            (CARD_HEIGHT / 2) * finalScaleY,
             camera,
             size,
             centerVec.current,
@@ -843,8 +870,10 @@ export function ChunksScene({
           getPosition={getPositionRef}
           screenRectsRef={chunkScreenRectsRef}
           textMaxWidth={CARD_WIDTH * 0.76}
+          showAllBlocks
           maxVisible={lensActive ? undefined : 50}
           visibleIdsRef={lensActive ? lensVisibleIdsRef : undefined}
+          onItemGeomHeight={onItemGeomHeight}
         />
       )}
       {coarseLabels && coarseNodeToCluster.size > 0 && !isRunning && (

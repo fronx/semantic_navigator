@@ -6,6 +6,10 @@ export interface ScreenRect {
   width: number; // screen width (pixels)
   height: number; // screen height (pixels)
   z: number; // World z for text positioning (card z + TEXT_Z_OFFSET)
+  /** Exact world-space half-height of the card (passed through from halfHeight arg). Used for
+   *  clipping and localCardHeight instead of screenRect.height * unitsPerPixel, which
+   *  overestimates for off-axis cards due to Euclidean vs view-space-Z divergence. */
+  worldHalfHeight: number;
 }
 
 /**
@@ -43,6 +47,7 @@ export function projectCardToScreenRect(
     y: screenCenterY,
     width: screenHalfWidth * 2,
     height: screenHalfHeight * 2,
-    z, // Pass through for caller convenience
+    z,
+    worldHalfHeight: halfHeight,
   };
 }

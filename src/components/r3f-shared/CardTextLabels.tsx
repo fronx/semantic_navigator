@@ -22,6 +22,7 @@ import type { ColorOptions } from "three-text/core";
 import type { ScreenRect } from "@/lib/screen-rect-projection";
 import { computeUnitsPerPixel, smoothstep } from "@/lib/three-text-utils";
 import type { ZoomRange } from "@/lib/zoom-phase-config";
+import { CARD_V_MARGIN_RATIO } from "@/lib/chunks-geometry";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -38,7 +39,6 @@ const DEFAULT_LINE_HEIGHT = 1.3;
  */
 const MARKDOWN_REFERENCE_FONT_SIZE = 28;
 const DEFAULT_H_MARGIN_RATIO = 0.12;
-const DEFAULT_V_MARGIN_RATIO = 0.12;
 const MIN_SCREEN_WIDTH_PX = 40;
 /** Pixel size at which text starts to fade (zoom-fade) */
 const FADE_START_PX = 160;
@@ -91,6 +91,18 @@ export interface CardTextLabelsProps {
    * TopicsView passes textFrontZ; ChunksView relies on per-card screenRect.z.
    */
   textZ?: number;
+  /**
+   * Show all markdown blocks instead of only the primary (first) block.
+   * Use in ChunksView where cards are large enough to show full content.
+   * Default false (TopicsView preview behavior).
+   */
+  showAllBlocks?: boolean;
+  /**
+   * Called once per item when its text geometry is first built, with the measured
+   * text height in geometry units (planeBounds.max.y - min.y). Use this to size
+   * cards from actual layout rather than a character-count prediction.
+   */
+  onItemGeomHeight?: (index: number, textGeomHeight: number) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -125,13 +137,15 @@ export function CardTextLabels({
   screenRectsRef,
   textMaxWidth,
   hMarginRatio = DEFAULT_H_MARGIN_RATIO,
-  vMarginRatio = DEFAULT_V_MARGIN_RATIO,
+  vMarginRatio = CARD_V_MARGIN_RATIO,
   maxVisible,
   visibleIdsRef,
   searchOpacities,
   enableZoomFade = false,
   baseFontSize = DEFAULT_BASE_FONT_SIZE,
   textZ,
+  showAllBlocks = false,
+  onItemGeomHeight,
 }: CardTextLabelsProps) {
   const { camera, size, gl } = useThree();
   const labelRegistry = useRef(new Map<number, CardLabelRegistration>());
@@ -145,8 +159,8 @@ export function CardTextLabels({
 
   // Build LabelPreview per item (text + color ranges for geometry)
   const labelPreviews = useMemo(
-    () => items.map((item) => buildLabelPreview(item.content, baseFontSize, contentColors)),
-    [items, baseFontSize, contentColors]
+    () => items.map((item) => buildLabelPreview(item.content, baseFontSize, contentColors, showAllBlocks)),
+    [items, baseFontSize, contentColors, showAllBlocks]
   );
 
   // Visible indices — updated each frame imperatively; React re-renders only when set changes
@@ -236,17 +250,20 @@ export function CardTextLabels({
       const targetScale = (usableScreenWidth * unitsPerPixel) / (geometryWidth > 0 ? geometryWidth : 1);
       group.scale.setScalar(targetScale);
 
-      // Layout: center horizontally, top-aligned with vertical margin
+      // Layout: center horizontally, top-aligned with vertical margin.
+      // Use worldHalfHeight (exact world units) instead of screenRect.height * unitsPerPixel:
+      // the tangent-based unitsPerPixel diverges from projection-based screenRect.height for
+      // off-axis cards, causing clip planes and offsetY to be slightly wrong.
+      const worldHeight = screenRect.worldHalfHeight * 2;
       if (textMesh) {
         const { min, max } = planeBounds;
         const offsetX = -(min.x + max.x) / 2;
-        const localCardHeight = screenRect.height * unitsPerPixel / targetScale;
+        const localCardHeight = worldHeight / targetScale;
         const offsetY = localCardHeight / 2 * (1 - 2 * vMarginRatio) - max.y;
         textMesh.position.set(offsetX, offsetY, 0);
       }
 
       // Clip text at card bottom
-      const worldHeight = screenRect.height * unitsPerPixel;
       clippingUpdater.setBottomClip(pos.y, worldHeight);
 
       // Opacity
@@ -293,6 +310,7 @@ export function CardTextLabels({
             preview={preview}
             maxWidth={textMaxWidth}
             registerLabel={registerLabel}
+            onItemGeomHeight={onItemGeomHeight}
           />
         );
       })}
@@ -309,9 +327,10 @@ interface CardTextLabelProps {
   preview: LabelPreview;
   maxWidth: number;
   registerLabel: (index: number, reg: CardLabelRegistration | null) => void;
+  onItemGeomHeight?: (index: number, textGeomHeight: number) => void;
 }
 
-function CardTextLabel({ index, preview, maxWidth, registerLabel }: CardTextLabelProps) {
+function CardTextLabel({ index, preview, maxWidth, registerLabel, onItemGeomHeight }: CardTextLabelProps) {
   const colorOption = useMemo(() => buildColorOption(preview), [preview]);
 
   const geometryEntry = useThreeTextGeometry({
@@ -366,11 +385,12 @@ function CardTextLabel({ index, preview, maxWidth, registerLabel }: CardTextLabe
     };
     registrationRef.current = reg;
     registerLabel(index, reg);
+    onItemGeomHeight?.(index, max.y - min.y);
     return () => {
       registerLabel(index, null);
       registrationRef.current = null;
     };
-  }, [geometryEntry, index, material, clippingUpdater, registerLabel]);
+  }, [geometryEntry, index, material, clippingUpdater, registerLabel, onItemGeomHeight]);
 
   const setGroupRef = useCallback((instance: THREE.Group | null) => {
     groupRef.current = instance;
@@ -404,12 +424,15 @@ function CardTextLabel({ index, preview, maxWidth, registerLabel }: CardTextLabe
 function buildLabelPreview(
   content: string,
   baseFontSize: number,
-  colors: ContentTextColors
+  colors: ContentTextColors,
+  showAllBlocks = false,
 ): LabelPreview | null {
   if (!content) return null;
   const segments = renderMarkdownToSegments(content, colors);
   const normalized = normalizeSegments(segments, colors.text, baseFontSize);
-  const block = pickPrimaryBlock(normalized);
+  const block = showAllBlocks
+    ? normalized.filter((s) => !s.blockBoundary)
+    : pickPrimaryBlock(normalized);
   if (!block || block.length === 0) return null;
 
   const text = block.map((s) => s.text ?? "").join("");
