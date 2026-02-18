@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState } from "react";
 import { useArticleReader, type ArticleReaderData } from "@/hooks/useArticleReader";
 import { hashToHue } from "@/lib/chunks-utils";
+import ReactMarkdown from "react-markdown";
 
 interface ReaderProps {
   chunkId: string | null;
@@ -88,7 +89,7 @@ export function Reader({ chunkId, onClose }: ReaderProps) {
 
   return (
     <div
-      className={`flex-shrink-0 flex flex-col bg-white dark:bg-zinc-900 border-l border-zinc-200 dark:border-zinc-700 overflow-hidden transition-[width] duration-200 ${isOpen ? "w-80" : "w-0"}`}
+      className={`flex-shrink-0 flex flex-col bg-white dark:bg-zinc-900 border-l border-zinc-200 dark:border-zinc-700 overflow-hidden transition-[width] duration-200 ${isOpen ? "w-96" : "w-0"}`}
     >
       {/* Tab stack */}
       <div className="flex-shrink-0 border-b border-zinc-200 dark:border-zinc-700">
@@ -167,19 +168,13 @@ export function Reader({ chunkId, onClose }: ReaderProps) {
                 if (el) chunkRefs.current.set(chunk.id, el);
                 else chunkRefs.current.delete(chunk.id);
               }}
-              className={`px-3 py-2.5 border-b border-zinc-100 dark:border-zinc-800 ${
-                isActiveChunk
-                  ? "bg-blue-50 dark:bg-blue-950/30 border-l-2 border-l-blue-500"
-                  : ""
-              }`}
+              className={`pl-10 pr-6 py-6 ${isActiveChunk ? "border-l-[5px]" : ""}`}
+              style={isActiveChunk ? { borderLeftColor: articleCssColor(activeEntry?.sourcePath ?? null) } : undefined}
             >
-              {chunk.chunk_type && (
-                <span className="inline-block text-xs px-1 py-0.5 mb-1 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 rounded">
-                  {chunk.chunk_type}
-                </span>
-              )}
-              <div className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap">
-                {chunk.content ?? ""}
+              <div className="reader-markdown">
+                <ReactMarkdown>
+                  {chunk.content ?? ""}
+                </ReactMarkdown>
               </div>
             </div>
           );

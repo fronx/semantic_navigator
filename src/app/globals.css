@@ -127,7 +127,8 @@ body {
   padding: 4px 6px;
   border-radius: 6px;
   background: transparent !important;
-  color: #fff; /* White text for light theme */
+  color: #fff;
+  /* White text for light theme */
 
   /* Smooth transitions */
   transition: opacity 0.15s ease-out;
@@ -139,7 +140,8 @@ body {
 
 @media (prefers-color-scheme: dark) {
   .content-preview-label {
-    color: #000; /* Black text for dark theme */
+    color: #000;
+    /* Black text for dark theme */
   }
 }
 
@@ -151,10 +153,16 @@ body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  pointer-events: none; /* Don't block clicks to R3F canvas */
+  pointer-events: none;
+  /* Don't block clicks to R3F canvas */
 
   /* Simplify markdown elements for small spaces */
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     font-size: 1.1em;
     font-weight: 600;
     margin: 0.2em 0;
@@ -176,7 +184,8 @@ body {
     font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
   }
 
-  ul, ol {
+  ul,
+  ol {
     margin: 0.2em 0;
     padding-left: 1.2em;
   }
@@ -235,7 +244,8 @@ body {
 
 /* Book-like typography for the Reader panel */
 .reader-markdown {
-  font-size: 15px;
+  font-family: ui-serif, Georgia, 'Times New Roman', serif;
+  font-size: 14pt;
   line-height: 1.7;
   color: inherit;
 
@@ -251,19 +261,40 @@ body {
     margin-bottom: 0;
   }
 
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     font-weight: 600;
     margin-top: 1.4em;
     margin-bottom: 0.4em;
     line-height: 1.3;
   }
 
-  h1 { font-size: 1.3em; }
-  h2 { font-size: 1.15em; }
-  h3, h4, h5, h6 { font-size: 1em; }
+  h1 {
+    font-size: 1.3em;
+  }
 
-  strong { font-weight: 600; }
-  em { font-style: italic; }
+  h2 {
+    font-size: 1.15em;
+  }
+
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-size: 1em;
+  }
+
+  strong {
+    font-weight: 600;
+  }
+
+  em {
+    font-style: italic;
+  }
 
   code {
     background: rgba(0, 0, 0, 0.06);
@@ -286,12 +317,15 @@ body {
     padding: 0;
   }
 
-  ul, ol {
+  ul,
+  ol {
     margin: 0.85em 0;
     padding-left: 1.5em;
   }
 
-  li { margin: 0.3em 0; }
+  li {
+    margin: 0.3em 0;
+  }
 
   blockquote {
     margin: 0.85em 0;
