@@ -85,6 +85,8 @@ export interface ChunkEdgesProps {
   focusNodeSet?: Set<number> | null;
   projectOutsideFocus?: boolean;
   nodeColors?: THREE.Color[];
+  /** Per-node opacity multiplier from hover preview dim (sparse map, absent = 1.0) */
+  previewDimRef?: React.RefObject<Map<number, number>>;
 }
 
 export function ChunkEdges({
@@ -97,6 +99,7 @@ export function ChunkEdges({
   focusNodeSet,
   projectOutsideFocus = false,
   nodeColors,
+  previewDimRef,
 }: ChunkEdgesProps) {
   const meshRef = useRef<THREE.Mesh | null>(null);
   const edgeFadeRef = useRef<Float32Array>(new Float32Array(0));
@@ -327,7 +330,11 @@ export function ChunkEdges({
 
       // Colors: RGBA with per-edge alpha encoding weight + overall opacity + viewport fade
       const baseAlpha = 0.05 + curved * 0.95;
-      const alpha = baseAlpha * opacity * edgeFade[edgeIndex];
+      const dimMap = previewDimRef?.current;
+      const previewMul = dimMap && dimMap.size > 0
+        ? Math.min(dimMap.get(edge.source) ?? 1, dimMap.get(edge.target) ?? 1)
+        : 1;
+      const alpha = baseAlpha * opacity * edgeFade[edgeIndex] * previewMul;
 
       // Blend source and target node colors; fall back to flat grey
       let er = EDGE_COLOR, eg = EDGE_COLOR, eb = EDGE_COLOR;

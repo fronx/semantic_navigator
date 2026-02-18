@@ -12,6 +12,7 @@ import type { ChunkEmbeddingData } from "@/app/api/chunks/embeddings/route";
 import { CameraController } from "@/components/topics-r3f/CameraController";
 import { useChunkForceLayout } from "@/hooks/useChunkForceLayout";
 import { useFocusPushAnimation } from "@/hooks/useFocusPushAnimation";
+import { useHoverPreviewDim } from "@/hooks/useHoverPreviewDim";
 import { useInstancedMeshDrag } from "@/hooks/useInstancedMeshDrag";
 import { useInstancedMeshMaterial } from "@/hooks/useInstancedMeshMaterial";
 import { useStableInstanceCount } from "@/hooks/useStableInstanceCount";
@@ -223,6 +224,14 @@ export function ChunksScene({
   const lensActive = !!lensInfo && focusSeedIndices.length > 0 && !isRunning;
   const lensNodeSet = lensInfo?.nodeSet ?? null;
   const countScale = nodeSizeMin + (nodeSizeMax - nodeSizeMin) * (nodeSizePivot / (nodeSizePivot + count));
+
+  // Hover preview dim: slowly dims non-neighborhood nodes when hovering
+  const { opacitiesRef: previewDimRef, tick: tickPreviewDim } = useHoverPreviewDim({
+    hoveredIndexRef,
+    adjacency,
+    count,
+    focusActive: lensActive
+  });
 
   const focusEdges = useMemo(() => {
     if (!lensActive || !lensInfo) return neighborhoodEdges;
@@ -451,6 +460,7 @@ export function ChunksScene({
       : null;
 
     // -- Focus push animation --
+    tickPreviewDim(delta);
     tickFocusPush(lensActive && marginIds && zones ? {
       marginIds,
       getPosition: (i) => ({
@@ -578,7 +588,8 @@ export function ChunksScene({
     const desatChanged = Math.abs(effectiveDesaturation - prevDesaturationRef.current) > 0.005
       || minSaturationRef.current !== prevMinSaturationRef.current;
 
-    if (colorChunksRef.current !== chunkColors || colorDirtyRef.current || desatChanged || !mesh.instanceColor) {
+    const previewActive = previewDimRef.current.size > 0;
+    if (colorChunksRef.current !== chunkColors || colorDirtyRef.current || desatChanged || previewActive || !mesh.instanceColor) {
       const searchActive = searchOpacitiesRef.current.size > 0;
       for (let i = 0; i < Math.min(n, chunkColors.length); i++) {
         // Apply desaturation to base color via HSL (fast, no chroma.js needed)
@@ -589,6 +600,8 @@ export function ChunksScene({
           const opacity = searchOpacitiesRef.current.get(chunks[i].id) ?? 1.0;
           tempColor.current.multiplyScalar(opacity);
         }
+        const previewDim = previewDimRef.current.get(i);
+        if (previewDim !== undefined) tempColor.current.multiplyScalar(previewDim);
         mesh.setColorAt(i, tempColor.current);
       }
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
@@ -624,6 +637,7 @@ export function ChunksScene({
           edgeThickness={edgeThickness * countScale}
           edgeMidpoint={edgeMidpoint}
           nodeColors={chunkColors}
+          previewDimRef={previewDimRef}
         />
       )}
       <CameraController
