@@ -31,6 +31,8 @@ export interface ChunksSettings {
   nodeSizeMin: number;
   nodeSizeMax: number;
   nodeSizePivot: number;
+  shapeMorphNear: number;
+  shapeMorphFar: number;
   coarseResolution: number;
   fineResolution: number;
   coarseFadeIn: LabelFadeRange;
@@ -140,6 +142,19 @@ export function ChunksControlSidebar({ store, onRedoUmap, cameraZ }: ChunksContr
           min={0.1}
           max={0.9}
           step={0.05}
+        />
+      </Section>
+
+      <Section {...sectionProps("Node Shape")}>
+        <ZoomSlider
+          label="Circle above"
+          value={values.shapeMorphFar}
+          onChange={(z) => update("shapeMorphFar", z)}
+        />
+        <ZoomSlider
+          label="Rect below"
+          value={values.shapeMorphNear}
+          onChange={(z) => update("shapeMorphNear", z)}
         />
       </Section>
 

@@ -28,6 +28,8 @@ interface ChunksCanvasProps {
   nodeSizeMin: number;
   nodeSizeMax: number;
   nodeSizePivot: number;
+  shapeMorphNear: number;
+  shapeMorphFar: number;
   coarseClusters: Record<number, number> | null;
   fineClusters: Record<number, number> | null;
   coarseLabels: Record<number, string> | null;
@@ -53,6 +55,8 @@ export function ChunksCanvas({
   nodeSizeMin,
   nodeSizeMax,
   nodeSizePivot,
+  shapeMorphNear,
+  shapeMorphFar,
   coarseClusters,
   fineClusters,
   coarseLabels,
@@ -101,6 +105,8 @@ export function ChunksCanvas({
           nodeSizeMin={nodeSizeMin}
           nodeSizeMax={nodeSizeMax}
           nodeSizePivot={nodeSizePivot}
+          shapeMorphNear={shapeMorphNear}
+          shapeMorphFar={shapeMorphFar}
           backgroundClickRef={backgroundClickRef}
           coarseClusters={coarseClusters}
           fineClusters={fineClusters}

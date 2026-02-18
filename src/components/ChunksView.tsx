@@ -41,6 +41,8 @@ const CHUNKS_DEFAULTS: ChunksSettings = {
   nodeSizeMin: 0.6,
   nodeSizeMax: 2.0,
   nodeSizePivot: 30,
+  shapeMorphNear: 800,
+  shapeMorphFar: 3000,
   coarseResolution: 0.3,
   fineResolution: 1.5,
   coarseFadeIn:  { start: 8000, full: 5000 },
@@ -320,6 +322,8 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
               nodeSizeMin={store.values.nodeSizeMin}
               nodeSizeMax={store.values.nodeSizeMax}
               nodeSizePivot={store.values.nodeSizePivot}
+              shapeMorphNear={store.values.shapeMorphNear}
+              shapeMorphFar={store.values.shapeMorphFar}
               coarseClusters={cachedLayout?.coarseClusters ?? null}
               fineClusters={cachedLayout?.fineClusters ?? null}
               coarseLabels={cachedLayout?.coarseLabels ?? null}

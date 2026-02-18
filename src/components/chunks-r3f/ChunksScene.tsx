@@ -31,7 +31,7 @@ import {
 } from "@/lib/chunks-lens";
 import { hashToHue } from "@/lib/chunks-utils";
 import { loadPCATransform, centroidToColor, pcaProject, coordinatesToHSL, type PCATransform } from "@/lib/semantic-colors";
-import { calculateZoomDesaturation, normalizeZoom, type ZoomRange } from "@/lib/zoom-phase-config";
+import { calculateZoomDesaturation, normalizeZoom } from "@/lib/zoom-phase-config";
 import { computeChunkPullState, type PulledChunkNode } from "@/lib/chunks-pull-state";
 import { computeViewportZones, PULLED_SCALE_FACTOR, PULLED_COLOR_FACTOR, isInViewport, isInCliffZone } from "@/lib/edge-pulling";
 import { applyFocusGlow, initGlowTarget } from "@/lib/node-color-effects";
@@ -46,8 +46,6 @@ import { CardTextLabels, type CardTextItem } from "@/components/r3f-shared/CardT
 const DESAT_FAR_Z = 6000;   // Fully saturated when zoomed out (cards are dots)
 const DESAT_MID_Z = 2000;   // 30% desaturation at mid zoom
 const DESAT_NEAR_Z = 400;   // 65% desaturation when zoomed in to read cards
-/** Camera Z range for node shape morph: circle (far) → rectangle (near). */
-const SHAPE_MORPH_RANGE: ZoomRange = { near: 800, far: 3000 };
 /**
  * Total z-depth budget across all cards (world units).
  * Card 0 is at z=0 (farthest from camera); card N-1 is at z=CARD_Z_RANGE (closest).
@@ -83,6 +81,8 @@ interface ChunksSceneProps {
   nodeSizeMin: number;
   nodeSizeMax: number;
   nodeSizePivot: number;
+  shapeMorphNear: number;
+  shapeMorphFar: number;
   backgroundClickRef?: MutableRefObject<(() => void) | null>;
   onLayoutSettled?: (positions: Float32Array) => void;
   coarseClusters: Record<number, number> | null;
@@ -111,6 +111,8 @@ export function ChunksScene({
   nodeSizeMin,
   nodeSizeMax,
   nodeSizePivot,
+  shapeMorphNear,
+  shapeMorphFar,
   backgroundClickRef,
   onLayoutSettled,
   coarseClusters,
@@ -661,7 +663,7 @@ export function ChunksScene({
 
     // Shape morph: circle when far, rectangle when near enough to read text
     if (materialRef.current) {
-      const t = normalizeZoom(camZ, SHAPE_MORPH_RANGE); // 0=near(rect), 1=far(circle)
+      const t = normalizeZoom(camZ, { near: shapeMorphNear, far: shapeMorphFar }); // 0=near(rect), 1=far(circle)
       materialRef.current.uniforms.u_cornerRatio.value = 0.08 + t * (1.0 - 0.08);
     }
 
