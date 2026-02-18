@@ -281,7 +281,9 @@ function ClusterLabelSprite({
         side: THREE.DoubleSide,
         opacity: baseOpacity,
       }),
-    [color, baseOpacity]
+    // color intentionally omitted — updated imperatively in useEffect below
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [baseOpacity]
   );
 
   // Shadow material (dark version for background)

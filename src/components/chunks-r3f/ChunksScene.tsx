@@ -226,15 +226,6 @@ export function ChunksScene({
     if (cameraZ != null && onCameraZChange) onCameraZChange(cameraZ);
   }, [cameraZ, onCameraZChange]);
 
-  // Cluster label desaturation: white when zoomed out, colored when zoomed in (mirrors TopicsView)
-  const z = cameraZ ?? 10000;
-  const coarseDesaturation = Math.max(0, Math.min(1,
-    (z - labelFades.coarseFadeOut.full) / (labelFades.coarseFadeIn.start - labelFades.coarseFadeOut.full)
-  ));
-  const fineDesaturation = Math.max(0, Math.min(1,
-    (z - labelFades.fineFadeOut.full) / (labelFades.fineFadeIn.start - labelFades.fineFadeOut.full)
-  ));
-
   const prevFocusActiveRef = useRef(false);
   useEffect(() => {
     const isActive = focusSeeds.length > 0;
@@ -513,7 +504,11 @@ export function ChunksScene({
   const coarseFadeOutRef = useRef(0);
   const fineFadeInRef = useRef(0);
   const fineFadeOutRef = useRef(0);
-
+  // Color desaturation: white at outer edge of visible range, colored at inner edge
+  const [coarseDesaturation, setCoarseDesaturation] = useState(1);
+  const [fineDesaturation, setFineDesaturation] = useState(1);
+  const coarseDesatRef = useRef(1);
+  const fineDesatRef = useRef(1);
   // Proxy SimNode arrays for ClusterLabels3D — positions read live from displayPositionsRef
   const { coarseLabelNodes, coarseNodeToCluster, fineLabelNodes, fineNodeToCluster } = useMemo(() => {
     const makeProxyNode = (chunk: ChunkEmbeddingData, i: number): SimNode => {
@@ -726,6 +721,12 @@ export function ChunksScene({
     if (Math.abs(newCoarseFadeOut - coarseFadeOutRef.current) > 0.01) { coarseFadeOutRef.current = newCoarseFadeOut; setCoarseFadeOutT(newCoarseFadeOut); }
     if (Math.abs(newFineFadeIn - fineFadeInRef.current) > 0.01) { fineFadeInRef.current = newFineFadeIn; setFineFadeInT(newFineFadeIn); }
     if (Math.abs(newFineFadeOut - fineFadeOutRef.current) > 0.01) { fineFadeOutRef.current = newFineFadeOut; setFineFadeOutT(newFineFadeOut); }
+    // Desaturation: white at outer edge of fully-visible range, colored at inner edge
+    const newCoarseDes = Math.max(0, Math.min(1, (camZ - labelFades.coarseFadeOut.start) / (labelFades.coarseFadeIn.full - labelFades.coarseFadeOut.start)));
+    const newFineDes = Math.max(0, Math.min(1, (camZ - labelFades.fineFadeOut.start) / (labelFades.fineFadeIn.full - labelFades.fineFadeOut.start)));
+    if (Math.abs(newCoarseDes - coarseDesatRef.current) > 0.01) { coarseDesatRef.current = newCoarseDes; setCoarseDesaturation(newCoarseDes); }
+    if (Math.abs(newFineDes - fineDesatRef.current) > 0.01) { fineDesatRef.current = newFineDes; setFineDesaturation(newFineDes); }
+
     const unitsPerPixel = (2 * Math.tan(fovRad / 2) * Math.max(camZ, 1e-3)) / (size.height / gl.getPixelRatio());
 
     for (let i = 0; i < n; i++) {
