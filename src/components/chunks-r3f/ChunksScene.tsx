@@ -10,37 +10,24 @@ import * as THREE from "three";
 
 import type { ChunkEmbeddingData } from "@/app/api/chunks/embeddings/route";
 import { CameraController } from "@/components/topics-r3f/CameraController";
-import type { CameraTransformEvent } from "@/components/topics-r3f/CameraController";
 import { useChunkForceLayout } from "@/hooks/useChunkForceLayout";
-import { useClickFocusSimilarityLayout } from "@/hooks/useClickFocusSimilarityLayout";
+import { useFocusPushAnimation } from "@/hooks/useFocusPushAnimation";
 import { useInstancedMeshDrag } from "@/hooks/useInstancedMeshDrag";
-import type { SimulationDragHandlers } from "@/lib/simulation-drag";
 import { useInstancedMeshMaterial } from "@/hooks/useInstancedMeshMaterial";
 import { useStableInstanceCount } from "@/hooks/useStableInstanceCount";
 import { useFadingScale } from "@/hooks/useFadingScale";
 import { useFocusZoomExit } from "@/hooks/useFocusZoomExit";
-import { useLensTransition } from "@/hooks/useLensTransition";
-import { useFocusManifoldLayout } from "@/hooks/useFocusManifoldLayout";
 import type { UmapEdge } from "@/hooks/useUmapLayout";
 import { CARD_WIDTH, CARD_HEIGHT, CARD_SCALE, createCardGeometry } from "@/lib/chunks-geometry";
 import {
   LENS_MAX_HOPS,
   type LensInfo,
   computeDualFocusNeighborhood,
-  computeLensNodeScale,
-  applyLensColorEmphasis,
 } from "@/lib/chunks-lens";
 import { hashToHue } from "@/lib/chunks-utils";
 import { loadPCATransform, centroidToColor, pcaProject, coordinatesToHSL, type PCATransform } from "@/lib/semantic-colors";
 import { calculateZoomDesaturation } from "@/lib/zoom-phase-config";
 import { computeViewportZones } from "@/lib/edge-pulling";
-import {
-  applyDirectionalRangeCompression,
-  applyFisheyeCompression,
-  computeCompressionExtents,
-  createDirectionalRangeCompressionConfig,
-  DEFAULT_LP_NORM_P,
-} from "@/lib/fisheye-viewport";
 import { projectCardToScreenRect, type ScreenRect } from "@/lib/screen-rect-projection";
 import { ChunkEdges } from "./ChunkEdges";
 import { CardTextLabels, type CardTextItem } from "@/components/r3f-shared/CardTextLabels";
@@ -60,32 +47,11 @@ const DESAT_NEAR_Z = 400;   // 65% desaturation when zoomed in to read cards
 const CARD_Z_RANGE = 2;
 const HOVER_SCALE_MULTIPLIER = 2;
 const EDGE_FADE_DURATION_MS = 500;
-const MAX_FOVEA_SEEDS = 3;
-const FOVEA_ANCHOR_RADIUS_PX = 180;
-const PAN_SAMPLE_DISTANCE_PX = 200;
-const PERIPHERY_MARGIN_PX = 90;
-const PERIPHERY_RELEASE_THRESHOLD = 0.85;
+const MAX_FOCUS_SEEDS = 2;
 
-type FoveaSeedOrigin = "zoom" | "pan" | "manual";
-
-interface FoveaSeed {
+interface FocusSeed {
   index: number;
-  anchorX: number;
-  anchorY: number;
   addedAt: number;
-  origin: FoveaSeedOrigin;
-}
-
-const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
-
-function lpDistance(dx: number, dy: number, p: number): number {
-  if (!Number.isFinite(dx) || !Number.isFinite(dy)) return Infinity;
-  if (p === Infinity) return Math.max(Math.abs(dx), Math.abs(dy));
-  if (Math.abs(p - 2) < 1e-3) return Math.hypot(dx, dy);
-  const exponent = Math.max(0.5, Math.min(12, p));
-  const absX = Math.abs(dx);
-  const absY = Math.abs(dy);
-  return Math.pow(Math.pow(absX, exponent) + Math.pow(absY, exponent), 1 / exponent);
 }
 
 // --- Props ---
@@ -103,11 +69,6 @@ interface ChunksSceneProps {
   chunkColorMix: number;
   edgeThickness: number;
   edgeMidpoint: number;
-  lensCompressionStrength: number;
-  lensCenterScale: number;
-  lensEdgeScale: number;
-  lpNormP: number;
-  focusMode: "manifold" | "click";
   nodeSizeMin: number;
   nodeSizeMax: number;
   nodeSizePivot: number;
@@ -129,11 +90,6 @@ export function ChunksScene({
   chunkColorMix,
   edgeThickness,
   edgeMidpoint,
-  lensCompressionStrength,
-  lensCenterScale,
-  lensEdgeScale,
-  lpNormP,
-  focusMode,
   nodeSizeMin,
   nodeSizeMax,
   nodeSizePivot,
@@ -155,8 +111,6 @@ export function ChunksScene({
   const { stableCount, meshKey } = useStableInstanceCount(count);
   const { meshRef, handleMeshRef } = useInstancedMeshMaterial(stableCount);
   const { camera, size, gl } = useThree();
-  const isManifoldFocus = focusMode === "manifold";
-  const seedCapacity = isManifoldFocus ? MAX_FOVEA_SEEDS : 2;
 
   const geometry = useMemo(createCardGeometry, []);
 
@@ -206,19 +160,13 @@ export function ChunksScene({
     layoutPositionsRef.current = layoutPositions;
   }, [layoutPositions]);
 
-  const [focusSeeds, setFocusSeeds] = useState<FoveaSeed[]>([]);
-  const focusSeedsRef = useRef<FoveaSeed[]>(focusSeeds);
+  const [focusSeeds, setFocusSeeds] = useState<FocusSeed[]>([]);
+  const focusSeedsRef = useRef<FocusSeed[]>(focusSeeds);
   useEffect(() => {
     focusSeedsRef.current = focusSeeds;
   }, [focusSeeds]);
 
-  const peripheryScoresRef = useRef<Map<number, number>>(new Map());
-  const worldPerPxRef = useRef(1);
-  const lastPanAnchorRef = useRef<{ x: number; y: number } | null>(null);
-
   const clearFocus = useCallback(() => {
-    peripheryScoresRef.current.clear();
-    lastPanAnchorRef.current = null;
     setFocusSeeds([]);
   }, []);
 
@@ -237,17 +185,6 @@ export function ChunksScene({
       }
     };
   }, [backgroundClickRef, clearFocus]);
-
-  useEffect(() => {
-    lastPanAnchorRef.current = null;
-    if (!isManifoldFocus && focusSeedsRef.current.length > seedCapacity) {
-      setFocusSeeds((prev) => {
-        if (prev.length <= seedCapacity) return prev;
-        const next = prev.slice(-seedCapacity);
-        return next;
-      });
-    }
-  }, [isManifoldFocus, seedCapacity]);
 
   // Focus zoom exit hook - exits lens mode when zooming out
   const { handleZoomChange, captureEntryZoom } = useFocusZoomExit({
@@ -285,25 +222,7 @@ export function ChunksScene({
 
   const lensActive = !!lensInfo && focusSeedIndices.length > 0 && !isRunning;
   const lensNodeSet = lensInfo?.nodeSet ?? null;
-  // Use visible node count for sizing: focus mode shows a subset, so nodes should appear larger.
-  const visibleCount = lensNodeSet != null ? lensNodeSet.size : count;
-  const countScale = nodeSizeMin + (nodeSizeMax - nodeSizeMin) * (nodeSizePivot / (nodeSizePivot + visibleCount));
-  const lensDepthMap = lensInfo?.depthMap;
-  const focusNodeSetRef = useRef<Set<number>>(new Set());
-  useEffect(() => {
-    focusNodeSetRef.current = lensNodeSet ?? new Set();
-  }, [lensNodeSet]);
-  const {
-    positionsRef: focusPositionsRef,
-    updateBounds: updateFocusBounds,
-    dragHandlers: manifoldDragHandlers,
-  } = useFocusManifoldLayout({
-    basePositions: layoutPositions,
-    focusNodeSet: isManifoldFocus ? lensNodeSet ?? null : null,
-    seedIndices: isManifoldFocus ? (lensInfo?.focusIndices ?? []) : [],
-    adjacency,
-    compressionStrength: lensCompressionStrength,
-  });
+  const countScale = nodeSizeMin + (nodeSizeMax - nodeSizeMin) * (nodeSizePivot / (nodeSizePivot + count));
 
   const focusEdges = useMemo(() => {
     if (!lensActive || !lensInfo) return neighborhoodEdges;
@@ -313,52 +232,7 @@ export function ChunksScene({
     );
   }, [lensActive, lensInfo, neighborhoodEdges]);
 
-  const {
-    positionsRef: clickFocusPositionsRef,
-    dragHandlers: clickFocusDragHandlers,
-  } = useClickFocusSimilarityLayout({
-    basePositions: layoutPositions,
-    focusNodeSet: !isManifoldFocus ? lensNodeSet ?? null : null,
-    seedIndices: focusSeedIndices,
-    neighborhoodEdges: !isManifoldFocus ? focusEdges : [],
-    cardScale: countScale,
-  });
-
-  const trimSeeds = useCallback((seeds: FoveaSeed[], countToTrim: number) => {
-    let next = [...seeds];
-    const peripheryScores = peripheryScoresRef.current;
-    for (let i = 0; i < countToTrim && next.length > 1; i++) {
-      let dropIndex = -1;
-      let bestScore = -1;
-      next.forEach((seed, idx) => {
-        const score = peripheryScores.get(seed.index) ?? 0;
-        if (score > bestScore) {
-          bestScore = score;
-          dropIndex = idx;
-        }
-      });
-      if (dropIndex >= 0 && bestScore > 0.3) {
-        next.splice(dropIndex, 1);
-        continue;
-      }
-      let oldestIdx = 0;
-      let oldestTime = next[0]?.addedAt ?? 0;
-      for (let j = 1; j < next.length; j++) {
-        if (next[j].addedAt < oldestTime) {
-          oldestIdx = j;
-          oldestTime = next[j].addedAt;
-        }
-      }
-      next.splice(oldestIdx, 1);
-    }
-    return next;
-  }, []);
-
-  const removeSeed = useCallback((index: number) => {
-    setFocusSeeds((prev) => prev.filter((seed) => seed.index !== index));
-  }, []);
-
-  const addFocusSeeds = useCallback((indices: number[], origin: FoveaSeedOrigin) => {
+  const addFocusSeeds = useCallback((indices: number[]) => {
     if (indices.length === 0) return;
     const positions = layoutPositionsRef.current;
     setFocusSeeds((prev) => {
@@ -367,116 +241,41 @@ export function ChunksScene({
       for (const idx of indices) {
         if (idx < 0 || idx * 2 + 1 >= positions.length) continue;
         if (next.some((seed) => seed.index === idx)) continue;
-        next.push({
-          index: idx,
-          anchorX: positions[idx * 2] ?? 0,
-          anchorY: positions[idx * 2 + 1] ?? 0,
-          addedAt: now,
-          origin,
-        });
+        next.push({ index: idx, addedAt: now });
       }
-      if (next.length > seedCapacity) {
-        next = trimSeeds(next, next.length - seedCapacity);
+      if (next.length > MAX_FOCUS_SEEDS) {
+        next = next.slice(-MAX_FOCUS_SEEDS);
       }
       return next;
     });
-  }, [trimSeeds]);
+  }, []);
 
-  const queueAnchorSelection = useCallback((anchor: { x: number; y: number }, options?: {
-    radiusWorld?: number;
-    maxAdd?: number;
-    reason?: FoveaSeedOrigin;
-  }) => {
-    if (!isManifoldFocus) return;
-    const positions = layoutPositionsRef.current;
-    const n = Math.min(count, positions.length / 2);
-    if (n === 0) return;
-
-    const radiusWorld = options?.radiusWorld ?? worldPerPxRef.current * FOVEA_ANCHOR_RADIUS_PX;
-    const radiusLimit = radiusWorld > 0 ? radiusWorld : Infinity;
-    const existingSet = new Set(focusSeedsRef.current.map((seed) => seed.index));
-    const focusSet = focusNodeSetRef.current;
-    const lp = lpNormP || DEFAULT_LP_NORM_P;
-
-    const candidates: Array<{ index: number; score: number }> = [];
-    for (let i = 0; i < n; i++) {
-      const x = positions[i * 2];
-      const y = positions[i * 2 + 1];
-      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
-      const dist = lpDistance(x - anchor.x, y - anchor.y, lp);
-      if (radiusLimit !== Infinity && dist > radiusLimit) continue;
-      const neighbors = adjacency.get(i) ?? [];
-      const touchesExisting = neighbors.some((neighbor) => existingSet.has(neighbor));
-      const touchesFocus = focusSet.size === 0 ? false : focusSet.has(i);
-      const bias = touchesExisting || touchesFocus ? 0.6 : 1.0;
-      candidates.push({ index: i, score: dist * bias });
-    }
-
-    if (candidates.length === 0 && n > 0) {
-      let bestIdx = 0;
-      let bestScore = Infinity;
-      for (let i = 0; i < n; i++) {
-        const x = positions[i * 2];
-        const y = positions[i * 2 + 1];
-        if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
-        const distSq = (x - anchor.x) * (x - anchor.x) + (y - anchor.y) * (y - anchor.y);
-        if (distSq < bestScore) {
-          bestScore = distSq;
-          bestIdx = i;
-        }
-      }
-      candidates.push({ index: bestIdx, score: Math.sqrt(bestScore) });
-    }
-
-    candidates.sort((a, b) => a.score - b.score);
-    const maxAdd = options?.maxAdd ?? Math.max(1, seedCapacity - focusSeedsRef.current.length);
-    const toAdd: number[] = [];
-    for (const candidate of candidates) {
-      if (toAdd.length >= maxAdd) break;
-      if (existingSet.has(candidate.index)) continue;
-      toAdd.push(candidate.index);
-    }
-
-    if (toAdd.length > 0) {
-      addFocusSeeds(toAdd, options?.reason ?? "zoom");
-    }
-  }, [adjacency, addFocusSeeds, count, lpNormP, isManifoldFocus, seedCapacity]);
-
-  const handleCameraTransform = useCallback((event: CameraTransformEvent) => {
-    if (!isManifoldFocus) return;
-    if (event.type === "zoom") {
-      if (event.direction === "in") {
-        const radiusWorld = event.viewport.worldPerPx * FOVEA_ANCHOR_RADIUS_PX * Math.max(0.6, (lpNormP || DEFAULT_LP_NORM_P) / DEFAULT_LP_NORM_P);
-        queueAnchorSelection(event.anchor, { reason: "zoom", radiusWorld, maxAdd: 2 });
-      }
-      lastPanAnchorRef.current = { x: event.cameraX, y: event.cameraY };
-    } else if (event.type === "pan" && focusSeedsRef.current.length > 0) {
-      const last = lastPanAnchorRef.current;
-      if (!last) {
-        lastPanAnchorRef.current = { x: event.cameraX, y: event.cameraY };
-        return;
-      }
-      const dx = event.cameraX - last.x;
-      const dy = event.cameraY - last.y;
-      const moved = Math.hypot(dx, dy);
-      if (moved >= event.viewport.worldPerPx * PAN_SAMPLE_DISTANCE_PX) {
-        lastPanAnchorRef.current = { x: event.cameraX, y: event.cameraY };
-        queueAnchorSelection(
-          { x: event.cameraX, y: event.cameraY },
-          { reason: "pan", radiusWorld: event.viewport.worldPerPx * (FOVEA_ANCHOR_RADIUS_PX * 0.75), maxAdd: 1 },
-        );
-      }
-    }
-  }, [queueAnchorSelection, lpNormP, isManifoldFocus]);
+  const removeSeed = useCallback((index: number) => {
+    setFocusSeeds((prev) => prev.filter((seed) => seed.index !== index));
+  }, []);
 
   const focusEdgesVersion = lensActive
     ? neighborhoodEdgesVersion * 31 + (lensInfo?.nodeSet.size ?? 0)
     : neighborhoodEdgesVersion;
 
+  // --- Focus push animation ---
+  const { positionsRef: focusPushRef, tick: tickFocusPush } = useFocusPushAnimation<number>();
+
+  const marginIds = useMemo<Set<number> | null>(() => {
+    if (!lensNodeSet) return null;
+    const m = new Set<number>();
+    for (let i = 0; i < chunks.length; i++) {
+      if (!lensNodeSet.has(i)) m.add(i);
+    }
+    return m;
+  }, [lensNodeSet, chunks.length]);
+
+  const displayPositionsRef = useRef<Float32Array>(new Float32Array(0));
+
   // Persistent z-order: each click/drag pushes a card to the top without disturbing
   // the relative order of all other cards (including previously elevated cards).
   // zOrderRef[rank] = card index (rank 0 = farthest back, rank n-1 = front).
-  // zRankRef maps card index → rank for O(1) lookup in useFrame.
+  // zRankRef maps card index -> rank for O(1) lookup in useFrame.
   const zOrderRef = useRef<number[]>([]);
   const zRankRef = useRef<Map<number, number>>(new Map());
 
@@ -529,7 +328,6 @@ export function ChunksScene({
     () => chunks.map((chunk, i) => ({ id: i, content: chunk.content })),
     [chunks]
   );
-  const displayPositionsRef = useRef<Float32Array>(new Float32Array(0));
   const getPositionRef = useRef((i: number) => ({
     x: displayPositionsRef.current[i * 2] ?? 0,
     y: displayPositionsRef.current[i * 2 + 1] ?? 0,
@@ -552,27 +350,7 @@ export function ChunksScene({
     colorDirtyRef.current = true;
   }
 
-  // Buffer for focus-adjusted positions (overrides applied on top of layout positions)
-  const focusAdjustedPositionsRef = useRef<Float32Array>(new Float32Array(0));
-  const compressedPositionsRef = useRef<Float32Array>(new Float32Array(0));
-
-  const animatedPositionsRef = useLensTransition(
-    layoutPositionsRef,
-    compressedPositionsRef,
-    lensActive,
-    (cb) => useFrame(() => cb()),
-  );
-
-  // Route drag to whichever simulation owns the node's position.
-  // Uses a ref so useInstancedMeshDrag callbacks stay stable.
-  const activeDragRef = useRef<SimulationDragHandlers>(baseDragHandlers);
-  activeDragRef.current = lensActive
-    ? (isManifoldFocus ? manifoldDragHandlers : clickFocusDragHandlers)
-    : baseDragHandlers;
-
-  // Track which node is being dragged so useFrame can skip compression for it.
-  // Drag world coords are in compressed (rendered) space; skipping compression
-  // prevents double-compression and makes the node follow the cursor exactly.
+  // Track which node is being dragged so useFrame can skip overrides for it.
   const draggedIndexRef = useRef<number | null>(null);
 
   const pickInstance = useCallback(
@@ -598,30 +376,23 @@ export function ChunksScene({
     onDragStart: (index) => {
       bringToFront(index);
       draggedIndexRef.current = index;
-      activeDragRef.current.startDrag(index);
+      baseDragHandlers.startDrag(index);
     },
-    onDrag: (index, x, y) => activeDragRef.current.drag(index, x, y),
+    onDrag: (index, x, y) => baseDragHandlers.drag(index, x, y),
     onDragEnd: (index) => {
       draggedIndexRef.current = null;
-      activeDragRef.current.endDrag(index);
+      baseDragHandlers.endDrag(index);
     },
     enabled: !isRunning,
     onDragStateChange: setIsDraggingNode,
     onClick: (index) => {
       bringToFront(index);
       onSelectChunk(chunks[index].id);
-      if (isManifoldFocus) {
-        addFocusSeeds([index], "manual");
-        const x = layoutPositionsRef.current[index * 2] ?? 0;
-        const y = layoutPositionsRef.current[index * 2 + 1] ?? 0;
-        lastPanAnchorRef.current = { x, y };
+      const alreadyFocused = focusSeedsRef.current.some((s) => s.index === index);
+      if (alreadyFocused) {
+        removeSeed(index);
       } else {
-        const alreadyFocused = focusSeedsRef.current.some((s) => s.index === index);
-        if (alreadyFocused) {
-          removeSeed(index);
-        } else {
-          addFocusSeeds([index], "manual");
-        }
+        addFocusSeeds([index]);
       }
     },
   });
@@ -678,97 +449,46 @@ export function ChunksScene({
     const zones = lensActive
       ? computeViewportZones(camera as THREE.PerspectiveCamera, size.width, size.height)
       : null;
-    const extents = zones ? computeCompressionExtents(zones) : null;
-    const rangeCompressionConfig = !isManifoldFocus && lensActive && extents != null
-      ? createDirectionalRangeCompressionConfig(lensCompressionStrength, extents)
-      : null;
 
-    if (lensActive && zones) {
-      worldPerPxRef.current = zones.worldPerPx;
-    }
-    if (lensActive && zones && isManifoldFocus) {
-      updateFocusBounds(zones.focusPullBounds);
-    } else {
-      updateFocusBounds(null);
+    // -- Focus push animation --
+    tickFocusPush(lensActive && marginIds && zones ? {
+      marginIds,
+      getPosition: (i) => ({
+        x: layoutPositions[i * 2] ?? 0,
+        y: layoutPositions[i * 2 + 1] ?? 0,
+      }),
+      pullBounds: zones.pullBounds,
+      camX: zones.viewport.camX,
+      camY: zones.viewport.camY,
+    } : null);
+
+    // Merge push overrides into render positions
+    let renderPositions = layoutPositions;
+    if (focusPushRef.current.size > 0) {
+      if (displayPositionsRef.current.length !== layoutPositions.length) {
+        displayPositionsRef.current = new Float32Array(layoutPositions.length);
+      }
+      displayPositionsRef.current.set(layoutPositions);
+      for (const [idx, o] of focusPushRef.current) {
+        displayPositionsRef.current[idx * 2] = o.x;
+        displayPositionsRef.current[idx * 2 + 1] = o.y;
+      }
+      renderPositions = displayPositionsRef.current;
     }
 
+    // All nodes visible (margins are small dots, not hidden)
     visibleNodeIndicesRef.current.clear();
-    const visibleSet = lensActive ? lensNodeSet! : null;
-    for (let i = 0; i < n; i++) {
-      if (!visibleSet || visibleSet.has(i)) visibleNodeIndicesRef.current.add(i);
-    }
-
-    let positionsWithOverrides = layoutPositions;
-    if (lensActive) {
-      const focusOverrides = (isManifoldFocus ? focusPositionsRef.current : clickFocusPositionsRef.current);
-      if (focusOverrides.size > 0) {
-        if (focusAdjustedPositionsRef.current.length !== layoutPositions.length) {
-          focusAdjustedPositionsRef.current = new Float32Array(layoutPositions.length);
-        }
-        focusAdjustedPositionsRef.current.set(layoutPositions);
-        focusOverrides.forEach((pos, index) => {
-          const target = index * 2;
-          if (target + 1 >= focusAdjustedPositionsRef.current.length) return;
-          focusAdjustedPositionsRef.current[target] = pos.x;
-          focusAdjustedPositionsRef.current[target + 1] = pos.y;
-        });
-        positionsWithOverrides = focusAdjustedPositionsRef.current;
-      }
-    }
-
-    let renderPositions = animatedPositionsRef.current;
-    if (lensActive && zones && extents) {
-      if (compressedPositionsRef.current.length !== positionsWithOverrides.length) {
-        compressedPositionsRef.current = new Float32Array(positionsWithOverrides.length);
-      }
-      for (let i = 0; i < n; i++) {
-        let x = positionsWithOverrides[i * 2];
-        let y = positionsWithOverrides[i * 2 + 1];
-      if (lensNodeSet?.has(i) && i !== draggedIndexRef.current) {
-        const compressed = applyFisheyeCompression(
-          x,
-          y,
-          zones.viewport.camX,
-          zones.viewport.camY,
-          extents.compressionStartHalfWidth,
-          extents.compressionStartHalfHeight,
-          extents.horizonHalfWidth,
-          extents.horizonHalfHeight,
-          lensCompressionStrength,
-          lpNormP,
-        );
-        x = THREE.MathUtils.clamp(compressed.x, zones.pullBounds.left, zones.pullBounds.right);
-        y = THREE.MathUtils.clamp(compressed.y, zones.pullBounds.bottom, zones.pullBounds.top);
-
-        if (rangeCompressionConfig) {
-          const remapped = applyDirectionalRangeCompression(
-            x,
-            y,
-            zones.viewport.camX,
-            zones.viewport.camY,
-            extents.horizonHalfWidth,
-            extents.horizonHalfHeight,
-            rangeCompressionConfig,
-          );
-          x = remapped.x;
-          y = remapped.y;
-        }
-      }
-        compressedPositionsRef.current[i * 2] = x;
-        compressedPositionsRef.current[i * 2 + 1] = y;
-      }
-      renderPositions = animatedPositionsRef.current;
-    }
+    for (let i = 0; i < n; i++) visibleNodeIndicesRef.current.add(i);
 
     // Bring hovered card to front and notify the active simulation (once per hover change).
     const hovered = hoveredIndexRef.current;
     if (hovered !== prevHoveredRef.current) {
       if (hovered !== null) bringToFront(hovered);
-      activeDragRef.current.notifyHoverChange?.(hovered, HOVER_SCALE_MULTIPLIER);
+      baseDragHandlers.notifyHoverChange?.(hovered, HOVER_SCALE_MULTIPLIER);
     }
     prevHoveredRef.current = hovered;
 
-    // Animate hover scale: progress 0→1 on hover-in, 1→0 on hover-out, over HOVER_DURATION.
+    // Animate hover scale: progress 0->1 on hover-in, 1->0 on hover-out, over HOVER_DURATION.
     const hoverProgress = hoverProgressRef.current;
     if (hovered !== null && !hoverProgress.has(hovered)) hoverProgress.set(hovered, 0);
     const step = delta / HOVER_DURATION;
@@ -803,29 +523,15 @@ export function ChunksScene({
       const x = renderPositions[i * 2];
       const y = renderPositions[i * 2 + 1];
 
-      let lensScale = 1;
-      if (lensActive && lensNodeSet?.has(i) && zones && extents) {
-        const maxRadius = Math.min(extents.horizonHalfWidth, extents.horizonHalfHeight);
-        const startRadius = Math.min(extents.compressionStartHalfWidth, extents.compressionStartHalfHeight);
-        lensScale = computeLensNodeScale(
-          x,
-          y,
-          zones.viewport.camX,
-          zones.viewport.camY,
-          lensDepthMap?.get(i),
-          startRadius,
-          maxRadius,
-          lensCompressionStrength,
-          lensCenterScale,
-          lensEdgeScale,
-        );
-      }
+      // Push-based scale: margin nodes shrink as they animate to viewport edge
+      const pushOverride = focusPushRef.current.get(i);
+      const pushScale = pushOverride ? (1 - pushOverride.progress * 0.85) : 1;
 
       const rawProgress = hoverProgressRef.current.get(i) ?? 0;
       // smoothstep easing: slow at start and end, fast in the middle
       const t = rawProgress * rawProgress * (3 - 2 * rawProgress);
       const hoverScale = 1 + (HOVER_SCALE_MULTIPLIER - 1) * t;
-      const baseScale = CARD_SCALE * countScale * lensScale * animatedScale;
+      const baseScale = CARD_SCALE * countScale * pushScale * animatedScale;
       // Cap hover growth so the card never exceeds 50% of viewport height.
       const maxHoverForVP = Math.max(1, (size.height / gl.getPixelRatio() * 0.5 * unitsPerPixel) / (CARD_HEIGHT * baseScale));
       const finalScale = baseScale * Math.min(hoverScale, maxHoverForVP);
@@ -883,9 +589,6 @@ export function ChunksScene({
           const opacity = searchOpacitiesRef.current.get(chunks[i].id) ?? 1.0;
           tempColor.current.multiplyScalar(opacity);
         }
-        if (lensActive && lensNodeSet?.has(i)) {
-          applyLensColorEmphasis(tempColor.current, lensDepthMap?.get(i) ?? 0);
-        }
         mesh.setColorAt(i, tempColor.current);
       }
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
@@ -895,52 +598,19 @@ export function ChunksScene({
       prevMinSaturationRef.current = minSaturationRef.current;
     }
 
-    if (isManifoldFocus && lensActive && focusSeedsRef.current.length > 0) {
-      const peripheryScores = peripheryScoresRef.current;
-      const seedsSnapshot = [...focusSeedsRef.current];
-      let removedThisFrame = false;
-      for (const seed of seedsSnapshot) {
-        const rect = chunkScreenRectsRef.current.get(seed.index);
-        if (!rect) {
-          peripheryScores.set(seed.index, 0);
-          continue;
-        }
-        const distToEdgeX = Math.min(rect.x, size.width - rect.x);
-        const distToEdgeY = Math.min(rect.y, size.height - rect.y);
-        const distToEdge = Math.min(distToEdgeX, distToEdgeY);
-        const closeness = distToEdge <= PERIPHERY_MARGIN_PX
-          ? 1 - distToEdge / PERIPHERY_MARGIN_PX
-          : 0;
-        peripheryScores.set(seed.index, clamp01(closeness));
-        if (!removedThisFrame && closeness >= PERIPHERY_RELEASE_THRESHOLD && focusSeedsRef.current.length > 1) {
-          removeSeed(seed.index);
-          removedThisFrame = true;
-        }
-      }
-    } else if (peripheryScoresRef.current.size > 0) {
-      peripheryScoresRef.current.clear();
-    }
-
     mesh.instanceMatrix.needsUpdate = true;
     mesh.boundingSphere = null;
   });
 
   const shouldRenderEdges = !isRunning && focusEdges.length > 0 && edgeOpacity > 0;
 
-  const activeFocusOverrides = isManifoldFocus ? focusPositionsRef.current : clickFocusPositionsRef.current;
-
-  const hasFocusOverrides = lensActive
-    && activeFocusOverrides.size > 0
-    && focusAdjustedPositionsRef.current.length === layoutPositions.length
-    && focusAdjustedPositionsRef.current.length > 0;
-  const hasCompressedPositions = lensActive
-    && compressedPositionsRef.current.length === layoutPositions.length
-    && compressedPositionsRef.current.length > 0;
-  const displayPositions = hasCompressedPositions
-    ? compressedPositionsRef.current
-    : hasFocusOverrides
-      ? focusAdjustedPositionsRef.current
-      : layoutPositions;
+  // Display positions: use push-overridden if available, else layout positions
+  const hasPushOverrides = focusPushRef.current.size > 0
+    && displayPositionsRef.current.length === layoutPositions.length;
+  const displayPositions = hasPushOverrides
+    ? displayPositionsRef.current
+    : layoutPositions;
+  // Keep ref in sync for getPositionRef closure
   displayPositionsRef.current = displayPositions;
 
   return (
@@ -960,7 +630,6 @@ export function ChunksScene({
         maxDistance={10000}
         enableDragPan={!isDraggingNode}
         onZoomChange={handleZoomChange}
-        onTransform={handleCameraTransform}
       />
       <instancedMesh
         key={meshKey}
