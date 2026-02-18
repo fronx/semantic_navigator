@@ -102,6 +102,7 @@ interface ChunksSceneProps {
   fineLabels: Record<number, string> | null;
   labelFades: LabelFadeConfig;
   onCameraZChange?: (z: number) => void;
+  hoverRadius: number;
 }
 
 // --- Component ---
@@ -134,6 +135,7 @@ export function ChunksScene({
   fineLabels,
   labelFades,
   onCameraZChange,
+  hoverRadius: _hoverRadius, // unused until next task
 }: ChunksSceneProps) {
   const count = chunks.length;
   const [pcaTransform, setPcaTransform] = useState<PCATransform | null>(null);

@@ -33,6 +33,7 @@ export interface ChunksSettings {
   nodeSizeMin: number;
   nodeSizeMax: number;
   nodeSizePivot: number;
+  hoverRadius: number;
   shapeMorphNear: number;
   shapeMorphFar: number;
   coarseResolution: number;
@@ -203,6 +204,18 @@ export function ChunksControlSidebar({ store, onRedoUmap, cameraZ }: ChunksContr
           min={5}
           max={300}
           step={5}
+          format={(v) => `${v}`}
+        />
+      </Section>
+
+      <Section {...sectionProps("Interaction")}>
+        <Slider
+          label="Hover radius"
+          value={values.hoverRadius}
+          onChange={(v) => update("hoverRadius", v)}
+          min={0}
+          max={500}
+          step={10}
           format={(v) => `${v}`}
         />
       </Section>
