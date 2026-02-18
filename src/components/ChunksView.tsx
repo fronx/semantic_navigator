@@ -50,7 +50,7 @@ const CHUNKS_DEFAULTS: ChunksSettings = {
   coarseFadeIn:  { start: 8000, full: 5000 },
   coarseFadeOut: { start: 3000, full: 1500 },
   fineFadeIn:    { start: 2500, full: 1500 },
-  fineFadeOut:   { start: 700,  full: 200  },
+  fineFadeOut:   { start: 1000, full: 200  },
   sidebarCollapsed: false,
   sectionStates: {
     UMAP: true,

@@ -243,12 +243,13 @@ export function clusterColorToCSS(
     result = chroma.hsl(isNaN(h) ? 0 : h, s, adjustedL);
   }
 
-  let css = result.css();
+  // Always output hex — THREE.Color cannot parse chroma's space-separated rgb() format
+  let hex = result.hex();
   // Skip contrast adjustment when highly desaturated (>50%) - we want bright/dark extremes
   if (contrast > 0 && desaturation < 0.5) {
-    css = adjustContrast(css, contrast, isDark);
+    hex = adjustContrast(hex, contrast, isDark);
   }
-  return css;
+  return hex;
 }
 
 /** Node with embedding */
