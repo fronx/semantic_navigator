@@ -10,7 +10,8 @@ import { ForceSimulation } from "./ForceSimulation";
 import { UnifiedSimulation } from "./UnifiedSimulation";
 import { KeywordNodes } from "./KeywordNodes";
 import { ContentNodes } from "./ContentNodes";
-import { ContentTextLabels3D } from "./ContentTextLabels3D";
+import { CardTextLabels, type CardTextItem } from "@/components/r3f-shared/CardTextLabels";
+import type { ScreenRect } from "@/lib/screen-rect-projection";
 import { TransmissionPanel } from "./TransmissionPanel";
 import { KeywordEdges } from "./KeywordEdges";
 import { ContentEdges } from "./ContentEdges";
@@ -310,6 +311,27 @@ export function R3FTopicsScene({
     return simNodes.filter(n => n.type !== "keyword") as ContentSimNode[];
   }, [simNodes]);
 
+  // --- CardTextLabels (unified content text) ---
+  const contentItems = useMemo<CardTextItem[]>(
+    () => renderContentNodes.map((node) => ({ id: node.id, content: node.content, parentIds: node.parentIds })),
+    [renderContentNodes]
+  );
+
+  // Stable ref so position callback always reads the latest array (no useEffect needed)
+  const contentNodesRef = useRef<ContentSimNode[]>([]);
+  contentNodesRef.current = renderContentNodes;
+
+  const contentGetPositionRef = useRef((i: number) => {
+    const node = contentNodesRef.current[i];
+    if (!node) return { x: 0, y: 0 };
+    const pulled = labelRefs.pulledContentPositionsRef.current.get(node.id);
+    return { x: pulled?.x ?? node.x ?? 0, y: pulled?.y ?? node.y ?? 0 };
+  });
+
+  const textFrontZ = contentZDepth - panelThickness * contentTextDepthScale;
+  const contentRadius = BASE_DOT_RADIUS * DOT_SCALE_FACTOR * contentSizeMultiplier;
+  const contentTextMaxWidth = contentRadius * 2 * 9 * (1 + Math.sqrt(5)) / 2 * (1 - 2 * 0.06);
+
   // Update labelRefs when simNodes change (for label rendering)
   useEffect(() => {
     labelRefs.simNodesRef.current = simNodes;
@@ -440,17 +462,16 @@ export function R3FTopicsScene({
       )}
 
       {renderContentNodes.length > 0 && (
-        <ContentTextLabels3D
-          nodes={renderContentNodes}
-          visibleContentIdsRef={visibleContentIdsRef}
-          pulledContentPositionsRef={labelRefs.pulledContentPositionsRef}
+        <CardTextLabels
+          items={contentItems}
+          getPosition={contentGetPositionRef}
+          screenRectsRef={labelRefs.contentScreenRectsRef as unknown as React.MutableRefObject<Map<string | number, ScreenRect>>}
+          textMaxWidth={contentTextMaxWidth}
+          visibleIdsRef={visibleContentIdsRef as unknown as React.MutableRefObject<Set<string | number>>}
           searchOpacities={searchOpacities}
-          zoomRange={zoomPhaseConfig.chunkCrossfade}
-          contentZDepth={contentZDepth}
-          panelThickness={panelThickness}
-          contentTextDepthScale={contentTextDepthScale}
-          contentSizeMultiplier={contentSizeMultiplier}
-          contentScreenRectsRef={labelRefs.contentScreenRectsRef}
+          baseFontSize={28}
+          enableZoomFade
+          textZ={textFrontZ}
         />
       )}
 

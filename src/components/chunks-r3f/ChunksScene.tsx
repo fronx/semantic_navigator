@@ -43,7 +43,7 @@ import {
 } from "@/lib/fisheye-viewport";
 import { projectCardToScreenRect, type ScreenRect } from "@/lib/screen-rect-projection";
 import { ChunkEdges } from "./ChunkEdges";
-import { ChunkTextLabels } from "./ChunkTextLabels";
+import { CardTextLabels, type CardTextItem } from "@/components/r3f-shared/CardTextLabels";
 
 // --- Constants ---
 
@@ -523,7 +523,17 @@ export function ChunksScene({
   const centerVec = useRef(new THREE.Vector3());
   const edgeVecX = useRef(new THREE.Vector3());
   const edgeVecY = useRef(new THREE.Vector3());
-  const chunkScreenRectsRef = useRef(new Map<number, ScreenRect>());
+  const chunkScreenRectsRef = useRef<Map<string | number, ScreenRect>>(new Map());
+
+  const contentItems = useMemo<CardTextItem[]>(
+    () => chunks.map((chunk, i) => ({ id: i, content: chunk.content })),
+    [chunks]
+  );
+  const displayPositionsRef = useRef<Float32Array>(new Float32Array(0));
+  const getPositionRef = useRef((i: number) => ({
+    x: displayPositionsRef.current[i * 2] ?? 0,
+    y: displayPositionsRef.current[i * 2 + 1] ?? 0,
+  }));
 
   // Track when colors need repainting
   const colorChunksRef = useRef<THREE.Color[] | null>(null);
@@ -931,6 +941,7 @@ export function ChunksScene({
     : hasFocusOverrides
       ? focusAdjustedPositionsRef.current
       : layoutPositions;
+  displayPositionsRef.current = displayPositions;
 
   return (
     <>
@@ -961,12 +972,12 @@ export function ChunksScene({
         onPointerLeave={handleHoverLeave}
       />
       {!isRunning && (
-        <ChunkTextLabels
-          chunks={chunks}
-          positions={displayPositions}
-          cardWidth={CARD_WIDTH}
-          cardHeight={CARD_HEIGHT}
+        <CardTextLabels
+          items={contentItems}
+          getPosition={getPositionRef}
           screenRectsRef={chunkScreenRectsRef}
+          textMaxWidth={CARD_WIDTH * 0.76}
+          maxVisible={50}
         />
       )}
     </>
