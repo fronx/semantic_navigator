@@ -1,6 +1,12 @@
 import { useRef, useEffect, useState } from "react";
 import { useArticleReader, type ArticleReaderData } from "@/hooks/useArticleReader";
-import { hashToHue } from "@/lib/chunks-utils";
+import { getChunkColor } from "@/lib/chunk-color-registry";
+import ReactMarkdown from "react-markdown";
+
+const READER_WIDTH_KEY = "reader-width";
+const DEFAULT_WIDTH = 384; // w-96
+const MIN_WIDTH = 260;
+const MAX_WIDTH = 720;
 
 interface ReaderProps {
   chunkId: string | null;
@@ -19,15 +25,17 @@ function articleTitle(sourcePath: string | null): string {
   return sourcePath.split("/").at(-1)?.replace(/\.md$/i, "") ?? "Article";
 }
 
-function articleCssColor(sourcePath: string | null): string {
-  if (!sourcePath) return "hsl(0, 0%, 55%)";
-  const hue = hashToHue(sourcePath) * 360;
-  return `hsl(${hue}, 70%, 55%)`;
-}
 
 export function Reader({ chunkId, onClose }: ReaderProps) {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [activeArticleId, setActiveArticleId] = useState<string | null>(null);
+  const [width, setWidth] = useState(() => {
+    const saved = localStorage.getItem(READER_WIDTH_KEY);
+    return saved ? Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, parseInt(saved))) : DEFAULT_WIDTH;
+  });
+  const [isResizing, setIsResizing] = useState(false);
+  const widthRef = useRef(width);
+  widthRef.current = width;
 
   // Hook only fetches when the external chunkId changes (canvas clicks)
   const { data, loading } = useArticleReader(chunkId);
@@ -84,12 +92,43 @@ export function Reader({ chunkId, onClose }: ReaderProps) {
     }
   };
 
+  const handleResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = widthRef.current;
+    setIsResizing(true);
+
+    const onMouseMove = (e: MouseEvent) => {
+      const newWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWidth + startX - e.clientX));
+      setWidth(newWidth);
+    };
+
+    const onMouseUp = () => {
+      setIsResizing(false);
+      localStorage.setItem(READER_WIDTH_KEY, String(widthRef.current));
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  };
+
   const isOpen = chunkId !== null;
 
   return (
     <div
-      className={`flex-shrink-0 flex flex-col bg-white dark:bg-zinc-900 border-l border-zinc-200 dark:border-zinc-700 overflow-hidden transition-[width] duration-200 ${isOpen ? "w-80" : "w-0"}`}
+      className={`flex-shrink-0 relative flex flex-col bg-white dark:bg-zinc-900 border-l border-zinc-200 dark:border-zinc-700 overflow-hidden ${isResizing ? "" : "transition-[width] duration-200"}`}
+      style={{ width: isOpen ? width : 0 }}
     >
+      {/* Resize handle */}
+      {isOpen && (
+        <div
+          className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize z-10 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors"
+          onMouseDown={handleResizeStart}
+        />
+      )}
+
       {/* Tab stack */}
       <div className="flex-shrink-0 border-b border-zinc-200 dark:border-zinc-700">
         <div className="flex items-center px-3 py-1">
@@ -113,7 +152,7 @@ export function Reader({ chunkId, onClose }: ReaderProps) {
             >
               <div
                 className="w-1 self-stretch rounded-full flex-shrink-0"
-                style={{ backgroundColor: articleCssColor(entry.sourcePath) }}
+                style={{ backgroundColor: getChunkColor(entry.chunkId) ?? "#9ca3af" }}
               />
               <div className="min-w-0 flex-1">
                 <div
@@ -167,19 +206,13 @@ export function Reader({ chunkId, onClose }: ReaderProps) {
                 if (el) chunkRefs.current.set(chunk.id, el);
                 else chunkRefs.current.delete(chunk.id);
               }}
-              className={`px-3 py-2.5 border-b border-zinc-100 dark:border-zinc-800 ${
-                isActiveChunk
-                  ? "bg-blue-50 dark:bg-blue-950/30 border-l-2 border-l-blue-500"
-                  : ""
-              }`}
+              className={`pl-10 pr-6 py-6 ${isActiveChunk ? "border-l-[5px]" : ""}`}
+              style={isActiveChunk ? { borderLeftColor: getChunkColor(chunk.id) ?? "#9ca3af" } : undefined}
             >
-              {chunk.chunk_type && (
-                <span className="inline-block text-xs px-1 py-0.5 mb-1 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 rounded">
-                  {chunk.chunk_type}
-                </span>
-              )}
-              <div className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap">
-                {chunk.content ?? ""}
+              <div className="reader-markdown">
+                <ReactMarkdown>
+                  {chunk.content ?? ""}
+                </ReactMarkdown>
               </div>
             </div>
           );
