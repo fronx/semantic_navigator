@@ -14,9 +14,15 @@ import * as THREE from "three";
 const CHUNK_VERTEX_SHADER = /* glsl */ `
   varying vec2 vUv;
   varying vec3 vColor;
+  varying float vOpacity;
+
+  // Per-instance opacity — 1.0 normally, <1.0 when dimmed (search, hover preview, edge pull).
+  // Stored separately from instanceColor so dimming fades to transparent, not black.
+  attribute float instanceOpacity;
 
   void main() {
     vUv = uv;
+    vOpacity = instanceOpacity;
 
     #ifdef USE_INSTANCING_COLOR
       vColor = instanceColor;
@@ -40,6 +46,7 @@ const CHUNK_FRAGMENT_SHADER = /* glsl */ `
 
   varying vec2 vUv;
   varying vec3 vColor;
+  varying float vOpacity;
 
   float roundedBoxSDF(vec2 p, vec2 b, float r) {
     vec2 q = abs(p) - b + r;
@@ -64,7 +71,7 @@ const CHUNK_FRAGMENT_SHADER = /* glsl */ `
     float alpha = 1.0 - smoothstep(-edge, edge, sdf);
     if (alpha < 0.001) discard;
 
-    gl_FragColor = vec4(vColor, alpha);
+    gl_FragColor = vec4(vColor, alpha * vOpacity);
   }
 `;
 

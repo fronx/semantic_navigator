@@ -19,7 +19,12 @@ export function useInstancedMeshMaterial(instanceCount: number) {
   const handleMeshRef = useCallback((mesh: THREE.InstancedMesh | null) => {
     meshRef.current = mesh;
 
-    if (mesh && !mesh.instanceColor) {
+    if (!mesh) {
+      materialRef.current = null;
+      return;
+    }
+
+    if (!mesh.instanceColor) {
       const count = instanceCountRef.current;
       // FIRST: Create instanceColor attribute with default white color
       const colors = new Float32Array(count * 3);
@@ -30,6 +35,12 @@ export function useInstancedMeshMaterial(instanceCount: number) {
       }
       mesh.instanceColor = new THREE.InstancedBufferAttribute(colors, 3);
       mesh.instanceColor.needsUpdate = true;
+
+      // Per-instance opacity (1.0 = fully opaque). Dim factors (search, preview, pull)
+      // are written here rather than darkening the color, so dimmed nodes fade to
+      // transparent rather than black.
+      const opacities = new Float32Array(count).fill(1.0);
+      mesh.geometry.setAttribute('instanceOpacity', new THREE.InstancedBufferAttribute(opacities, 1));
 
       // SECOND: Create and attach material AFTER instanceColor exists
       // This ensures the shader compiles with USE_INSTANCING_COLOR defined.

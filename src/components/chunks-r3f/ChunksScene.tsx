@@ -765,25 +765,25 @@ export function ChunksScene({
     if (colorChunksRef.current !== chunkColors || colorDirtyRef.current || desatChanged || previewActive || pullResult.pulledMap.size > 0 || lensActiveRef.current || !mesh.instanceColor) {
       const searchActive = searchOpacitiesRef.current.size > 0;
       initGlowTarget(glowTarget, isDarkMode());
+      const opacityAttr = mesh.geometry.getAttribute('instanceOpacity') as THREE.BufferAttribute | null;
       for (let i = 0; i < Math.min(n, chunkColors.length); i++) {
         // Apply desaturation to base color via HSL (fast, no chroma.js needed)
         chunkColors[i].getHSL(hslTemp.current);
         hslTemp.current.s = Math.max(minSaturationRef.current, hslTemp.current.s * (1 - effectiveDesaturation));
         tempColor.current.setHSL(hslTemp.current.h, hslTemp.current.s, hslTemp.current.l);
-        if (searchActive) {
-          const opacity = searchOpacitiesRef.current.get(chunks[i].id) ?? 1.0;
-          tempColor.current.multiplyScalar(opacity);
-        }
-        const previewDim = previewDimRef.current.get(i);
-        if (previewDim !== undefined) tempColor.current.multiplyScalar(previewDim);
+        // Dim factors go to per-instance opacity (fade to transparent, not black)
+        const searchOpacity = searchActive ? (searchOpacitiesRef.current.get(chunks[i].id) ?? 1.0) : 1.0;
+        const previewDim = previewDimRef.current.get(i) ?? 1.0;
         const pulledDataForColor = pullResult.pulledMap.get(i);
-        if (pulledDataForColor) tempColor.current.multiplyScalar(PULLED_COLOR_FACTOR);
+        const pulledDim = pulledDataForColor ? PULLED_COLOR_FACTOR : 1.0;
+        if (opacityAttr) (opacityAttr.array as Float32Array)[i] = searchOpacity * previewDim * pulledDim;
         const isFocusSeed = lensInfoRef.current?.depthMap.get(i) === 0;
         const isHovered = hoveredIndexRef.current === i;
         applyFocusGlow(tempColor.current, glowTarget, isFocusSeed, isHovered);
         mesh.setColorAt(i, tempColor.current);
       }
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      if (opacityAttr) opacityAttr.needsUpdate = true;
       colorChunksRef.current = chunkColors;
       colorDirtyRef.current = false;
       prevDesaturationRef.current = effectiveDesaturation;
