@@ -147,21 +147,6 @@ export function ChunksScene({
   // Animated hover progress per card: 0=normal scale, 1=full hover scale.
   const hoverProgressRef = useRef<Map<number, number>>(new Map());
 
-  const {
-    positions: layoutPositions,
-    dragHandlers: baseDragHandlers,
-  } = useChunkForceLayout({
-    basePositions: umapPositions,
-    edges: neighborhoodEdges,
-    edgesVersion: neighborhoodEdgesVersion,
-    isRunning,
-  });
-
-  const layoutPositionsRef = useRef(layoutPositions);
-  useEffect(() => {
-    layoutPositionsRef.current = layoutPositions;
-  }, [layoutPositions]);
-
   const [focusSeeds, setFocusSeeds] = useState<FocusSeed[]>([]);
   const focusSeedsRef = useRef<FocusSeed[]>(focusSeeds);
   useEffect(() => {
@@ -177,7 +162,6 @@ export function ChunksScene({
     const handler = () => {
       if (focusSeedsRef.current.length > 0) {
         clearFocus();
-        onSelectChunk(null);
       }
     };
     backgroundClickRef.current = handler;
@@ -189,9 +173,9 @@ export function ChunksScene({
   }, [backgroundClickRef, clearFocus]);
 
   // Focus zoom exit hook - exits lens mode when zooming out
-  const { handleZoomChange, captureEntryZoom } = useFocusZoomExit({
+  const { handleZoomChange, captureEntryZoom, cameraZ } = useFocusZoomExit({
     isFocused: focusSeeds.length > 0,
-    onExitFocus: () => { clearFocus(); onSelectChunk(null); },
+    onExitFocus: () => { clearFocus(); },
     absoluteThreshold: 8000, // 80% of maxDistance=10000
     relativeMultiplier: 1.05,
   });
@@ -203,6 +187,22 @@ export function ChunksScene({
     }
     prevFocusActiveRef.current = isActive;
   }, [focusSeeds.length, captureEntryZoom]);
+
+  const {
+    positions: layoutPositions,
+    dragHandlers: baseDragHandlers,
+  } = useChunkForceLayout({
+    basePositions: umapPositions,
+    edges: neighborhoodEdges,
+    edgesVersion: neighborhoodEdgesVersion,
+    isRunning,
+    cameraZ,
+  });
+
+  const layoutPositionsRef = useRef(layoutPositions);
+  useEffect(() => {
+    layoutPositionsRef.current = layoutPositions;
+  }, [layoutPositions]);
 
   const focusSeedIndices = useMemo(() => focusSeeds.map((seed) => seed.index), [focusSeeds]);
 
