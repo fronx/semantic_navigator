@@ -17,6 +17,8 @@ When fixing bugs or implementing features, always check for existing patterns/sy
 
 **Build reusable primitives, not local fixes.** When a behavior (fading, animation, filtering) is needed in one place, extract it as a hook or utility that works generically. Example: `useFadingMembership` animates any Set-based membership change, reused across edge rendering, content node visibility, etc. Inline solutions that solve one case are harder to reuse and tend to diverge.
 
+**Share rendering logic between views via `src/lib/`.** TopicsView and ChunksView share visual behaviors (glow, dim, edge pulling, desaturation). When adding a visual effect, implement it as a pure function in `src/lib/` (e.g., `node-color-effects.ts`, `edge-pulling.ts`) and import from both views. View-specific decisions (which nodes to highlight) stay in components; the effect implementation (how to highlight) lives in the shared module. Never duplicate rendering logic inline across views.
+
 ## Project Tools
 
 **Code simplification:** After implementing features or fixes, use the code-simplifier agent via the Task tool rather than doing manual simplification. Invoke with:
