@@ -11,6 +11,21 @@ export const CORNER_RATIO = 0.08;
 /** Constant world-space scale applied to all chunk cards. */
 export const CARD_SCALE = 0.3;
 
+/** Scale multiplier applied to the focus seed node (the clicked chunk). */
+export const FOCUS_SEED_SCALE = 2;
+
+/**
+ * Compute the focus-seed scale boost for a node.
+ *
+ * The boost is suppressed whenever a hover animation is in progress (`hoverProgress > 0`).
+ * Combining a non-zero hoverScale with focusSeedBoost during hover-out causes a brief spike,
+ * because hoverScale decays over 0.45 s while focusSeedBoost would otherwise snap back to 2
+ * the moment the cursor leaves.
+ */
+export function computeFocusSeedBoost(isFocusSeed: boolean, hoverProgress: number): number {
+  return isFocusSeed && hoverProgress === 0 ? FOCUS_SEED_SCALE : 1;
+}
+
 /** Half-diagonal of a card in world units — used as collision radius in d3 force. */
 export const CARD_COLLISION_RADIUS = Math.max(CARD_WIDTH, CARD_HEIGHT) / 2 * CARD_SCALE;
 

@@ -23,7 +23,7 @@ import { useStableInstanceCount } from "@/hooks/useStableInstanceCount";
 import { useFadingScale } from "@/hooks/useFadingScale";
 import { useFocusZoomExit } from "@/hooks/useFocusZoomExit";
 import type { UmapEdge } from "@/hooks/useUmapLayout";
-import { CARD_WIDTH, CARD_HEIGHT, CARD_SCALE, CARD_V_MARGIN_RATIO, createCardPlaneGeometry, computeHeightRatio, heightRatioFromGeomHeight } from "@/lib/chunks-geometry";
+import { CARD_WIDTH, CARD_HEIGHT, CARD_SCALE, CARD_V_MARGIN_RATIO, createCardPlaneGeometry, computeHeightRatio, heightRatioFromGeomHeight, computeFocusSeedBoost } from "@/lib/chunks-geometry";
 import {
   LENS_MAX_HOPS,
   type LensInfo,
@@ -64,8 +64,6 @@ const MAX_CARD_SCREEN_FRACTION = 0.6;
 const MAX_PROMINENT_SCREEN_FRACTION = 0.85;
 /** Pulled ghost nodes are tiny navigation hints — cap much smaller. */
 const MAX_PULLED_SCREEN_FRACTION = 0.1;
-/** Scale boost applied to focus seed nodes so they stand out from the crowd. */
-const FOCUS_SEED_SCALE = 2;
 /** Focus-set pulled nodes must be at least this large so they're clearly clickable. */
 const MIN_FOCUS_PULLED_SCREEN_FRACTION = 0.07;
 /**
@@ -864,8 +862,7 @@ export function ChunksScene({
       const maxFinalScale = (vpHeight * screenFraction * unitsPerPixel) / (CARD_HEIGHT * heightRatio);
       const isFocusPulled = isPulled && !!lensNodeSet?.has(i);
       const minFinalScale = isFocusPulled ? Math.min((vpHeight * MIN_FOCUS_PULLED_SCREEN_FRACTION * unitsPerPixel) / (CARD_HEIGHT * heightRatio), baseScale) : 0;
-      // Don't boost a focus seed that's currently hovered — hover scale is already large enough.
-      const focusSeedBoost = (isFocusSeed && !isHoveredNode) ? FOCUS_SEED_SCALE : 1;
+      const focusSeedBoost = computeFocusSeedBoost(isFocusSeed, rawProgress);
       const finalScale = Math.max(Math.min(baseScale * Math.min(hoverScale, maxHoverForVP) * pulledScale * focusSeedBoost, maxFinalScale), minFinalScale);
       const finalScaleY = finalScale * heightRatio;
 
