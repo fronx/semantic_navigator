@@ -153,7 +153,8 @@ TopicsView supports three renderers. **R3F (React Three Fiber) is the primary re
 - `content-layout.ts` - Force-based content positioning around keywords
 - `content-zoom-config.ts` - Centralized zoom configuration
 - `label-fade-coordinator.ts` - Cross-component label visibility coordination
-- `edge-pulling.ts` - Pull off-screen nodes to viewport boundary as navigational ghosts
+- `edge-pulling.ts` - Pull off-screen nodes to viewport boundary as navigational ghosts (shared by TopicsView + ChunksView)
+- `chunks-pull-state.ts` - ChunksView-specific pull state computation (index-based flat model)
 - `fisheye-viewport.ts` - Lp-norm directional compression for rounded-rectangle focus areas
 - `chunks-lens.ts` - BFS neighborhood, lens scale blending, color emphasis for ChunksView
 - `chunks-geometry.ts` / `chunks-utils.ts` - ChunksView geometry and utilities
@@ -168,6 +169,7 @@ TopicsView supports three renderers. **R3F (React Three Fiber) is the primary re
 - **Layout**: UMAP embedding projection (`useUmapLayout`) instead of force-directed graph. D3 force refines positions after UMAP (`useChunkForceLayout`).
 - **Nodes**: Renders chunks (not keywords) as cards colored by source article.
 - **Interaction**: Click a chunk to activate a fisheye lens that compresses neighbors (BFS 1-hop via `chunks-lens.ts`). `useFocusZoomExit` auto-exits lens on zoom-out.
+- **Edge pulling**: Off-screen neighbors of visible chunks are pulled to viewport edges as ghosts (`chunks-pull-state.ts`). Shares `computePullPosition`, visual constants, and viewport zone utilities with TopicsView via `edge-pulling.ts`. Clicking a ghost flies to its real position + activates lens. See [Edge Pulling](docs/architecture/edge-pulling.md).
 - **Lens math**: `fisheye-viewport.ts` provides Lp-norm directional compression for rounded-rectangle shaped focus areas. `hyperbolic-compression.ts` handles radial compression.
 
 **Components** (`src/components/chunks-r3f/`): `ChunksCanvas.tsx` → `ChunksScene.tsx` → `ChunkEdges.tsx`, `ChunkTextLabels.tsx`. Settings via `ChunksControlSidebar.tsx` (UMAP params: nNeighbors, minDist, spread; lens params: compression, scale, horizon shape).
