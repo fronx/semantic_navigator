@@ -5,10 +5,11 @@
 
 import { useRef, useCallback } from "react";
 import * as THREE from "three";
+import { createChunkShaderMaterial } from "@/lib/chunks-shader";
 
 export function useInstancedMeshMaterial(instanceCount: number) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
-  const materialRef = useRef<THREE.MeshBasicMaterial | null>(null);
+  const materialRef = useRef<THREE.ShaderMaterial | null>(null);
   // Store instanceCount in a ref so the callback doesn't need to change identity
   const instanceCountRef = useRef(instanceCount);
   instanceCountRef.current = instanceCount;
@@ -31,20 +32,14 @@ export function useInstancedMeshMaterial(instanceCount: number) {
       mesh.instanceColor.needsUpdate = true;
 
       // SECOND: Create and attach material AFTER instanceColor exists
-      // This ensures the shader compiles with vertex color support from the start
+      // This ensures the shader compiles with USE_INSTANCING_COLOR defined.
 
       // Dispose old material if it exists
       if (mesh.material) {
         (mesh.material as THREE.Material).dispose();
       }
 
-      const material = new THREE.MeshBasicMaterial({
-        color: new THREE.Color(0xffffff),
-        transparent: false,
-        depthTest: true,
-        depthWrite: true,
-      });
-      material.toneMapped = false;
+      const material = createChunkShaderMaterial();
       mesh.material = material;
       materialRef.current = material;
 
