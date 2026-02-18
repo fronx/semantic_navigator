@@ -154,7 +154,7 @@ export function ChunksScene({
 
   const { stableCount, meshKey } = useStableInstanceCount(count);
   const { meshRef, handleMeshRef } = useInstancedMeshMaterial(stableCount);
-  const { camera, size } = useThree();
+  const { camera, size, gl } = useThree();
   const isManifoldFocus = focusMode === "manifold";
   const seedCapacity = isManifoldFocus ? MAX_FOVEA_SEEDS : 2;
 
@@ -772,6 +772,11 @@ export function ChunksScene({
     chunkScreenRectsRef.current.clear();
     const cardZStep = n > 1 ? CARD_Z_RANGE / n : CARD_Z_RANGE;
 
+    // Compute world-units-per-pixel once per frame (cards are near z=0, camera looks down z-axis).
+    const camZ = camera.position.z;
+    const fovRad = THREE.MathUtils.degToRad((camera as THREE.PerspectiveCamera).fov);
+    const unitsPerPixel = (2 * Math.tan(fovRad / 2) * Math.max(camZ, 1e-3)) / (size.height / gl.getPixelRatio());
+
     for (let i = 0; i < n; i++) {
       const animatedScale = nodeScalesRef.current.get(i) ?? 0;
 
@@ -807,7 +812,10 @@ export function ChunksScene({
       // smoothstep easing: slow at start and end, fast in the middle
       const t = rawProgress * rawProgress * (3 - 2 * rawProgress);
       const hoverScale = 1 + (HOVER_SCALE_MULTIPLIER - 1) * t;
-      const finalScale = CARD_SCALE * countScale * lensScale * animatedScale * hoverScale;
+      const baseScale = CARD_SCALE * countScale * lensScale * animatedScale;
+      // Cap hover growth so the card never exceeds 50% of viewport height.
+      const maxHoverForVP = Math.max(1, (size.height / gl.getPixelRatio() * 0.5 * unitsPerPixel) / (CARD_HEIGHT * baseScale));
+      const finalScale = baseScale * Math.min(hoverScale, maxHoverForVP);
       const rank = zRankRef.current.get(i) ?? i;
       const cardZ = rank * cardZStep;
       const textZForCard = cardZ + cardZStep / 2;

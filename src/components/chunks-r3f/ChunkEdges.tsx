@@ -98,7 +98,7 @@ export function ChunkEdges({
 }: ChunkEdgesProps) {
   const meshRef = useRef<THREE.Mesh | null>(null);
   const edgeFadeRef = useRef<Float32Array>(new Float32Array(0));
-  const { camera, size } = useThree();
+  const { camera, size, gl } = useThree();
 
   const geometry = useMemo(() => {
     const maxEdges = Math.max(edges.length, 1);
@@ -163,7 +163,7 @@ export function ChunkEdges({
     const cameraZ = perspCamera.position.z;
     const zoomT = Math.max(0, Math.min(1, (cameraZ - CONTRAST_NEAR_Z) / (CONTRAST_FAR_Z - CONTRAST_NEAR_Z)));
     const edgeContrast = CONTRAST_AT_NEAR + (CONTRAST_AT_FAR - CONTRAST_AT_NEAR) * zoomT;
-    const worldPerPixel = (2 * cameraZ * FOV_HALF_TAN) / size.height;
+    const worldPerPixel = (2 * cameraZ * FOV_HALF_TAN) / (size.height / gl.getPixelRatio());
     const basePixelWidth = Math.min(
       edgeThickness * (REFERENCE_Z / cameraZ),
       MAX_PIXEL_WIDTH

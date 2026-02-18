@@ -102,7 +102,7 @@ export function KeywordNodes({
   flyToRef,
   contentDrivenKeywordIdsRef,
 }: KeywordNodesProps) {
-  const { camera, size } = useThree();
+  const { camera, size, gl } = useThree();
 
   const { stableCount, meshKey } = useStableInstanceCount(nodeCount);
 
@@ -142,7 +142,7 @@ export function KeywordNodes({
 
     // Compute max scale so dots don't exceed MAX_DOT_SCREEN_PX on screen
     const fov = THREE.MathUtils.degToRad((camera as THREE.PerspectiveCamera).fov);
-    const unitsPerPixel = perspectiveUnitsPerPixel(fov, cameraZ, size.height);
+    const unitsPerPixel = perspectiveUnitsPerPixel(fov, cameraZ, size.height, gl.getPixelRatio());
     const maxScale = maxScaleForScreenSize(BASE_DOT_RADIUS * DOT_SCALE_FACTOR * 2, MAX_DOT_SCREEN_PX, unitsPerPixel);
 
     // Edge pulling: classify nodes and pull cliff/off-screen nodes to the edge

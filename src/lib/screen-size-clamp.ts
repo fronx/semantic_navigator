@@ -7,8 +7,8 @@
  * Compute units-per-pixel for a perspective camera at a given distance.
  * This is how many world units correspond to one screen pixel.
  */
-export function perspectiveUnitsPerPixel(fovRadians: number, distance: number, viewportHeight: number): number {
-  return (2 * Math.tan(fovRadians / 2) * distance) / viewportHeight;
+export function perspectiveUnitsPerPixel(fovRadians: number, distance: number, viewportHeight: number, dpr = 1): number {
+  return (2 * Math.tan(fovRadians / 2) * distance) / (viewportHeight / dpr);
 }
 
 /**
