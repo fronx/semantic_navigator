@@ -42,7 +42,6 @@ import {
   DEFAULT_LP_NORM_P,
 } from "@/lib/fisheye-viewport";
 import { projectCardToScreenRect, type ScreenRect } from "@/lib/screen-rect-projection";
-import { normalizeF32 } from "@/lib/semantic-zoom";
 import { ChunkEdges } from "./ChunkEdges";
 import { ChunkTextLabels } from "./ChunkTextLabels";
 
@@ -160,11 +159,6 @@ export function ChunksScene({
   const seedCapacity = isManifoldFocus ? MAX_FOVEA_SEEDS : 2;
 
   const geometry = useMemo(createCardGeometry, []);
-
-  const normalizedEmbeddings = useMemo(
-    () => chunks.map((chunk) => normalizeF32(Float32Array.from(chunk.embedding))),
-    [chunks],
-  );
 
   // Base colors at full saturation — desaturation is applied per-frame in useFrame
   // so zoom level can continuously modulate it without triggering useMemo.
@@ -311,6 +305,14 @@ export function ChunksScene({
     compressionStrength: lensCompressionStrength,
   });
 
+  const focusEdges = useMemo(() => {
+    if (!lensActive || !lensInfo) return neighborhoodEdges;
+    const set = lensInfo.nodeSet;
+    return neighborhoodEdges.filter(
+      (edge) => set.has(edge.source) && set.has(edge.target),
+    );
+  }, [lensActive, lensInfo, neighborhoodEdges]);
+
   const {
     positionsRef: clickFocusPositionsRef,
     dragHandlers: clickFocusDragHandlers,
@@ -318,7 +320,7 @@ export function ChunksScene({
     basePositions: layoutPositions,
     focusNodeSet: !isManifoldFocus ? lensNodeSet ?? null : null,
     seedIndices: focusSeedIndices,
-    normalizedEmbeddings,
+    neighborhoodEdges: !isManifoldFocus ? focusEdges : [],
   });
 
   const trimSeeds = useCallback((seeds: FoveaSeed[], countToTrim: number) => {
@@ -465,14 +467,6 @@ export function ChunksScene({
       }
     }
   }, [queueAnchorSelection, lpNormP, isManifoldFocus]);
-
-  const focusEdges = useMemo(() => {
-    if (!lensActive || !lensInfo) return neighborhoodEdges;
-    const set = lensInfo.nodeSet;
-    return neighborhoodEdges.filter(
-      (edge) => set.has(edge.source) && set.has(edge.target),
-    );
-  }, [lensActive, lensInfo, neighborhoodEdges]);
 
   const focusEdgesVersion = lensActive
     ? neighborhoodEdgesVersion * 31 + (lensInfo?.nodeSet.size ?? 0)

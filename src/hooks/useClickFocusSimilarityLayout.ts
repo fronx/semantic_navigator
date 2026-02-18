@@ -1,18 +1,15 @@
 import { useEffect, useRef, useMemo, type MutableRefObject } from "react";
 import * as d3 from "d3-force";
-import { cosineSimilarityF32 } from "@/lib/semantic-zoom";
+import type { UmapEdge } from "@/hooks/useUmapLayout";
 import { createSimulationDrag, type SimulationDragHandlers } from "@/lib/simulation-drag";
 
-interface SimilarityNode extends d3.SimulationNodeDatum {
+interface FocusNode extends d3.SimulationNodeDatum {
   index: number;
-  anchorX: number;
-  anchorY: number;
-  isSeed: boolean;
 }
 
-interface SimilarityLink extends d3.SimulationLinkDatum<SimilarityNode> {
-  source: SimilarityNode;
-  target: SimilarityNode;
+interface FocusLink extends d3.SimulationLinkDatum<FocusNode> {
+  source: FocusNode;
+  target: FocusNode;
   distance: number;
   strength: number;
 }
@@ -21,7 +18,7 @@ interface ClickFocusSimilarityLayoutOptions {
   basePositions: Float32Array;
   focusNodeSet: Set<number> | null;
   seedIndices: number[];
-  normalizedEmbeddings: Float32Array[];
+  neighborhoodEdges: UmapEdge[];
 }
 
 interface ClickFocusSimilarityLayoutResult {
@@ -32,23 +29,18 @@ interface ClickFocusSimilarityLayoutResult {
 export function useClickFocusSimilarityLayout({
   basePositions,
   focusNodeSet,
-  seedIndices,
-  normalizedEmbeddings,
+  seedIndices: _seedIndices,
+  neighborhoodEdges,
 }: ClickFocusSimilarityLayoutOptions): ClickFocusSimilarityLayoutResult {
   const positionsRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   const basePositionsRef = useRef(basePositions);
-  const embeddingsRef = useRef(normalizedEmbeddings);
-  const simulationRef = useRef<d3.Simulation<SimilarityNode, SimilarityLink> | null>(null);
-  const nodeMapRef = useRef<Map<number, SimilarityNode>>(new Map());
+  const simulationRef = useRef<d3.Simulation<FocusNode, FocusLink> | null>(null);
+  const nodeMapRef = useRef<Map<number, FocusNode>>(new Map());
   const hoveredStateRef = useRef<{ index: number | null; scaleFactor: number }>({ index: null, scaleFactor: 1 });
 
   useEffect(() => {
     basePositionsRef.current = basePositions;
   }, [basePositions]);
-
-  useEffect(() => {
-    embeddingsRef.current = normalizedEmbeddings;
-  }, [normalizedEmbeddings]);
 
   useEffect(() => {
     simulationRef.current?.stop();
@@ -61,54 +53,30 @@ export function useClickFocusSimilarityLayout({
     }
 
     const indices = Array.from(focusNodeSet);
-    const seedSet = new Set(seedIndices);
     const base = basePositionsRef.current;
-    const embeddings = embeddingsRef.current;
 
-    const nodes: SimilarityNode[] = indices.map((index) => {
-      const baseX = base[index * 2] ?? 0;
-      const baseY = base[index * 2 + 1] ?? 0;
-      return {
-        index,
-        x: baseX,
-        y: baseY,
-        vx: 0,
-        vy: 0,
-        anchorX: baseX,
-        anchorY: baseY,
-        isSeed: seedSet.has(index),
-      };
-    });
+    const nodes: FocusNode[] = indices.map((index) => ({
+      index,
+      x: base[index * 2] ?? 0,
+      y: base[index * 2 + 1] ?? 0,
+      vx: 0,
+      vy: 0,
+    }));
 
-    const nodeMap = new Map<number, SimilarityNode>();
+    const nodeMap = new Map<number, FocusNode>();
     nodes.forEach((node) => nodeMap.set(node.index, node));
     nodeMapRef.current = nodeMap;
 
-    const links: SimilarityLink[] = [];
-    for (let a = 0; a < indices.length; a++) {
-      const idxA = indices[a];
-      const embA = embeddings[idxA];
-      if (!embA) continue;
-      for (let b = a + 1; b < indices.length; b++) {
-        const idxB = indices[b];
-        const embB = embeddings[idxB];
-        if (!embB) continue;
-        const similarity = cosineSimilarityF32(embA, embB);
-        if (!Number.isFinite(similarity)) continue;
-        const clamped = Math.max(0, Math.min(1, similarity));
-        if (clamped <= 0.02) continue;
-        const distance = 60 + (1 - clamped) * 180;
-        const strength = 0.25 + clamped * 0.6;
-        const sourceNode = nodeMap.get(idxA);
-        const targetNode = nodeMap.get(idxB);
-        if (!sourceNode || !targetNode) continue;
-        links.push({
-          source: sourceNode,
-          target: targetNode,
-          distance,
-          strength,
-        });
-      }
+    // Build links from UMAP neighborhood edges filtered to the focus set.
+    // Higher edge weight = more similar = shorter link distance.
+    const links: FocusLink[] = [];
+    for (const edge of neighborhoodEdges) {
+      const sourceNode = nodeMap.get(edge.source);
+      const targetNode = nodeMap.get(edge.target);
+      if (!sourceNode || !targetNode) continue;
+      const distance = 40 + (1 - edge.weight) * 200;
+      const strength = 0.2 + edge.weight * 0.7;
+      links.push({ source: sourceNode, target: targetNode, distance, strength });
     }
 
     positionsRef.current.clear();
@@ -118,37 +86,24 @@ export function useClickFocusSimilarityLayout({
 
     if (nodes.length === 0) return;
 
-    const chargeStrength = nodes.length > 8 ? -35 : -25;
     const collisionRadius = nodes.length > 12 ? 32 : 38;
+
     const simulation = d3
       .forceSimulation(nodes)
       .alpha(0.95)
-      .alphaDecay(0.07)
-      .velocityDecay(0.32)
+      .alphaDecay(0.05)
+      .velocityDecay(0.35)
       .force(
         "link",
         d3
-          .forceLink<SimilarityNode, SimilarityLink>(links)
+          .forceLink<FocusNode, FocusLink>(links)
           .id((node) => node.index)
           .distance((link) => link.distance)
           .strength((link) => link.strength),
       )
-      .force("charge", d3.forceManyBody<SimilarityNode>().strength(chargeStrength))
-      .force(
-        "x",
-        d3
-          .forceX<SimilarityNode>()
-          .x((node) => node.anchorX)
-          .strength((node) => (node.isSeed ? 0.45 : 0.25)),
-      )
-      .force(
-        "y",
-        d3
-          .forceY<SimilarityNode>()
-          .y((node) => node.anchorY)
-          .strength((node) => (node.isSeed ? 0.45 : 0.25)),
-      )
-      .force("collision", d3.forceCollide<SimilarityNode>()
+      .force("charge", d3.forceManyBody<FocusNode>().strength(-60))
+      .force("center", d3.forceCenter<FocusNode>(0, 0).strength(0.05))
+      .force("collision", d3.forceCollide<FocusNode>()
         .radius((node) => {
           const hs = hoveredStateRef.current;
           return node.index === hs.index ? collisionRadius * hs.scaleFactor : collisionRadius;
@@ -168,7 +123,7 @@ export function useClickFocusSimilarityLayout({
     return () => {
       simulation.stop();
     };
-  }, [focusNodeSet, seedIndices, normalizedEmbeddings]);
+  }, [focusNodeSet, neighborhoodEdges]);
 
   const dragHandlers = useMemo(
     (): SimulationDragHandlers => ({
@@ -179,7 +134,7 @@ export function useClickFocusSimilarityLayout({
         if (!sim) return;
         // forceCollide caches radii at init time — re-set the radius function
         // to force d3 to recompute from the updated hoveredStateRef.
-        const collision = sim.force("collision") as d3.ForceCollide<SimilarityNode> | null;
+        const collision = sim.force("collision") as d3.ForceCollide<FocusNode> | null;
         if (collision) collision.radius(collision.radius());
         sim.alpha(Math.max(sim.alpha(), 0.5)).restart();
       },
@@ -189,4 +144,3 @@ export function useClickFocusSimilarityLayout({
 
   return { positionsRef, dragHandlers };
 }
-
