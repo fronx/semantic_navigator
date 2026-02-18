@@ -88,7 +88,7 @@ export function Reader({ chunkId, onClose }: ReaderProps) {
 
   return (
     <div
-      className={`absolute top-0 right-0 bottom-0 z-20 flex flex-col bg-white dark:bg-zinc-900 border-l border-zinc-200 dark:border-zinc-700 overflow-hidden transition-[width] duration-200 ${isOpen ? "w-80" : "w-0"}`}
+      className={`flex-shrink-0 flex flex-col bg-white dark:bg-zinc-900 border-l border-zinc-200 dark:border-zinc-700 overflow-hidden transition-[width] duration-200 ${isOpen ? "w-80" : "w-0"}`}
     >
       {/* Tab stack */}
       <div className="flex-shrink-0 border-b border-zinc-200 dark:border-zinc-700">

@@ -3,6 +3,7 @@ import * as d3 from "d3-force";
 import type { UmapEdge } from "@/hooks/useUmapLayout";
 import { createSimulationDrag, type SimulationDragHandlers } from "@/lib/simulation-drag";
 import { CARD_COLLISION_RADIUS } from "@/lib/chunks-geometry";
+import { calculateSimulationAlpha, calculateVelocityDecay } from "@/lib/simulation-zoom-config";
 
 interface ChunkNode extends d3.SimulationNodeDatum {
   index: number;
@@ -22,6 +23,7 @@ interface ChunkForceLayoutOptions {
   edges: UmapEdge[];
   edgesVersion: number;
   isRunning: boolean;
+  cameraZ?: number;
 }
 
 interface ChunkForceLayout {
@@ -43,6 +45,7 @@ export function useChunkForceLayout({
   edges,
   edgesVersion,
   isRunning,
+  cameraZ,
 }: ChunkForceLayoutOptions): ChunkForceLayout {
   const nodesRef = useRef<ChunkNode[]>([]);
   const simulationRef = useRef<d3.Simulation<ChunkNode, ChunkForceEdge> | null>(null);
@@ -158,6 +161,28 @@ export function useChunkForceLayout({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [basePositions.length, edgesVersion, isRunning, defaultRestLength, edges]);
+
+  // Zoom-dependent energy injection: inject alpha on zoom-out so nodes
+  // break free from pulled-position arrangements ("rice field" effect).
+  const prevCameraZRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    const simulation = simulationRef.current;
+    if (!simulation || cameraZ === undefined) return;
+
+    if (prevCameraZRef.current === undefined) {
+      prevCameraZRef.current = cameraZ;
+      return;
+    }
+
+    simulation.velocityDecay(calculateVelocityDecay(cameraZ));
+
+    const targetAlpha = calculateSimulationAlpha(cameraZ);
+    if (Math.abs(targetAlpha - simulation.alpha()) > 0.01) {
+      simulation.alpha(targetAlpha);
+    }
+
+    prevCameraZRef.current = cameraZ;
+  }, [cameraZ]);
 
   const dragHandlers = useMemo(
     (): SimulationDragHandlers => ({

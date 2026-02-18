@@ -2,12 +2,11 @@ import type { SimNode } from "@/lib/map-renderer";
 import type { ViewportZones } from "@/lib/edge-pulling";
 import type { FocusState } from "@/lib/focus-mode";
 import {
-  clampToBounds,
+  computePullPosition,
   isInCliffZone,
   isInViewport,
   MAX_PULLED_CONTENT_NODES,
 } from "@/lib/edge-pulling";
-import { applyFisheyeCompression, computeCompressionExtents } from "@/lib/fisheye-viewport";
 
 export interface ContentPulledNode {
   x: number;
@@ -35,29 +34,6 @@ export function computeContentPullState({
   const pulledMap = new Map<string, ContentPulledNode>();
   const candidates: SimNode[] = [];
 
-  const { camX, camY } = zones.viewport;
-  const extents = computeCompressionExtents(zones);
-
-  /** Compute pulled position: fisheye compression if focused, regular clamping otherwise. */
-  function pullPosition(x: number, y: number, isFocused: boolean): { x: number; y: number } {
-    if (isFocused) {
-      const compressed = applyFisheyeCompression(
-        x, y, camX, camY,
-        extents.compressionStartHalfWidth, extents.compressionStartHalfHeight,
-        extents.horizonHalfWidth, extents.horizonHalfHeight
-      );
-      return {
-        x: Math.max(zones.pullBounds.left, Math.min(zones.pullBounds.right, compressed.x)),
-        y: Math.max(zones.pullBounds.bottom, Math.min(zones.pullBounds.top, compressed.y)),
-      };
-    }
-    return clampToBounds(
-      x, y, camX, camY,
-      zones.pullBounds.left, zones.pullBounds.right,
-      zones.pullBounds.bottom, zones.pullBounds.top
-    );
-  }
-
   function hasFocusedParent(parents: string[]): boolean {
     return focusState
       ? parents.some((parentId) => focusState.focusedNodeIds.has(parentId))
@@ -72,7 +48,7 @@ export function computeContentPullState({
 
     const inViewport = isInViewport(x, y, zones.viewport);
     if (inViewport && isInCliffZone(x, y, zones.pullBounds)) {
-      const pulled = pullPosition(x, y, hasFocusedParent(parents));
+      const pulled = computePullPosition(x, y, zones, hasFocusedParent(parents));
       pulledMap.set(node.id, { x: pulled.x, y: pulled.y, realX: x, realY: y });
       continue;
     }
@@ -86,7 +62,7 @@ export function computeContentPullState({
     const realX = node.x ?? 0;
     const realY = node.y ?? 0;
     const parents = (node as SimNode & { parentIds?: string[] }).parentIds ?? [];
-    const pulled = pullPosition(realX, realY, hasFocusedParent(parents));
+    const pulled = computePullPosition(realX, realY, zones, hasFocusedParent(parents));
     pulledMap.set(node.id, { x: pulled.x, y: pulled.y, realX, realY });
   }
 

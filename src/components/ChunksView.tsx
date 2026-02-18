@@ -138,7 +138,7 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
         })
       )
       .catch(console.error);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRunning]);
 
   // Recluster when resolution sliders change (only if cached layout exists)
@@ -158,20 +158,20 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
           setCachedLayout((prev) =>
             prev
               ? {
-                  ...prev,
-                  coarseClusters: data.coarseClusters,
-                  fineClusters: data.fineClusters,
-                  coarseLabels: data.coarseLabels,
-                  fineLabels: data.fineLabels,
-                  coarseResolution: store.debounced.coarseResolution,
-                  fineResolution: store.debounced.fineResolution,
-                }
+                ...prev,
+                coarseClusters: data.coarseClusters,
+                fineClusters: data.fineClusters,
+                coarseLabels: data.coarseLabels,
+                fineLabels: data.fineLabels,
+                coarseResolution: store.debounced.coarseResolution,
+                fineResolution: store.debounced.fineResolution,
+              }
               : null
           );
         }
       })
       .catch(console.error);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.debounced.coarseResolution, store.debounced.fineResolution]);
 
   const handleRedoUmap = useCallback(() => {
@@ -308,8 +308,8 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
               fineFadeEnd={store.values.fineFadeEnd}
             />
           )}
-          <Reader chunkId={selectedChunkIds.at(-1) ?? null} onClose={() => handleSelectChunk(null)} />
         </div>
+        <Reader chunkId={selectedChunkIds.at(-1) ?? null} onClose={() => handleSelectChunk(null)} />
       </main>
     </div>
   );

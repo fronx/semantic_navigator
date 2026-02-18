@@ -36,6 +36,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 
 import type { UmapEdge } from "@/hooks/useUmapLayout";
+import type { PulledChunkNode } from "@/lib/chunks-pull-state";
 import { computeArcPoints, computeOutwardDirection } from "@/lib/edge-curves";
 import { computeViewportZones, computeCompressionExtents } from "@/lib/edge-pulling";
 
@@ -87,6 +88,8 @@ export interface ChunkEdgesProps {
   nodeColors?: THREE.Color[];
   /** Per-node opacity multiplier from hover preview dim (sparse map, absent = 1.0) */
   previewDimRef?: React.RefObject<Map<number, number>>;
+  /** Pulled chunk positions for edge endpoint overrides (index -> ghost position) */
+  pulledPositionsRef?: React.RefObject<Map<number, PulledChunkNode>>;
 }
 
 export function ChunkEdges({
@@ -100,6 +103,7 @@ export function ChunkEdges({
   projectOutsideFocus = false,
   nodeColors,
   previewDimRef,
+  pulledPositionsRef,
 }: ChunkEdgesProps) {
   const meshRef = useRef<THREE.Mesh | null>(null);
   const edgeFadeRef = useRef<Float32Array>(new Float32Array(0));
@@ -231,6 +235,9 @@ export function ChunkEdges({
       edgeFadeRef.current = edgeFade;
     }
 
+    // --- Pulled positions for edge endpoint overrides ---
+    const pulledPositions = pulledPositionsRef?.current;
+
     // --- Build ribbon geometry per edge ---
     for (let edgeIndex = 0; edgeIndex < edges.length; edgeIndex++) {
       const edge = edges[edgeIndex];
@@ -249,10 +256,23 @@ export function ChunkEdges({
         continue;
       }
 
-      const sourceRawX = positions[sourceIdx];
-      const sourceRawY = positions[sourceIdx + 1];
-      const targetRawX = positions[targetIdx];
-      const targetRawY = positions[targetIdx + 1];
+      // Edge pulling: override endpoints for pulled ghost nodes
+      const sourcePulled = pulledPositions?.get(edge.source);
+      const targetPulled = pulledPositions?.get(edge.target);
+
+      // Hide edges where both endpoints are pulled with no primary connections
+      if (sourcePulled && targetPulled
+          && sourcePulled.connectedPrimaryIndices.length === 0
+          && targetPulled.connectedPrimaryIndices.length === 0) {
+        edgeFade[edgeIndex] = 0;
+        zeroEdge(posArray, colArray, vertBase);
+        continue;
+      }
+
+      const sourceRawX = sourcePulled?.x ?? positions[sourceIdx];
+      const sourceRawY = sourcePulled?.y ?? positions[sourceIdx + 1];
+      const targetRawX = targetPulled?.x ?? positions[targetIdx];
+      const targetRawY = targetPulled?.y ?? positions[targetIdx + 1];
 
       const sourcePoint = projectPosition(edge.source, sourceRawX, sourceRawY);
       const targetPoint = projectPosition(edge.target, targetRawX, targetRawY);
