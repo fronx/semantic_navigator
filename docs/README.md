@@ -38,6 +38,7 @@
 - [Click-to-Focus with Margin Push](plans/click-to-focus-margin-push.md) - Replace click-to-filter with animated focus mode that pushes non-neighbors to viewport margins
 - [Lens Transition Animation](plans/2026-02-18-lens-transition-implementation.md) - Smooth 500ms easeOutCubic entrance animation for ChunksView fisheye lens mode via `useLensTransition` hook
 - [ChunksView Cluster Labels](plans/2026-02-18-chunks-cluster-labels-design.md) - Server-cached UMAP positions with Leiden clustering at two resolutions and Haiku-generated labels, reusing TopicsView's ClusterLabels3D
+- [Chunk Node SDF Shape Morph](plans/2026-02-18-chunk-node-sdf-morph.md) - Zoom-dependent node shape: circles when far, rectangles when near, via custom ShaderMaterial with rounded-rect SDF
 
 ### Investigations
 
