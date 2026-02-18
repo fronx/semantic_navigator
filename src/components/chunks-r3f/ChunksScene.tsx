@@ -19,6 +19,7 @@ import { useInstancedMeshMaterial } from "@/hooks/useInstancedMeshMaterial";
 import { useStableInstanceCount } from "@/hooks/useStableInstanceCount";
 import { useFadingScale } from "@/hooks/useFadingScale";
 import { useFocusZoomExit } from "@/hooks/useFocusZoomExit";
+import { useLensTransition } from "@/hooks/useLensTransition";
 import { useFocusManifoldLayout } from "@/hooks/useFocusManifoldLayout";
 import type { UmapEdge } from "@/hooks/useUmapLayout";
 import { CARD_WIDTH, CARD_HEIGHT, CARD_SCALE, createCardGeometry } from "@/lib/chunks-geometry";
@@ -550,6 +551,13 @@ export function ChunksScene({
   const focusAdjustedPositionsRef = useRef<Float32Array>(new Float32Array(0));
   const compressedPositionsRef = useRef<Float32Array>(new Float32Array(0));
 
+  const animatedPositionsRef = useLensTransition(
+    layoutPositionsRef,
+    compressedPositionsRef,
+    lensActive,
+    (cb) => useFrame(() => cb()),
+  );
+
   // Route drag to whichever simulation owns the node's position.
   // Uses a ref so useInstancedMeshDrag callbacks stay stable.
   const activeDragRef = useRef<SimulationDragHandlers>(baseDragHandlers);
@@ -703,7 +711,7 @@ export function ChunksScene({
       }
     }
 
-    let renderPositions = positionsWithOverrides;
+    let renderPositions = animatedPositionsRef.current;
     if (lensActive && zones && extents) {
       if (compressedPositionsRef.current.length !== positionsWithOverrides.length) {
         compressedPositionsRef.current = new Float32Array(positionsWithOverrides.length);
@@ -744,7 +752,7 @@ export function ChunksScene({
         compressedPositionsRef.current[i * 2] = x;
         compressedPositionsRef.current[i * 2 + 1] = y;
       }
-      renderPositions = compressedPositionsRef.current;
+      renderPositions = animatedPositionsRef.current;
     }
 
     // Bring hovered card to front and notify the active simulation (once per hover change).
