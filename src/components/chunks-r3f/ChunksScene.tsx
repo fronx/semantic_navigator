@@ -28,7 +28,8 @@ import {
 import { hashToHue } from "@/lib/chunks-utils";
 import { loadPCATransform, centroidToColor, pcaProject, coordinatesToHSL, type PCATransform } from "@/lib/semantic-colors";
 import { calculateZoomDesaturation } from "@/lib/zoom-phase-config";
-import { computeViewportZones } from "@/lib/edge-pulling";
+import { computeChunkPullState, type PulledChunkNode } from "@/lib/chunks-pull-state";
+import { computeViewportZones, PULLED_SCALE_FACTOR, PULLED_COLOR_FACTOR, isInViewport, isInCliffZone } from "@/lib/edge-pulling";
 import { projectCardToScreenRect, type ScreenRect } from "@/lib/screen-rect-projection";
 import { ChunkEdges } from "./ChunkEdges";
 import { CardTextLabels, type CardTextItem } from "@/components/r3f-shared/CardTextLabels";
@@ -280,6 +281,8 @@ export function ChunksScene({
   }, [lensNodeSet, chunks.length]);
 
   const displayPositionsRef = useRef<Float32Array>(new Float32Array(0));
+  const pulledChunkMapRef = useRef<Map<number, PulledChunkNode>>(new Map());
+  const flyToRef = useRef<((x: number, y: number) => void) | null>(null);
 
   // Persistent z-order: each click/drag pushes a card to the top without disturbing
   // the relative order of all other cards (including previously elevated cards).
@@ -396,6 +399,13 @@ export function ChunksScene({
     onDragStateChange: setIsDraggingNode,
     onClick: (index) => {
       bringToFront(index);
+
+      // If this is a pulled ghost, fly camera to its real position
+      const pulled = pulledChunkMapRef.current.get(index);
+      if (pulled && flyToRef.current) {
+        flyToRef.current(pulled.realX, pulled.realY);
+      }
+
       onSelectChunk(chunks[index].id);
       const alreadyFocused = focusSeedsRef.current.some((s) => s.index === index);
       if (alreadyFocused) {
@@ -455,13 +465,11 @@ export function ChunksScene({
 
     const n = Math.min(count, layoutPositions.length / 2);
 
-    const zones = lensActive
-      ? computeViewportZones(camera as THREE.PerspectiveCamera, size.width, size.height)
-      : null;
+    const zones = computeViewportZones(camera as THREE.PerspectiveCamera, size.width, size.height);
 
     // -- Focus push animation --
     tickPreviewDim(delta);
-    tickFocusPush(lensActive && marginIds && zones ? {
+    tickFocusPush(lensActive && marginIds ? {
       marginIds,
       getPosition: (i) => ({
         x: layoutPositions[i * 2] ?? 0,
@@ -471,6 +479,15 @@ export function ChunksScene({
       camX: zones.viewport.camX,
       camY: zones.viewport.camY,
     } : null);
+
+    // Edge pulling: classify chunks and compute pulled positions
+    const pullResult = computeChunkPullState({
+      positions: layoutPositions,
+      adjacency,
+      zones,
+      lensNodeSet: lensActive ? lensNodeSet : null,
+    });
+    pulledChunkMapRef.current = pullResult.pulledMap;
 
     // Merge push overrides into render positions
     let renderPositions = layoutPositions;
@@ -482,6 +499,20 @@ export function ChunksScene({
       for (const [idx, o] of focusPushRef.current) {
         displayPositionsRef.current[idx * 2] = o.x;
         displayPositionsRef.current[idx * 2 + 1] = o.y;
+      }
+      renderPositions = displayPositionsRef.current;
+    }
+
+    // Merge pulled positions into render positions (focus push takes priority)
+    if (pullResult.pulledMap.size > 0) {
+      if (displayPositionsRef.current === layoutPositions || displayPositionsRef.current.length !== layoutPositions.length) {
+        displayPositionsRef.current = new Float32Array(layoutPositions.length);
+        displayPositionsRef.current.set(layoutPositions);
+      }
+      for (const [idx, pulled] of pullResult.pulledMap) {
+        if (focusPushRef.current.has(idx)) continue;
+        displayPositionsRef.current[idx * 2] = pulled.x;
+        displayPositionsRef.current[idx * 2 + 1] = pulled.y;
       }
       renderPositions = displayPositionsRef.current;
     }
@@ -530,8 +561,22 @@ export function ChunksScene({
         continue;
       }
 
-      const x = renderPositions[i * 2];
-      const y = renderPositions[i * 2 + 1];
+      // Edge pulling: detect pulled ghost nodes (focus push takes priority)
+      const pulledData = focusPushRef.current.has(i) ? undefined : pullResult.pulledMap.get(i);
+      const isPulled = !!pulledData;
+
+      const x = pulledData?.x ?? renderPositions[i * 2];
+      const y = pulledData?.y ?? renderPositions[i * 2 + 1];
+
+      // Hide cliff zone chunks that are NOT pulled (visible but near edge)
+      if (!isPulled && !focusPushRef.current.has(i)
+          && isInViewport(renderPositions[i * 2], renderPositions[i * 2 + 1], zones.viewport)
+          && isInCliffZone(renderPositions[i * 2], renderPositions[i * 2 + 1], zones.pullBounds)) {
+        scaleVec.current.setScalar(0);
+        matrixRef.current.compose(posVec.current, quat.current, scaleVec.current);
+        mesh.setMatrixAt(i, matrixRef.current);
+        continue;
+      }
 
       // Push-based scale: margin nodes shrink as they animate to viewport edge
       const pushOverride = focusPushRef.current.get(i);
@@ -544,7 +589,8 @@ export function ChunksScene({
       const baseScale = CARD_SCALE * countScale * pushScale * animatedScale;
       // Cap hover growth so the card never exceeds 50% of viewport height.
       const maxHoverForVP = Math.max(1, (size.height / gl.getPixelRatio() * 0.5 * unitsPerPixel) / (CARD_HEIGHT * baseScale));
-      const finalScale = baseScale * Math.min(hoverScale, maxHoverForVP);
+      const pulledScale = isPulled ? PULLED_SCALE_FACTOR : 1;
+      const finalScale = baseScale * Math.min(hoverScale, maxHoverForVP) * pulledScale;
       const rank = zRankRef.current.get(i) ?? i;
       const cardZ = rank * cardZStep;
       const textZForCard = cardZ + cardZStep / 2;
@@ -589,7 +635,7 @@ export function ChunksScene({
       || minSaturationRef.current !== prevMinSaturationRef.current;
 
     const previewActive = previewDimRef.current.size > 0;
-    if (colorChunksRef.current !== chunkColors || colorDirtyRef.current || desatChanged || previewActive || !mesh.instanceColor) {
+    if (colorChunksRef.current !== chunkColors || colorDirtyRef.current || desatChanged || previewActive || pullResult.pulledMap.size > 0 || !mesh.instanceColor) {
       const searchActive = searchOpacitiesRef.current.size > 0;
       for (let i = 0; i < Math.min(n, chunkColors.length); i++) {
         // Apply desaturation to base color via HSL (fast, no chroma.js needed)
@@ -602,6 +648,8 @@ export function ChunksScene({
         }
         const previewDim = previewDimRef.current.get(i);
         if (previewDim !== undefined) tempColor.current.multiplyScalar(previewDim);
+        const pulledDataForColor = pullResult.pulledMap.get(i);
+        if (pulledDataForColor) tempColor.current.multiplyScalar(PULLED_COLOR_FACTOR);
         mesh.setColorAt(i, tempColor.current);
       }
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
@@ -617,10 +665,10 @@ export function ChunksScene({
 
   const shouldRenderEdges = !isRunning && focusEdges.length > 0 && edgeOpacity > 0;
 
-  // Display positions: use push-overridden if available, else layout positions
-  const hasPushOverrides = focusPushRef.current.size > 0
+  // Display positions: use overridden if available (focus push or edge pulling), else layout
+  const hasOverrides = (focusPushRef.current.size > 0 || pulledChunkMapRef.current.size > 0)
     && displayPositionsRef.current.length === layoutPositions.length;
-  const displayPositions = hasPushOverrides
+  const displayPositions = hasOverrides
     ? displayPositionsRef.current
     : layoutPositions;
   // Keep ref in sync for getPositionRef closure
@@ -638,12 +686,14 @@ export function ChunksScene({
           edgeMidpoint={edgeMidpoint}
           nodeColors={chunkColors}
           previewDimRef={previewDimRef}
+          pulledPositionsRef={pulledChunkMapRef}
         />
       )}
       <CameraController
         maxDistance={10000}
         enableDragPan={!isDraggingNode}
         onZoomChange={handleZoomChange}
+        flyToRef={flyToRef}
       />
       <instancedMesh
         key={meshKey}

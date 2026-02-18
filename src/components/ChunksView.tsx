@@ -173,8 +173,8 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
             nodeSizeMax={store.values.nodeSizeMax}
             nodeSizePivot={store.values.nodeSizePivot}
           />
-          <Reader chunkId={selectedChunkIds.at(-1) ?? null} onClose={() => handleSelectChunk(null)} />
         </div>
+        <Reader chunkId={selectedChunkIds.at(-1) ?? null} onClose={() => handleSelectChunk(null)} />
       </main>
     </div>
   );
