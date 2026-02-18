@@ -195,6 +195,7 @@ export function ChunksScene({
   const isDirectHitRef = useRef(false);
   const hoverRadiusRef = useRef(hoverRadius);
   hoverRadiusRef.current = hoverRadius;
+  const isPanningRef = useRef(false);
 
   const [focusSeeds, setFocusSeeds] = useState<FocusSeed[]>([]);
   const focusSeedsRef = useRef<FocusSeed[]>(focusSeeds);
@@ -680,7 +681,8 @@ export function ChunksScene({
     }
 
     // Proximity hover: when no direct raycasting hit, find nearest card within hoverRadius.
-    if (!isDirectHitRef.current && !isDraggingNode && hoverRadiusRef.current > 0) {
+    // Disabled during panning so cards don't light up as the camera sweeps past them.
+    if (!isDirectHitRef.current && !isDraggingNode && !isPanningRef.current && hoverRadiusRef.current > 0) {
       const camZForProx = camera.position.z;
       const fovRadForProx = THREE.MathUtils.degToRad((camera as THREE.PerspectiveCamera).fov);
       const halfH = Math.tan(fovRadForProx / 2) * camZForProx;
@@ -925,6 +927,12 @@ export function ChunksScene({
         enableDragPan={!isDraggingNode}
         onZoomChange={handleZoomChange}
         flyToRef={flyToRef}
+        onPanStart={() => {
+          isPanningRef.current = true;
+          hoveredIndexRef.current = null;
+          isDirectHitRef.current = false;
+        }}
+        onPanEnd={() => { isPanningRef.current = false; }}
       />
       {/* Background plane: catches proximity clicks and background-clear clicks.
           stopPropagation on the instancedMesh's onPointerDown ensures this only

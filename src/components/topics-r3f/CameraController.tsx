@@ -26,6 +26,10 @@ export interface CameraControllerProps {
   enableDragPan?: boolean;
   /** Callback fired whenever the camera pans or zooms (with world-space metadata). */
   onTransform?: (event: CameraTransformEvent) => void;
+  /** Called when a drag-pan gesture starts. */
+  onPanStart?: () => void;
+  /** Called when a drag-pan gesture ends. */
+  onPanEnd?: () => void;
 }
 
 export interface CameraTransformViewport {
@@ -78,7 +82,9 @@ function usePanHandler(
   size: { width: number; height: number },
   onZoomChange?: (zoomScale: number) => void,
   onTransform?: (event: CameraTransformEvent) => void,
-  enabled: boolean = true
+  enabled: boolean = true,
+  onPanStart?: () => void,
+  onPanEnd?: () => void,
 ) {
   useEffect(() => {
     if (!enabled) return;
@@ -88,6 +94,8 @@ function usePanHandler(
     const cleanupPanHandler = createPanHandler({
       canvas,
       getCameraZ: () => camera.position.z,
+      onPanStart,
+      onPanEnd,
       onPan: (worldDeltaX, worldDeltaY) => {
         // Update camera position
         camera.position.x += worldDeltaX;
@@ -119,7 +127,7 @@ function usePanHandler(
     });
 
     return cleanupPanHandler;
-  }, [camera, gl, controlsRef, size.width, size.height, onZoomChange, onTransform, enabled]);
+  }, [camera, gl, controlsRef, size.width, size.height, onZoomChange, onTransform, enabled, onPanStart, onPanEnd]);
 }
 
 export function CameraController({
@@ -128,6 +136,8 @@ export function CameraController({
   flyToRef,
   enableDragPan = true,
   onTransform,
+  onPanStart,
+  onPanEnd,
 }: CameraControllerProps) {
   const controlsRef = useRef<OrbitControlsType>(null);
   const { camera, gl, size } = useThree();
@@ -220,7 +230,7 @@ export function CameraController({
   };
 
   // Handle pan events with shared handler (only if drag panning is enabled)
-  usePanHandler(camera, gl, controlsRef, size, onZoomChange, onTransform, enableDragPan);
+  usePanHandler(camera, gl, controlsRef, size, onZoomChange, onTransform, enableDragPan, onPanStart, onPanEnd);
 
   // Implement unified gesture handling: scroll-to-pan, pinch/modifier-to-zoom
   useEffect(() => {
