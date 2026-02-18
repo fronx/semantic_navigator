@@ -11,8 +11,6 @@ export const DEFAULT_LENS_CENTER_SCALE = 3.0;
 export const DEFAULT_LENS_EDGE_SCALE = 0.3;
 export const DEFAULT_LENS_COMPRESSION_STRENGTH = 1.5;
 
-export const HIGHLIGHT_COLOR = new THREE.Color(1, 1, 1);
-
 export interface LensInfo {
   /** Ordered list of focus seed indices (typically 1-3 seeds). */
   focusIndices: number[];
@@ -156,16 +154,4 @@ export function computeDualFocusNeighborhood(
   }
 
   return base;
-}
-
-/**
- * Apply lens-mode color emphasis: lerp toward white and brighten based on BFS depth.
- */
-export function applyLensColorEmphasis(color: THREE.Color, depth: number): void {
-  const emphasis = depth === 0 ? 1.35 : depth === 1 ? 1.15 : 1.05;
-  color.lerp(HIGHLIGHT_COLOR, 0.15 * (LENS_MAX_HOPS - depth) / LENS_MAX_HOPS);
-  color.multiplyScalar(emphasis);
-  color.r = THREE.MathUtils.clamp(color.r, 0, 1);
-  color.g = THREE.MathUtils.clamp(color.g, 0, 1);
-  color.b = THREE.MathUtils.clamp(color.b, 0, 1);
 }
