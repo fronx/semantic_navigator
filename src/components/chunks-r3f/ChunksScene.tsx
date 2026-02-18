@@ -41,8 +41,6 @@ import { isDarkMode } from "@/lib/theme";
 import { ChunkEdges } from "./ChunkEdges";
 import { CardTextLabels, type CardTextItem } from "@/components/r3f-shared/CardTextLabels";
 
-// --- Constants ---
-
 /** Camera Z reference points for zoom-based desaturation. */
 const DESAT_FAR_Z = 6000;   // Fully saturated when zoomed out (cards are dots)
 const DESAT_MID_Z = 2000;   // 30% desaturation at mid zoom
@@ -56,6 +54,7 @@ const DESAT_NEAR_Z = 400;   // 65% desaturation when zoomed in to read cards
 const CARD_Z_RANGE = 2;
 const HOVER_SCALE_MULTIPLIER = 2;
 const EDGE_FADE_DURATION_MS = 500;
+const HOVER_DURATION = 0.25; // seconds
 const MAX_FOCUS_SEEDS = 2;
 /** Pulled ghost nodes at viewport edges are small navigation hints — shrink more than PULLED_SCALE_FACTOR. */
 const CHUNK_PULL_ZONE_SCALE = PULLED_SCALE_FACTOR * 0.5;
@@ -66,6 +65,19 @@ const MAX_PULLED_SCREEN_FRACTION = 0.1;
 /** Focus-set pulled nodes must be at least this large so they're clearly clickable. */
 const MIN_FOCUS_PULLED_SCREEN_FRACTION = 0.07;
 const glowTarget = new THREE.Color();
+
+/** Update React state from useFrame only when the value drifts by more than `threshold`. */
+function updateIfChanged(
+  value: number,
+  ref: React.RefObject<number>,
+  setter: React.Dispatch<React.SetStateAction<number>>,
+  threshold = 0.01,
+): void {
+  if (Math.abs(value - ref.current) > threshold) {
+    ref.current = value;
+    setter(value);
+  }
+}
 
 interface FocusSeed {
   index: number;
@@ -112,8 +124,6 @@ function ProximityClickPlane({
   );
 }
 
-// --- Props ---
-
 interface ChunksSceneProps {
   chunks: ChunkEmbeddingData[];
   umapPositions: Float32Array;
@@ -144,8 +154,6 @@ interface ChunksSceneProps {
   onCameraZChange?: (z: number) => void;
   hoverRadius: number;
 }
-
-// --- Component ---
 
 export function ChunksScene({
   chunks,
@@ -265,12 +273,12 @@ export function ChunksScene({
   // Focus zoom exit hook - exits lens mode when zooming out
   const { handleZoomChange, captureEntryZoom, cameraZ } = useFocusZoomExit({
     isFocused: focusSeeds.length > 0,
-    onExitFocus: () => { clearFocus(); },
+    onExitFocus: clearFocus,
     absoluteThreshold: 8000, // 80% of maxDistance=10000
     relativeMultiplier: 1.05,
   });
   useEffect(() => {
-    if (cameraZ != null && onCameraZChange) onCameraZChange(cameraZ);
+    if (cameraZ != null) onCameraZChange?.(cameraZ);
   }, [cameraZ, onCameraZChange]);
 
   const prevFocusActiveRef = useRef(false);
@@ -363,7 +371,6 @@ export function ChunksScene({
     ? neighborhoodEdgesVersion * 31 + (lensInfo?.nodeSet.size ?? 0)
     : neighborhoodEdgesVersion;
 
-  // --- Focus push animation ---
   const { positionsRef: focusPushRef, tick: tickFocusPush } = useFocusPushAnimation<number>();
 
   const marginIds = useMemo<Set<number> | null>(() => {
@@ -379,7 +386,6 @@ export function ChunksScene({
   const pulledChunkMapRef = useRef<Map<number, PulledChunkNode>>(new Map());
   const flyToRef = useRef<((x: number, y: number) => void) | null>(null);
 
-  // Stable ref for focus-mode card text label filtering
   const lensVisibleIdsRef = useRef<Set<string | number>>(new Set());
   lensVisibleIdsRef.current = (lensNodeSet as Set<string | number> | null) ?? new Set();
 
@@ -390,7 +396,6 @@ export function ChunksScene({
   const zOrderRef = useRef<number[]>([]);
   const zRankRef = useRef<Map<number, number>>(new Map());
 
-  // Initialize / reinitialize when chunks change (default order = array index).
   useEffect(() => {
     const n = chunks.length;
     const order = Array.from({ length: n }, (_, i) => i);
@@ -417,13 +422,10 @@ export function ChunksScene({
     ranks.set(cardIndex, n - 1);
   }, []);
 
-  // --- Animated visibility for focus mode ---
   const visibleNodeIndicesRef = useRef(new Set<number>());
-  const nodeScalesRef = useFadingScale(visibleNodeIndicesRef, {
-    lerpSpeed: 0.1,  // Slightly faster than default for responsive feel
-  });
+  const nodeScalesRef = useFadingScale(visibleNodeIndicesRef, { lerpSpeed: 0.1 }); // Slightly faster than default for responsive feel
 
-  // --- Reusable objects for useFrame (avoid GC pressure) ---
+  // Reusable Three.js objects for useFrame (avoid GC pressure)
   const matrixRef = useRef(new THREE.Matrix4());
   const posVec = useRef(new THREE.Vector3());
   const quat = useRef(new THREE.Quaternion());
@@ -439,6 +441,7 @@ export function ChunksScene({
   // actual text geometry is built (onItemGeomHeight callback below).
   const predictedHeightRatios = useMemo(() => chunks.map((c) => computeHeightRatio(c.content)), [chunks]);
   const heightRatiosRef = useRef<number[]>(predictedHeightRatios);
+  // Copy needed: onItemGeomHeight mutates individual slots, must not corrupt memoized array
   useEffect(() => { heightRatiosRef.current = [...predictedHeightRatios]; }, [predictedHeightRatios]);
 
   const onItemGeomHeight = useCallback((index: number, textGeomHeight: number) => {
@@ -454,7 +457,6 @@ export function ChunksScene({
     y: displayPositionsRef.current[i * 2 + 1] ?? 0,
   }));
 
-  // Track when colors need repainting
   const colorChunksRef = useRef<THREE.Color[] | null>(null);
   const searchOpacitiesRef = useRef(searchOpacities);
   const colorDirtyRef = useRef(false);
@@ -464,20 +466,18 @@ export function ChunksScene({
   colorSaturationRef.current = colorSaturation;
   const minSaturationRef = useRef(minSaturation);
   minSaturationRef.current = minSaturation;
-  // Reusable object for getHSL/setHSL (avoids allocation per frame)
-  const hslTemp = useRef({ h: 0, s: 0, l: 0 });
+  const hslTemp = useRef({ h: 0, s: 0, l: 0 }); // Reusable object for getHSL/setHSL (avoids allocation per frame)
   if (searchOpacitiesRef.current !== searchOpacities) {
     searchOpacitiesRef.current = searchOpacities;
     colorDirtyRef.current = true;
   }
 
-  // Track which node is being dragged so useFrame can skip overrides for it.
+  // Index of the node being dragged (useFrame skips position overrides for it)
   const draggedIndexRef = useRef<number | null>(null);
 
-  const pickInstance = useCallback(
+  /** Pick the intersected instance with the highest z-rank (visually frontmost card). */
+  const pickTopInstance = useCallback(
     (event: ThreeEvent<PointerEvent>): number | null => {
-      // Among all intersected instances, pick the one with the highest z-rank
-      // (the card rendered on top wins over cards underneath it).
       let bestId: number | null = null;
       let bestRank = -1;
       for (const hit of event.intersections) {
@@ -503,7 +503,7 @@ export function ChunksScene({
   }, [bringToFront, onSelectChunk, addFocusSeeds, chunks]);
 
   const dragHandlers = useInstancedMeshDrag({
-    pickInstance,
+    pickInstance: pickTopInstance,
     onDragStart: (index) => {
       bringToFront(index);
       draggedIndexRef.current = index;
@@ -519,24 +519,14 @@ export function ChunksScene({
     onClick: handleCardClick,
   });
 
-  // Hover: track which instance the pointer is over (read in useFrame, no React state).
-  // Pick the highest z-rank instance so the visually front card wins over cards underneath.
   const handleHoverMove = useCallback(
     (event: ThreeEvent<PointerEvent>) => {
       if (isDraggingNode) return;
-      let bestId: number | null = null;
-      let bestRank = -1;
-      for (const hit of event.intersections) {
-        if (hit.object !== meshRef.current) continue;
-        const id = (hit as typeof hit & { instanceId?: number }).instanceId;
-        if (id == null || id < 0 || id >= chunks.length) continue;
-        const rank = zRankRef.current.get(id) ?? id;
-        if (rank > bestRank) { bestRank = rank; bestId = id; }
-      }
+      const bestId = pickTopInstance(event);
       isDirectHitRef.current = bestId !== null;
       hoveredIndexRef.current = bestId;
     },
-    [chunks.length, isDraggingNode, meshRef],
+    [isDraggingNode, pickTopInstance],
   );
   const handleHoverLeave = useCallback(() => {
     isDirectHitRef.current = false;
@@ -666,7 +656,6 @@ export function ChunksScene({
     return () => { if (raf) cancelAnimationFrame(raf); };
   }, [isRunning]);
 
-  const HOVER_DURATION = 0.25; // seconds
   useFrame((state, delta) => {
     const mesh = meshRef.current;
     if (!mesh || layoutPositions.length === 0) return;
@@ -675,7 +664,7 @@ export function ChunksScene({
 
     const zones = computeViewportZones(camera as THREE.PerspectiveCamera, size.width, size.height);
 
-    // -- Focus push animation --
+    // Focus push: animate margin nodes to viewport edge
     tickPreviewDim(delta);
     tickFocusPush(lensActive && marginIds ? {
       marginIds,
@@ -711,7 +700,7 @@ export function ChunksScene({
       renderPositions = displayPositionsRef.current;
     }
 
-    // Merge pulled positions into render positions (focus push takes priority)
+    // Merge pulled positions (focus push takes priority)
     if (pullResult.pulledMap.size > 0) {
       if (displayPositionsRef.current === layoutPositions || displayPositionsRef.current.length !== layoutPositions.length) {
         displayPositionsRef.current = new Float32Array(layoutPositions.length);
@@ -748,7 +737,7 @@ export function ChunksScene({
       hoveredIndexRef.current = bestIdx;
     }
 
-    // All nodes visible (margins are small dots, not hidden)
+    // All nodes are visible; margins are small dots, not hidden
     visibleNodeIndicesRef.current.clear();
     for (let i = 0; i < n; i++) visibleNodeIndicesRef.current.add(i);
 
@@ -761,12 +750,11 @@ export function ChunksScene({
     prevHoveredRef.current = hovered;
 
     // Update cluster ID refs for label dimming (read per-frame by ClusterLabels3D).
-    const hoveredIdx = hoveredIndexRef.current;
-    hoveredCoarseClusterIdRef.current = hoveredIdx !== null && coarseClusters
-      ? (coarseClusters[hoveredIdx] ?? null)
+    hoveredCoarseClusterIdRef.current = hovered !== null && coarseClusters
+      ? (coarseClusters[hovered] ?? null)
       : null;
-    hoveredFineClusterIdRef.current = hoveredIdx !== null && fineClusters
-      ? (fineClusters[hoveredIdx] ?? null)
+    hoveredFineClusterIdRef.current = hovered !== null && fineClusters
+      ? (fineClusters[hovered] ?? null)
       : null;
 
     // Animate hover scale: progress 0->1 on hover-in, 1->0 on hover-out, over HOVER_DURATION.
@@ -797,21 +785,18 @@ export function ChunksScene({
     }
 
     // Cluster label fades — update React state only when changed by >1%
-    const newCoarseFadeIn = computeLabelFade(camZ, labelFades.coarseFadeIn);
-    const newCoarseFadeOut = computeLabelFade(camZ, labelFades.coarseFadeOut);
-    const newFineFadeIn = computeLabelFade(camZ, labelFades.fineFadeIn);
-    const newFineFadeOut = computeLabelFade(camZ, labelFades.fineFadeOut);
-    if (Math.abs(newCoarseFadeIn - coarseFadeInRef.current) > 0.01) { coarseFadeInRef.current = newCoarseFadeIn; setCoarseFadeInT(newCoarseFadeIn); }
-    if (Math.abs(newCoarseFadeOut - coarseFadeOutRef.current) > 0.01) { coarseFadeOutRef.current = newCoarseFadeOut; setCoarseFadeOutT(newCoarseFadeOut); }
-    if (Math.abs(newFineFadeIn - fineFadeInRef.current) > 0.01) { fineFadeInRef.current = newFineFadeIn; setFineFadeInT(newFineFadeIn); }
-    if (Math.abs(newFineFadeOut - fineFadeOutRef.current) > 0.01) { fineFadeOutRef.current = newFineFadeOut; setFineFadeOutT(newFineFadeOut); }
+    updateIfChanged(computeLabelFade(camZ, labelFades.coarseFadeIn), coarseFadeInRef, setCoarseFadeInT);
+    updateIfChanged(computeLabelFade(camZ, labelFades.coarseFadeOut), coarseFadeOutRef, setCoarseFadeOutT);
+    updateIfChanged(computeLabelFade(camZ, labelFades.fineFadeIn), fineFadeInRef, setFineFadeInT);
+    updateIfChanged(computeLabelFade(camZ, labelFades.fineFadeOut), fineFadeOutRef, setFineFadeOutT);
     // Desaturation: white at outer edge of fully-visible range, colored at inner edge
-    const newCoarseDes = Math.max(0, Math.min(1, (camZ - labelFades.coarseFadeOut.start) / (labelFades.coarseFadeIn.full - labelFades.coarseFadeOut.start)));
-    const newFineDes = Math.max(0, Math.min(1, (camZ - labelFades.fineFadeOut.start) / (labelFades.fineFadeIn.full - labelFades.fineFadeOut.start)));
-    if (Math.abs(newCoarseDes - coarseDesatRef.current) > 0.01) { coarseDesatRef.current = newCoarseDes; setCoarseDesaturation(newCoarseDes); }
-    if (Math.abs(newFineDes - fineDesatRef.current) > 0.01) { fineDesatRef.current = newFineDes; setFineDesaturation(newFineDes); }
+    const coarseDesRange = labelFades.coarseFadeIn.full - labelFades.coarseFadeOut.start;
+    const fineDesRange = labelFades.fineFadeIn.full - labelFades.fineFadeOut.start;
+    updateIfChanged(Math.max(0, Math.min(1, (camZ - labelFades.coarseFadeOut.start) / coarseDesRange)), coarseDesatRef, setCoarseDesaturation);
+    updateIfChanged(Math.max(0, Math.min(1, (camZ - labelFades.fineFadeOut.start) / fineDesRange)), fineDesatRef, setFineDesaturation);
 
-    const unitsPerPixel = (2 * Math.tan(fovRad / 2) * Math.max(camZ, 1e-3)) / (size.height / gl.getPixelRatio());
+    const vpHeight = size.height / gl.getPixelRatio();
+    const unitsPerPixel = (2 * Math.tan(fovRad / 2) * Math.max(camZ, 1e-3)) / vpHeight;
 
     for (let i = 0; i < n; i++) {
       const animatedScale = nodeScalesRef.current.get(i) ?? 0;
@@ -831,9 +816,8 @@ export function ChunksScene({
       const y = pulledData?.y ?? renderPositions[i * 2 + 1];
 
       // In lens mode, pulled nodes outside the focus set are irrelevant — hide them.
-      const isRelevantPulled = isPulled && (!lensActive || !!lensNodeSet?.has(i));
       // Only primary viewport nodes and relevant pulled edge indicators are visible.
-      // Focus-pushed margin nodes (tiny dots animating to edge) are intentionally hidden.
+      const isRelevantPulled = isPulled && (!lensActive || !!lensNodeSet?.has(i));
       if (!isRelevantPulled && !pullResult.primarySet.has(i)) {
         scaleVec.current.setScalar(0);
         matrixRef.current.compose(posVec.current, quat.current, scaleVec.current);
@@ -846,22 +830,19 @@ export function ChunksScene({
       const pushScale = pushOverride ? (1 - pushOverride.progress * 0.85) : 1;
 
       const rawProgress = hoverProgressRef.current.get(i) ?? 0;
-      // smoothstep easing: slow at start and end, fast in the middle
-      const t = rawProgress * rawProgress * (3 - 2 * rawProgress);
+      const t = rawProgress * rawProgress * (3 - 2 * rawProgress); // smoothstep
       const hoverScale = 1 + (HOVER_SCALE_MULTIPLIER - 1) * t;
       const baseScale = CARD_SCALE * countScale * pushScale * animatedScale;
-      // Pulled ghosts are navigation hints — keep compact regardless of content length.
-      // Focus seeds always expand; hovered card expands via animated t; others stay compact.
+      // Height: pulled=compact, focus seed=full, others=animated with hover progress
       const actualHeightRatio = heightRatiosRef.current[i] ?? 1;
       const isFocusSeed = lensInfoRef.current?.depthMap.get(i) === 0;
       const heightRatio = isPulled ? 1
         : isFocusSeed ? actualHeightRatio
         : 1 + (actualHeightRatio - 1) * t;
       // Cap hover growth so the card never exceeds 50% of viewport height.
-      const maxHoverForVP = Math.max(1, (size.height / gl.getPixelRatio() * 0.5 * unitsPerPixel) / (CARD_HEIGHT * baseScale * heightRatio));
+      const maxHoverForVP = Math.max(1, (vpHeight * 0.5 * unitsPerPixel) / (CARD_HEIGHT * baseScale * heightRatio));
       const pulledScale = isPulled ? CHUNK_PULL_ZONE_SCALE : 1;
       const screenFraction = isPulled ? MAX_PULLED_SCREEN_FRACTION : MAX_CARD_SCREEN_FRACTION;
-      const vpHeight = size.height / gl.getPixelRatio();
       const maxFinalScale = (vpHeight * screenFraction * unitsPerPixel) / (CARD_HEIGHT * heightRatio);
       const isFocusPulled = isPulled && !!lensNodeSet?.has(i);
       const minFinalScale = isFocusPulled ? Math.min((vpHeight * MIN_FOCUS_PULLED_SCREEN_FRACTION * unitsPerPixel) / (CARD_HEIGHT * heightRatio), baseScale) : 0;
@@ -925,8 +906,7 @@ export function ChunksScene({
         // Dim factors go to per-instance opacity (fade to transparent, not black)
         const searchOpacity = searchActive ? (searchOpacitiesRef.current.get(chunks[i].id) ?? 1.0) : 1.0;
         const previewDim = previewDimRef.current.get(i) ?? 1.0;
-        const pulledDataForColor = pullResult.pulledMap.get(i);
-        const pulledDim = pulledDataForColor ? PULLED_COLOR_FACTOR : 1.0;
+        const pulledDim = pullResult.pulledMap.has(i) ? PULLED_COLOR_FACTOR : 1.0;
         if (opacityAttr) (opacityAttr.array as Float32Array)[i] = searchOpacity * previewDim * pulledDim;
         const isFocusSeed = lensInfoRef.current?.depthMap.get(i) === 0;
         const isHovered = hoveredIndexRef.current === i;
@@ -947,14 +927,11 @@ export function ChunksScene({
 
   const shouldRenderEdges = !isRunning && focusEdges.length > 0 && edgeOpacity > 0;
 
-  // Display positions: use overridden if available (focus push or edge pulling), else layout
+  // Use overridden positions if focus push or edge pulling is active, else raw layout
   const hasOverrides = (focusPushRef.current.size > 0 || pulledChunkMapRef.current.size > 0)
     && displayPositionsRef.current.length === layoutPositions.length;
-  const displayPositions = hasOverrides
-    ? displayPositionsRef.current
-    : layoutPositions;
-  // Keep ref in sync for getPositionRef closure
-  displayPositionsRef.current = displayPositions;
+  const displayPositions = hasOverrides ? displayPositionsRef.current : layoutPositions;
+  displayPositionsRef.current = displayPositions; // Keep ref in sync for getPositionRef closure
 
   return (
     <>
