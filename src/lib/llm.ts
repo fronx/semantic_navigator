@@ -211,3 +211,69 @@ Return ONLY the JSON object.`,
     return {};
   }
 }
+
+/**
+ * Generate labels for chunk clusters using content excerpts.
+ * Each cluster sends first ~200 chars of up to 15 member chunks to Haiku.
+ */
+export async function generateChunkClusterLabels(
+  clusters: Array<{ id: number; excerpts: string[] }>
+): Promise<Record<number, string>> {
+  if (clusters.length === 0) return {};
+
+  if (!isLLMAvailable()) {
+    const result: Record<number, string> = {};
+    for (const c of clusters) {
+      result[c.id] = c.excerpts[0]?.slice(0, 30) ?? `cluster ${c.id}`;
+    }
+    return result;
+  }
+
+  const clusterDescriptions = clusters.map((c) => {
+    const samples = c.excerpts.slice(0, 15).map((e) => `  - ${e}`).join("\n");
+    return `Cluster ${c.id}:\n${samples}`;
+  });
+
+  const response = await anthropic.messages.create({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 1000,
+    messages: [
+      {
+        role: "user",
+        content: `You are labeling clusters of text chunks for a knowledge base visualization.
+
+Each cluster contains semantically related text passages. Generate a SHORT label (2-4 words) that captures the common theme.
+
+${clusterDescriptions.join("\n\n")}
+
+Return a JSON object mapping cluster IDs to labels, like:
+{"0": "neural network training", "1": "web authentication", "2": "data modeling"}
+
+Labels should be:
+- Descriptive but concise (2-4 words)
+- In lowercase
+- Capture the common theme, not quote specific text
+
+Return ONLY the JSON object.`,
+      },
+    ],
+  });
+
+  const textBlock = response.content.find((block) => block.type === "text");
+  if (!textBlock?.text) return {};
+
+  try {
+    const jsonText = extractJsonFromResponse(textBlock.text);
+    const parsed = JSON.parse(jsonText);
+    const result: Record<number, string> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      if (typeof value === "string") {
+        result[parseInt(key, 10)] = value;
+      }
+    }
+    return result;
+  } catch (error) {
+    console.error("[llm] Failed to parse chunk cluster labels:", textBlock.text);
+    return {};
+  }
+}
