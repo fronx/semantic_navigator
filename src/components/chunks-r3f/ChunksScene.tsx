@@ -293,6 +293,7 @@ export function ChunksScene({
   const {
     positions: layoutPositions,
     dragHandlers: baseDragHandlers,
+    reheat: reheatSimulation,
   } = useChunkForceLayout({
     basePositions: umapPositions,
     edges: neighborhoodEdges,
@@ -948,7 +949,7 @@ export function ChunksScene({
           hoveredIndexRef.current = null;
           isDirectHitRef.current = false;
         }}
-        onPanEnd={() => { isPanningRef.current = false; }}
+        onPanEnd={() => { isPanningRef.current = false; reheatSimulation(); }}
       />
       <ProximityClickPlane
         hoveredIndexRef={hoveredIndexRef}

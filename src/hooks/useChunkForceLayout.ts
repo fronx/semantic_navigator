@@ -30,6 +30,7 @@ interface ChunkForceLayoutOptions {
 interface ChunkForceLayout {
   positions: Float32Array;
   dragHandlers: SimulationDragHandlers;
+  reheat: () => void;
 }
 
 const EMPTY_POSITIONS = new Float32Array(0);
@@ -169,6 +170,8 @@ export function useChunkForceLayout({
 
   // Zoom-dependent energy injection: inject alpha on zoom-out so nodes
   // break free from pulled-position arrangements ("rice field" effect).
+  const cameraZRef = useRef(cameraZ);
+  cameraZRef.current = cameraZ;
   const prevCameraZRef = useRef<number | undefined>(undefined);
   useEffect(() => {
     const simulation = simulationRef.current;
@@ -213,8 +216,16 @@ export function useChunkForceLayout({
     [],
   );
 
+  const reheat = useMemo(() => () => {
+    const sim = simulationRef.current;
+    if (!sim) return;
+    const targetAlpha = calculateSimulationAlpha(cameraZRef.current ?? Infinity);
+    sim.alpha(Math.max(sim.alpha(), targetAlpha)).restart();
+  }, []);
+
   return {
     positions: positionsRef.current,
     dragHandlers,
+    reheat,
   };
 }
