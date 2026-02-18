@@ -45,6 +45,8 @@ export interface ClusterLabels3DProps {
   globalContrast?: number;
   /** Cross-fade value from label fade coordinator (0 = clusters visible, 1 = keywords visible) */
   labelFadeT?: number;
+  /** Additional fade-in multiplier (0-1). Used for fine labels that fade in when coarse labels fade out. Default 1. */
+  fadeInT?: number;
   /** Focus state — when active, only show cluster labels for clusters with focused nodes */
   focusState?: FocusState | null;
   /** Shadow strength (0 = no shadow, 2 = extra strong) */
@@ -83,6 +85,7 @@ export function ClusterLabels3D({
   colorDesaturation = 0,
   globalContrast = 0,
   labelFadeT = 0,
+  fadeInT = 1,
   focusState,
   shadowStrength = 0.8,
   useSemanticFonts = true,
@@ -131,7 +134,7 @@ export function ClusterLabels3D({
       // When cluster labels are primary (labelFadeT near 0), skip size fade
       // to keep them visible even when small on screen
       const sizeFade = labelFadeT > 0.5 ? 1 - smoothstep(fadeT) : 1.0;
-      const finalOpacity = baseOpacity * sizeFade * (1 - labelFadeT);
+      const finalOpacity = baseOpacity * sizeFade * fadeInT * (1 - labelFadeT);
 
       for (const mat of [material, shadowMaterial]) {
         if (mat.opacity !== finalOpacity) {
