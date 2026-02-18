@@ -23,10 +23,6 @@ const BASE_FONT_SIZE = 1.2;
 const LINE_HEIGHT = 1.3;
 /** Card inner margin as fraction of card dimensions */
 const MARGIN_RATIO = 0.08;
-/** Camera Z below which labels start to appear */
-const FADE_IN_Z = 600;
-/** Camera Z below which labels are fully opaque */
-const FULL_OPACITY_Z = 200;
 
 interface ChunkTextLabelsProps {
   chunks: ChunkEmbeddingData[];
@@ -82,27 +78,6 @@ export function ChunkTextLabels({
   const prevVisibleSetRef = useRef(new Set<number>());
 
   useFrame(() => {
-    const cameraZ = camera.position.z;
-
-    // Zoom-based opacity: invisible when far, opaque when close
-    const zoomOpacity = cameraZ <= FULL_OPACITY_Z
-      ? 1
-      : cameraZ >= FADE_IN_Z
-        ? 0
-        : (FADE_IN_Z - cameraZ) / (FADE_IN_Z - FULL_OPACITY_Z);
-
-    if (zoomOpacity <= 0.01) {
-      // Too zoomed out -- hide all labels, skip work
-      labelRegistry.current.forEach((entry) => {
-        if (entry.group) entry.group.visible = false;
-      });
-      if (prevVisibleSetRef.current.size > 0) {
-        prevVisibleSetRef.current.clear();
-        setVisibleIndices([]);
-      }
-      return;
-    }
-
     // Find which chunks are within the viewport (in NDC space)
     const n = Math.min(chunks.length, positions.length / 2);
     const cameraCenterX = camera.position.x;
@@ -168,13 +143,11 @@ export function ChunkTextLabels({
       const worldHeight = screenRect.height * unitsPerPixel;
       clippingUpdater.setBottomClip(y, worldHeight);
 
-      // Set opacity (zoom only)
-      const clamped = THREE.MathUtils.clamp(zoomOpacity, 0, 1);
-      if (Math.abs(material.opacity - clamped) > 0.01) {
-        material.opacity = clamped;
+      if (material.opacity !== 1) {
+        material.opacity = 1;
         material.needsUpdate = true;
       }
-      group.visible = clamped > 0.02;
+      group.visible = true;
     });
   });
 

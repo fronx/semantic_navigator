@@ -957,13 +957,15 @@ export function ChunksScene({
         onPointerMove={handleHoverMove}
         onPointerLeave={handleHoverLeave}
       />
-      <ChunkTextLabels
-        chunks={chunks}
-        positions={displayPositions}
-        cardWidth={CARD_WIDTH}
-        cardHeight={CARD_HEIGHT}
-        screenRectsRef={chunkScreenRectsRef}
-      />
+      {!isRunning && (
+        <ChunkTextLabels
+          chunks={chunks}
+          positions={displayPositions}
+          cardWidth={CARD_WIDTH}
+          cardHeight={CARD_HEIGHT}
+          screenRectsRef={chunkScreenRectsRef}
+        />
+      )}
     </>
   );
 }
