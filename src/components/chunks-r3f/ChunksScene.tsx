@@ -30,6 +30,7 @@ import {
   computeDualFocusNeighborhood,
 } from "@/lib/chunks-lens";
 import { hashToHue } from "@/lib/chunks-utils";
+import { setChunkColors } from "@/lib/chunk-color-registry";
 import { loadPCATransform, centroidToColor, pcaProject, coordinatesToHSL, type PCATransform } from "@/lib/semantic-colors";
 import { calculateZoomDesaturation, normalizeZoom } from "@/lib/zoom-phase-config";
 import { computeChunkPullState, type PulledChunkNode } from "@/lib/chunks-pull-state";
@@ -166,6 +167,11 @@ export function ChunksScene({
     });
   }, [chunks, pcaTransform, chunkColorMix]);
 
+  // Populate shared color registry so Reader can look up chunk colors
+  useEffect(() => {
+    setChunkColors(chunks.map((chunk, i) => [chunk.id, "#" + chunkColors[i].getHexString()]));
+  }, [chunks, chunkColors]);
+
   const [isDraggingNode, setIsDraggingNode] = useState(false);
   const hoveredIndexRef = useRef<number | null>(null);
   const prevHoveredRef = useRef<number | null>(null);
@@ -292,10 +298,6 @@ export function ChunksScene({
       }
       return next;
     });
-  }, []);
-
-  const removeSeed = useCallback((index: number) => {
-    setFocusSeeds((prev) => prev.filter((seed) => seed.index !== index));
   }, []);
 
   const focusEdgesVersion = lensActive
@@ -445,12 +447,7 @@ export function ChunksScene({
       }
 
       onSelectChunk(chunks[index].id);
-      const alreadyFocused = focusSeedsRef.current.some((s) => s.index === index);
-      if (alreadyFocused) {
-        removeSeed(index);
-      } else {
-        addFocusSeeds([index]);
-      }
+      addFocusSeeds([index]);
     },
   });
 

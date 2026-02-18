@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState } from "react";
 import { useArticleReader, type ArticleReaderData } from "@/hooks/useArticleReader";
-import { hashToHue } from "@/lib/chunks-utils";
+import { getChunkColor } from "@/lib/chunk-color-registry";
 import ReactMarkdown from "react-markdown";
 
 const READER_WIDTH_KEY = "reader-width";
@@ -25,11 +25,6 @@ function articleTitle(sourcePath: string | null): string {
   return sourcePath.split("/").at(-1)?.replace(/\.md$/i, "") ?? "Article";
 }
 
-function articleCssColor(sourcePath: string | null): string {
-  if (!sourcePath) return "hsl(0, 0%, 55%)";
-  const hue = hashToHue(sourcePath) * 360;
-  return `hsl(${hue}, 70%, 55%)`;
-}
 
 export function Reader({ chunkId, onClose }: ReaderProps) {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -157,7 +152,7 @@ export function Reader({ chunkId, onClose }: ReaderProps) {
             >
               <div
                 className="w-1 self-stretch rounded-full flex-shrink-0"
-                style={{ backgroundColor: articleCssColor(entry.sourcePath) }}
+                style={{ backgroundColor: getChunkColor(entry.chunkId) ?? "#9ca3af" }}
               />
               <div className="min-w-0 flex-1">
                 <div
@@ -212,7 +207,7 @@ export function Reader({ chunkId, onClose }: ReaderProps) {
                 else chunkRefs.current.delete(chunk.id);
               }}
               className={`pl-10 pr-6 py-6 ${isActiveChunk ? "border-l-[5px]" : ""}`}
-              style={isActiveChunk ? { borderLeftColor: articleCssColor(activeEntry?.sourcePath ?? null) } : undefined}
+              style={isActiveChunk ? { borderLeftColor: getChunkColor(chunk.id) ?? "#9ca3af" } : undefined}
             >
               <div className="reader-markdown">
                 <ReactMarkdown>
