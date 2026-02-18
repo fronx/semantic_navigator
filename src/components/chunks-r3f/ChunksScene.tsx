@@ -23,7 +23,7 @@ import { useStableInstanceCount } from "@/hooks/useStableInstanceCount";
 import { useFadingScale } from "@/hooks/useFadingScale";
 import { useFocusZoomExit } from "@/hooks/useFocusZoomExit";
 import type { UmapEdge } from "@/hooks/useUmapLayout";
-import { CARD_WIDTH, CARD_HEIGHT, CARD_SCALE, createCardGeometry } from "@/lib/chunks-geometry";
+import { CARD_WIDTH, CARD_HEIGHT, CARD_SCALE, createCardPlaneGeometry } from "@/lib/chunks-geometry";
 import {
   LENS_MAX_HOPS,
   type LensInfo,
@@ -31,7 +31,7 @@ import {
 } from "@/lib/chunks-lens";
 import { hashToHue } from "@/lib/chunks-utils";
 import { loadPCATransform, centroidToColor, pcaProject, coordinatesToHSL, type PCATransform } from "@/lib/semantic-colors";
-import { calculateZoomDesaturation } from "@/lib/zoom-phase-config";
+import { calculateZoomDesaturation, normalizeZoom, type ZoomRange } from "@/lib/zoom-phase-config";
 import { computeChunkPullState, type PulledChunkNode } from "@/lib/chunks-pull-state";
 import { computeViewportZones, PULLED_SCALE_FACTOR, PULLED_COLOR_FACTOR, isInViewport, isInCliffZone } from "@/lib/edge-pulling";
 import { applyFocusGlow, initGlowTarget } from "@/lib/node-color-effects";
@@ -46,6 +46,8 @@ import { CardTextLabels, type CardTextItem } from "@/components/r3f-shared/CardT
 const DESAT_FAR_Z = 6000;   // Fully saturated when zoomed out (cards are dots)
 const DESAT_MID_Z = 2000;   // 30% desaturation at mid zoom
 const DESAT_NEAR_Z = 400;   // 65% desaturation when zoomed in to read cards
+/** Camera Z range for node shape morph: circle (far) → rectangle (near). */
+const SHAPE_MORPH_RANGE: ZoomRange = { near: 800, far: 3000 };
 /**
  * Total z-depth budget across all cards (world units).
  * Card 0 is at z=0 (farthest from camera); card N-1 is at z=CARD_Z_RANGE (closest).
@@ -132,10 +134,10 @@ export function ChunksScene({
   }, []);
 
   const { stableCount, meshKey } = useStableInstanceCount(count);
-  const { meshRef, handleMeshRef } = useInstancedMeshMaterial(stableCount);
+  const { meshRef, materialRef, handleMeshRef } = useInstancedMeshMaterial(stableCount);
   const { camera, size, gl } = useThree();
 
-  const geometry = useMemo(createCardGeometry, []);
+  const geometry = useMemo(createCardPlaneGeometry, []);
 
   // Base colors at full saturation — desaturation is applied per-frame in useFrame
   // so zoom level can continuously modulate it without triggering useMemo.
@@ -656,6 +658,12 @@ export function ChunksScene({
     // Compute world-units-per-pixel once per frame (cards are near z=0, camera looks down z-axis).
     const camZ = camera.position.z;
     const fovRad = THREE.MathUtils.degToRad((camera as THREE.PerspectiveCamera).fov);
+
+    // Shape morph: circle when far, rectangle when near enough to read text
+    if (materialRef.current) {
+      const t = normalizeZoom(camZ, SHAPE_MORPH_RANGE); // 0=near(rect), 1=far(circle)
+      materialRef.current.uniforms.u_cornerRatio.value = 0.08 + t * (1.0 - 0.08);
+    }
 
     // Cluster label fades — update React state only when changed by >1%
     const newCoarseFadeIn  = computeLabelFade(camZ, labelFades.coarseFadeIn);
