@@ -157,7 +157,7 @@ export function Reader({ chunkId, onClose, onActiveChunkChange }: ReaderProps) {
             <button
               key={entry.articleId}
               onClick={() => handleTabClick(entry)}
-              className={`group w-full flex items-center gap-2 px-3 py-1.5 text-left cursor-pointer transition-opacity ${
+              className={`group w-full flex items-center gap-2 pl-4 pr-3 py-1.5 text-left cursor-pointer transition-opacity ${
                 isActive ? "opacity-100" : "opacity-50 hover:opacity-100"
               }`}
             >
@@ -218,17 +218,22 @@ export function Reader({ chunkId, onClose, onActiveChunkChange }: ReaderProps) {
                 if (el) chunkRefs.current.set(chunk.id, el);
                 else chunkRefs.current.delete(chunk.id);
               }}
-              className="flex group/chunk"
+              className="flex"
             >
+              {/* Wide invisible click zone; visual bar pinned 8px from left edge, clear of resize handle */}
               <div
-                className={`w-[5px] flex-shrink-0 self-stretch cursor-pointer transition-opacity ${
-                  isActiveChunk ? "opacity-100" : "opacity-20 group-hover/chunk:opacity-50"
-                }`}
-                style={{ backgroundColor: color }}
+                className="w-16 flex-shrink-0 self-stretch cursor-pointer relative group/bar"
                 onClick={() => handleChunkBarClick(chunk.id)}
                 title="Focus in graph"
-              />
-              <div className="flex-1 pl-10 pr-6 py-6">
+              >
+                <div
+                  className={`absolute inset-y-0 left-4 w-[3px] transition-opacity ${
+                    isActiveChunk ? "opacity-100" : "opacity-20 group-hover/bar:opacity-60"
+                  }`}
+                  style={{ backgroundColor: color }}
+                />
+              </div>
+              <div className="flex-1 pl-4 pr-6 py-6">
                 <div className="reader-markdown">
                   <ReactMarkdown>
                     {chunk.content ?? ""}
