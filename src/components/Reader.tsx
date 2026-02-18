@@ -3,6 +3,11 @@ import { useArticleReader, type ArticleReaderData } from "@/hooks/useArticleRead
 import { hashToHue } from "@/lib/chunks-utils";
 import ReactMarkdown from "react-markdown";
 
+const READER_WIDTH_KEY = "reader-width";
+const DEFAULT_WIDTH = 384; // w-96
+const MIN_WIDTH = 260;
+const MAX_WIDTH = 720;
+
 interface ReaderProps {
   chunkId: string | null;
   onClose: () => void;
@@ -29,6 +34,13 @@ function articleCssColor(sourcePath: string | null): string {
 export function Reader({ chunkId, onClose }: ReaderProps) {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [activeArticleId, setActiveArticleId] = useState<string | null>(null);
+  const [width, setWidth] = useState(() => {
+    const saved = localStorage.getItem(READER_WIDTH_KEY);
+    return saved ? Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, parseInt(saved))) : DEFAULT_WIDTH;
+  });
+  const [isResizing, setIsResizing] = useState(false);
+  const widthRef = useRef(width);
+  widthRef.current = width;
 
   // Hook only fetches when the external chunkId changes (canvas clicks)
   const { data, loading } = useArticleReader(chunkId);
@@ -85,12 +97,43 @@ export function Reader({ chunkId, onClose }: ReaderProps) {
     }
   };
 
+  const handleResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = widthRef.current;
+    setIsResizing(true);
+
+    const onMouseMove = (e: MouseEvent) => {
+      const newWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWidth + startX - e.clientX));
+      setWidth(newWidth);
+    };
+
+    const onMouseUp = () => {
+      setIsResizing(false);
+      localStorage.setItem(READER_WIDTH_KEY, String(widthRef.current));
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  };
+
   const isOpen = chunkId !== null;
 
   return (
     <div
-      className={`flex-shrink-0 flex flex-col bg-white dark:bg-zinc-900 border-l border-zinc-200 dark:border-zinc-700 overflow-hidden transition-[width] duration-200 ${isOpen ? "w-96" : "w-0"}`}
+      className={`flex-shrink-0 relative flex flex-col bg-white dark:bg-zinc-900 border-l border-zinc-200 dark:border-zinc-700 overflow-hidden ${isResizing ? "" : "transition-[width] duration-200"}`}
+      style={{ width: isOpen ? width : 0 }}
     >
+      {/* Resize handle */}
+      {isOpen && (
+        <div
+          className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize z-10 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors"
+          onMouseDown={handleResizeStart}
+        />
+      )}
+
       {/* Tab stack */}
       <div className="flex-shrink-0 border-b border-zinc-200 dark:border-zinc-700">
         <div className="flex items-center px-3 py-1">
