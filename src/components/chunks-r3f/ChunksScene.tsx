@@ -321,6 +321,7 @@ export function ChunksScene({
     focusNodeSet: !isManifoldFocus ? lensNodeSet ?? null : null,
     seedIndices: focusSeedIndices,
     neighborhoodEdges: !isManifoldFocus ? focusEdges : [],
+    cardScale: countScale,
   });
 
   const trimSeeds = useCallback((seeds: FoveaSeed[], countToTrim: number) => {

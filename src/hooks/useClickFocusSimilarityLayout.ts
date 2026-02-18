@@ -1,6 +1,7 @@
 import { useEffect, useRef, useMemo, type MutableRefObject } from "react";
 import * as d3 from "d3-force";
 import type { UmapEdge } from "@/hooks/useUmapLayout";
+import { CARD_COLLISION_RADIUS } from "@/lib/chunks-geometry";
 import { createSimulationDrag, type SimulationDragHandlers } from "@/lib/simulation-drag";
 
 interface FocusNode extends d3.SimulationNodeDatum {
@@ -19,6 +20,8 @@ interface ClickFocusSimilarityLayoutOptions {
   focusNodeSet: Set<number> | null;
   seedIndices: number[];
   neighborhoodEdges: UmapEdge[];
+  /** countScale from ChunksScene — scales collision radius with the node size sliders */
+  cardScale: number;
 }
 
 interface ClickFocusSimilarityLayoutResult {
@@ -31,6 +34,7 @@ export function useClickFocusSimilarityLayout({
   focusNodeSet,
   seedIndices: _seedIndices,
   neighborhoodEdges,
+  cardScale,
 }: ClickFocusSimilarityLayoutOptions): ClickFocusSimilarityLayoutResult {
   const positionsRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   const basePositionsRef = useRef(basePositions);
@@ -86,29 +90,20 @@ export function useClickFocusSimilarityLayout({
 
     if (nodes.length === 0) return;
 
-    const collisionRadius = nodes.length > 12 ? 32 : 38;
+    const collisionRadius = CARD_COLLISION_RADIUS * cardScale;
 
     const simulation = d3
       .forceSimulation(nodes)
       .alpha(0.95)
-      .alphaDecay(0.05)
+      .alphaDecay(0.01)
       .velocityDecay(0.35)
-      .force(
-        "link",
-        d3
-          .forceLink<FocusNode, FocusLink>(links)
-          .id((node) => node.index)
-          .distance((link) => link.distance)
-          .strength((link) => link.strength),
-      )
-      .force("charge", d3.forceManyBody<FocusNode>().strength(-60))
-      .force("center", d3.forceCenter<FocusNode>(0, 0).strength(0.05))
+      .force("link", d3.forceLink<FocusNode, FocusLink>(links).id((node) => node.index))
       .force("collision", d3.forceCollide<FocusNode>()
         .radius((node) => {
           const hs = hoveredStateRef.current;
           return node.index === hs.index ? collisionRadius * hs.scaleFactor : collisionRadius;
         })
-        .strength(0.95));
+        .strength(0.4));
 
     simulation.on("tick", () => {
       const mapRef = positionsRef.current;
