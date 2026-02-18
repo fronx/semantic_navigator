@@ -512,7 +512,12 @@ export function ChunksScene({
   const coarseFadeOutRef = useRef(0);
   const fineFadeInRef = useRef(0);
   const fineFadeOutRef = useRef(0);
-  // Track which cluster the currently-hovered card belongs to, for label dimming.
+  // Zoom-based label desaturation (labels whiten when zoomed out)
+  const [coarseDesaturation, setCoarseDesaturation] = useState(1);
+  const [fineDesaturation, setFineDesaturation] = useState(1);
+  const coarseDesatRef = useRef(1);
+  const fineDesatRef = useRef(1);
+  // Track which cluster the currently-hovered card belongs to, for label dimming
   const hoveredCoarseClusterIdRef = useRef<number | null>(null);
   const hoveredFineClusterIdRef = useRef<number | null>(null);
 
@@ -760,6 +765,12 @@ export function ChunksScene({
     if (Math.abs(newCoarseFadeOut - coarseFadeOutRef.current) > 0.01) { coarseFadeOutRef.current = newCoarseFadeOut; setCoarseFadeOutT(newCoarseFadeOut); }
     if (Math.abs(newFineFadeIn - fineFadeInRef.current) > 0.01) { fineFadeInRef.current = newFineFadeIn; setFineFadeInT(newFineFadeIn); }
     if (Math.abs(newFineFadeOut - fineFadeOutRef.current) > 0.01) { fineFadeOutRef.current = newFineFadeOut; setFineFadeOutT(newFineFadeOut); }
+    // Desaturation: white at outer edge of fully-visible range, colored at inner edge
+    const newCoarseDes = Math.max(0, Math.min(1, (camZ - labelFades.coarseFadeOut.start) / (labelFades.coarseFadeIn.full - labelFades.coarseFadeOut.start)));
+    const newFineDes = Math.max(0, Math.min(1, (camZ - labelFades.fineFadeOut.start) / (labelFades.fineFadeIn.full - labelFades.fineFadeOut.start)));
+    if (Math.abs(newCoarseDes - coarseDesatRef.current) > 0.01) { coarseDesatRef.current = newCoarseDes; setCoarseDesaturation(newCoarseDes); }
+    if (Math.abs(newFineDes - fineDesatRef.current) > 0.01) { fineDesatRef.current = newFineDes; setFineDesaturation(newFineDes); }
+
     const unitsPerPixel = (2 * Math.tan(fovRad / 2) * Math.max(camZ, 1e-3)) / (size.height / gl.getPixelRatio());
 
     for (let i = 0; i < n; i++) {
@@ -983,6 +994,7 @@ export function ChunksScene({
           labelZ={CARD_Z_RANGE + 0.5}
           baseFontSize={10}
           useSemanticFonts={false}
+          colorDesaturation={coarseDesaturation}
           hoveredClusterIdRef={hoveredCoarseClusterIdRef}
         />
       )}
@@ -996,6 +1008,7 @@ export function ChunksScene({
           labelZ={CARD_Z_RANGE + 0.3}
           baseFontSize={7}
           useSemanticFonts={false}
+          colorDesaturation={fineDesaturation}
           hoveredClusterIdRef={hoveredFineClusterIdRef}
         />
       )}
