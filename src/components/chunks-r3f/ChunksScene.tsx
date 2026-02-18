@@ -226,6 +226,15 @@ export function ChunksScene({
     if (cameraZ != null && onCameraZChange) onCameraZChange(cameraZ);
   }, [cameraZ, onCameraZChange]);
 
+  // Cluster label desaturation: white when zoomed out, colored when zoomed in (mirrors TopicsView)
+  const z = cameraZ ?? 10000;
+  const coarseDesaturation = Math.max(0, Math.min(1,
+    (z - labelFades.coarseFadeOut.full) / (labelFades.coarseFadeIn.start - labelFades.coarseFadeOut.full)
+  ));
+  const fineDesaturation = Math.max(0, Math.min(1,
+    (z - labelFades.fineFadeOut.full) / (labelFades.fineFadeIn.start - labelFades.fineFadeOut.full)
+  ));
+
   const prevFocusActiveRef = useRef(false);
   useEffect(() => {
     const isActive = focusSeeds.length > 0;
@@ -911,6 +920,7 @@ export function ChunksScene({
           labelZ={CARD_Z_RANGE + 0.5}
           baseFontSize={10}
           useSemanticFonts={false}
+          colorDesaturation={coarseDesaturation}
         />
       )}
       {fineLabels && fineNodeToCluster.size > 0 && !isRunning && (
@@ -923,6 +933,7 @@ export function ChunksScene({
           labelZ={CARD_Z_RANGE + 0.3}
           baseFontSize={7}
           useSemanticFonts={false}
+          colorDesaturation={fineDesaturation}
         />
       )}
     </>
