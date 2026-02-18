@@ -11,6 +11,7 @@ const MAX_WIDTH = 720;
 interface ReaderProps {
   chunkId: string | null;
   onClose: () => void;
+  onActiveChunkChange?: (chunkId: string) => void;
 }
 
 interface HistoryEntry {
@@ -26,7 +27,7 @@ function articleTitle(sourcePath: string | null): string {
 }
 
 
-export function Reader({ chunkId, onClose }: ReaderProps) {
+export function Reader({ chunkId, onClose, onActiveChunkChange }: ReaderProps) {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [activeArticleId, setActiveArticleId] = useState<string | null>(null);
   const [width, setWidth] = useState(() => {
@@ -76,6 +77,7 @@ export function Reader({ chunkId, onClose }: ReaderProps) {
   const handleTabClick = (entry: HistoryEntry) => {
     if (entry.articleId === activeArticleId) return;
     setActiveArticleId(entry.articleId);
+    onActiveChunkChange?.(entry.chunkId);
   };
 
   const handleTabClose = (articleId: string, e: React.MouseEvent) => {
@@ -89,6 +91,7 @@ export function Reader({ chunkId, onClose }: ReaderProps) {
     setHistory(filtered);
     if (articleId === activeArticleId) {
       setActiveArticleId(filtered[0].articleId);
+      onActiveChunkChange?.(filtered[0].chunkId);
     }
   };
 
