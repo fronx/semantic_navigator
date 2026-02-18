@@ -242,6 +242,11 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
     });
   }, []);
 
+  const [focusChunk, setFocusChunk] = useState<{ id: string; seq: number } | null>(null);
+  const handleActiveChunkChange = useCallback((chunkId: string) => {
+    setFocusChunk((prev) => ({ id: chunkId, seq: (prev?.seq ?? 0) + 1 }));
+  }, []);
+
   // Decide what positions/edges to show: prefer cached layout if available.
   // Memoized to avoid allocating a new Float32Array on every render (UMAP progress triggers frequent re-renders).
   // When using cached edges, use version=0 so background UMAP progress doesn't restart the force sim.
@@ -342,10 +347,15 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
               labelFades={labelFades}
               onLayoutSettled={handleLayoutSettled}
               onCameraZChange={setCameraZ}
+              focusChunk={focusChunk}
             />
           )}
         </div>
-        <Reader chunkId={selectedChunkIds.at(-1) ?? null} onClose={() => handleSelectChunk(null)} />
+        <Reader
+          chunkId={selectedChunkIds.at(-1) ?? null}
+          onClose={() => handleSelectChunk(null)}
+          onActiveChunkChange={handleActiveChunkChange}
+        />
       </main>
     </div>
   );

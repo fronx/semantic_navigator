@@ -161,6 +161,7 @@ interface ChunksSceneProps {
   labelFades: LabelFadeConfig;
   onCameraZChange?: (z: number) => void;
   hoverRadius: number;
+  focusChunk?: { id: string; seq: number } | null;
 }
 
 export function ChunksScene({
@@ -190,6 +191,7 @@ export function ChunksScene({
   labelFades,
   onCameraZChange,
   hoverRadius,
+  focusChunk,
 }: ChunksSceneProps) {
   const count = chunks.length;
   const [pcaTransform, setPcaTransform] = useState<PCATransform | null>(null);
@@ -373,6 +375,18 @@ export function ChunksScene({
       return next;
     });
   }, []);
+
+  // When Reader switches article tabs, focus and fly to the corresponding chunk.
+  useEffect(() => {
+    if (!focusChunk) return;
+    const index = chunks.findIndex((c) => c.id === focusChunk.id);
+    if (index < 0) return;
+    addFocusSeeds([index]);
+    const x = layoutPositionsRef.current[index * 2];
+    const y = layoutPositionsRef.current[index * 2 + 1];
+    if (x !== undefined && y !== undefined) flyToRef.current?.(x, y);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusChunk]);
 
   const focusEdgesVersion = lensActive
     ? neighborhoodEdgesVersion * 31 + (lensInfo?.nodeSet.size ?? 0)

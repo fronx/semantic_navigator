@@ -38,6 +38,7 @@ interface ChunksCanvasProps {
   labelFades: LabelFadeConfig;
   onLayoutSettled?: (positions: Float32Array) => void;
   onCameraZChange?: (z: number) => void;
+  focusChunk?: { id: string; seq: number } | null;
 }
 
 export function ChunksCanvas({
@@ -66,6 +67,7 @@ export function ChunksCanvas({
   labelFades,
   onLayoutSettled,
   onCameraZChange,
+  focusChunk,
 }: ChunksCanvasProps) {
   const [backgroundColor, setBackgroundColor] = useState(getBackgroundColor);
   const backgroundClickRef = useRef<(() => void) | null>(null);
@@ -118,6 +120,7 @@ export function ChunksCanvas({
           labelFades={labelFades}
           onLayoutSettled={onLayoutSettled}
           onCameraZChange={onCameraZChange}
+          focusChunk={focusChunk}
         />
       </Canvas>
     </div>

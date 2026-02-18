@@ -11,6 +11,7 @@ const MAX_WIDTH = 720;
 interface ReaderProps {
   chunkId: string | null;
   onClose: () => void;
+  onActiveChunkChange?: (chunkId: string) => void;
 }
 
 interface HistoryEntry {
@@ -26,7 +27,7 @@ function articleTitle(sourcePath: string | null): string {
 }
 
 
-export function Reader({ chunkId, onClose }: ReaderProps) {
+export function Reader({ chunkId, onClose, onActiveChunkChange }: ReaderProps) {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [activeArticleId, setActiveArticleId] = useState<string | null>(null);
   const [width, setWidth] = useState(() => {
@@ -73,9 +74,18 @@ export function Reader({ chunkId, onClose }: ReaderProps) {
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [displayChunkId, displayData]);
 
+  const handleChunkBarClick = (chunkId: string) => {
+    if (!activeArticleId) return;
+    setHistory((prev) =>
+      prev.map((e) => (e.articleId === activeArticleId ? { ...e, chunkId } : e))
+    );
+    onActiveChunkChange?.(chunkId);
+  };
+
   const handleTabClick = (entry: HistoryEntry) => {
     if (entry.articleId === activeArticleId) return;
     setActiveArticleId(entry.articleId);
+    onActiveChunkChange?.(entry.chunkId);
   };
 
   const handleTabClose = (articleId: string, e: React.MouseEvent) => {
@@ -89,6 +99,7 @@ export function Reader({ chunkId, onClose }: ReaderProps) {
     setHistory(filtered);
     if (articleId === activeArticleId) {
       setActiveArticleId(filtered[0].articleId);
+      onActiveChunkChange?.(filtered[0].chunkId);
     }
   };
 
@@ -199,6 +210,7 @@ export function Reader({ chunkId, onClose }: ReaderProps) {
 
         {displayData?.chunks.map((chunk) => {
           const isActiveChunk = chunk.id === displayChunkId;
+          const color = getChunkColor(chunk.id) ?? "#9ca3af";
           return (
             <div
               key={chunk.id}
@@ -206,13 +218,22 @@ export function Reader({ chunkId, onClose }: ReaderProps) {
                 if (el) chunkRefs.current.set(chunk.id, el);
                 else chunkRefs.current.delete(chunk.id);
               }}
-              className={`pl-10 pr-6 py-6 ${isActiveChunk ? "border-l-[5px]" : ""}`}
-              style={isActiveChunk ? { borderLeftColor: getChunkColor(chunk.id) ?? "#9ca3af" } : undefined}
+              className="flex group/chunk"
             >
-              <div className="reader-markdown">
-                <ReactMarkdown>
-                  {chunk.content ?? ""}
-                </ReactMarkdown>
+              <div
+                className={`w-[5px] flex-shrink-0 self-stretch cursor-pointer transition-opacity ${
+                  isActiveChunk ? "opacity-100" : "opacity-20 group-hover/chunk:opacity-50"
+                }`}
+                style={{ backgroundColor: color }}
+                onClick={() => handleChunkBarClick(chunk.id)}
+                title="Focus in graph"
+              />
+              <div className="flex-1 pl-10 pr-6 py-6">
+                <div className="reader-markdown">
+                  <ReactMarkdown>
+                    {chunk.content ?? ""}
+                  </ReactMarkdown>
+                </div>
               </div>
             </div>
           );
