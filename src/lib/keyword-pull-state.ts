@@ -2,12 +2,11 @@ import type { SimNode } from "@/lib/map-renderer";
 import type { ViewportZones } from "@/lib/edge-pulling";
 import type { FocusState } from "@/lib/focus-mode";
 import {
-  clampToBounds,
+  computePullPosition,
   isInCliffZone,
   isInViewport,
   MAX_PULLED_NODES,
 } from "@/lib/edge-pulling";
-import { applyFisheyeCompression, computeCompressionExtents } from "@/lib/fisheye-viewport";
 
 export interface KeywordPulledNode {
   x: number;
@@ -56,29 +55,6 @@ export function computeKeywordPullState({
   const nodeById = new Map<string, SimNode>();
   for (const node of simNodes) nodeById.set(node.id, node);
 
-  const { camX, camY } = zones.viewport;
-  const extents = computeCompressionExtents(zones);
-
-  /** Compute pulled position: fisheye compression if focused, regular clamping otherwise. */
-  function pullPosition(x: number, y: number, isFocused: boolean): { x: number; y: number } {
-    if (isFocused) {
-      const compressed = applyFisheyeCompression(
-        x, y, camX, camY,
-        extents.compressionStartHalfWidth, extents.compressionStartHalfHeight,
-        extents.horizonHalfWidth, extents.horizonHalfHeight
-      );
-      return {
-        x: Math.max(zones.pullBounds.left, Math.min(zones.pullBounds.right, compressed.x)),
-        y: Math.max(zones.pullBounds.bottom, Math.min(zones.pullBounds.top, compressed.y)),
-      };
-    }
-    return clampToBounds(
-      x, y, camX, camY,
-      zones.pullBounds.left, zones.pullBounds.right,
-      zones.pullBounds.bottom, zones.pullBounds.top
-    );
-  }
-
   function isFocused(nodeId: string): boolean {
     return focusState?.focusedNodeIds.has(nodeId) ?? false;
   }
@@ -93,7 +69,7 @@ export function computeKeywordPullState({
     if (!focused && !isInViewport(x, y, zones.extendedViewport)) continue;
 
     if (focused) {
-      const pulled = pullPosition(x, y, true);
+      const pulled = computePullPosition(x, y, zones, true);
       const positionChanged = pulled.x !== x || pulled.y !== y;
 
       if (positionChanged) {
@@ -108,7 +84,7 @@ export function computeKeywordPullState({
         primarySet.add(node.id);
         continue;
       }
-      const clamped = pullPosition(x, y, false);
+      const clamped = computePullPosition(x, y, zones, false);
       pulledMap.set(node.id, {
         x: clamped.x, y: clamped.y, realX: x, realY: y, connectedPrimaryIds: [],
       });
@@ -154,7 +130,7 @@ export function computeKeywordPullState({
     for (const { node, connectedPrimaryIds } of sorted.slice(0, adjacencySlots)) {
       const realX = node.x ?? 0;
       const realY = node.y ?? 0;
-      const pulled = pullPosition(realX, realY, isFocused(node.id));
+      const pulled = computePullPosition(realX, realY, zones, isFocused(node.id));
       pulledMap.set(node.id, {
         x: pulled.x, y: pulled.y, realX, realY, connectedPrimaryIds,
       });
@@ -175,7 +151,7 @@ export function computeKeywordPullState({
       }
       const realX = node.x ?? 0;
       const realY = node.y ?? 0;
-      const pulled = pullPosition(realX, realY, isFocused(kwId));
+      const pulled = computePullPosition(realX, realY, zones, isFocused(kwId));
       pulledMap.set(kwId, {
         x: pulled.x, y: pulled.y, realX, realY,
         connectedPrimaryIds: [], // Anchored by content, not keywords

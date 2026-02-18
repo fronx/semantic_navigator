@@ -7,8 +7,9 @@
 
 import type * as THREE from "three";
 
-// Re-export fisheye utilities for convenience
-export { applyFisheyeCompression, computeCompressionRadii, computeCompressionExtents } from "./fisheye-viewport";
+// Import fisheye utilities (used by computePullPosition, re-exported for convenience)
+import { applyFisheyeCompression, computeCompressionRadii, computeCompressionExtents } from "./fisheye-viewport";
+export { applyFisheyeCompression, computeCompressionRadii, computeCompressionExtents };
 
 // Screen-pixel-based constants (consistent at all zoom levels)
 export const PULL_LINE_PX = 25;     // from viewport edge — where pulled nodes are placed
@@ -181,5 +182,41 @@ export function isInCliffZone(
     x > pullBounds.right ||
     y < pullBounds.bottom ||
     y > pullBounds.top
+  );
+}
+
+/** Scale factor for pulled ghost nodes (shared across all views). */
+export const PULLED_SCALE_FACTOR = 0.6;
+/** Color multiplier for pulled ghost nodes (shared across all views). */
+export const PULLED_COLOR_FACTOR = 0.4;
+
+/**
+ * Compute the clamped position for a pulled node.
+ * When `useFisheye` is true, applies fisheye compression first (for focused nodes).
+ * Otherwise clamps to pull bounds via ray-AABB intersection.
+ */
+export function computePullPosition(
+  x: number,
+  y: number,
+  zones: ViewportZones,
+  useFisheye: boolean,
+): { x: number; y: number } {
+  const { camX, camY } = zones.viewport;
+  if (useFisheye) {
+    const extents = computeCompressionExtents(zones);
+    const compressed = applyFisheyeCompression(
+      x, y, camX, camY,
+      extents.compressionStartHalfWidth, extents.compressionStartHalfHeight,
+      extents.horizonHalfWidth, extents.horizonHalfHeight
+    );
+    return {
+      x: Math.max(zones.pullBounds.left, Math.min(zones.pullBounds.right, compressed.x)),
+      y: Math.max(zones.pullBounds.bottom, Math.min(zones.pullBounds.top, compressed.y)),
+    };
+  }
+  return clampToBounds(
+    x, y, camX, camY,
+    zones.pullBounds.left, zones.pullBounds.right,
+    zones.pullBounds.bottom, zones.pullBounds.top
   );
 }
