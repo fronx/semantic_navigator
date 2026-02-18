@@ -451,6 +451,16 @@ export function ChunksScene({
     [chunks.length, meshRef],
   );
 
+  const handleCardClick = useCallback((index: number) => {
+    bringToFront(index);
+    const pulled = pulledChunkMapRef.current.get(index);
+    if (pulled && flyToRef.current) {
+      flyToRef.current(pulled.realX, pulled.realY);
+    }
+    onSelectChunk(chunks[index].id);
+    addFocusSeeds([index]);
+  }, [bringToFront, onSelectChunk, addFocusSeeds, chunks]);
+
   const dragHandlers = useInstancedMeshDrag({
     pickInstance,
     onDragStart: (index) => {
@@ -465,18 +475,7 @@ export function ChunksScene({
     },
     enabled: !isRunning,
     onDragStateChange: setIsDraggingNode,
-    onClick: (index) => {
-      bringToFront(index);
-
-      // If this is a pulled ghost, fly camera to its real position
-      const pulled = pulledChunkMapRef.current.get(index);
-      if (pulled && flyToRef.current) {
-        flyToRef.current(pulled.realX, pulled.realY);
-      }
-
-      onSelectChunk(chunks[index].id);
-      addFocusSeeds([index]);
-    },
+    onClick: handleCardClick,
   });
 
   // Hover: track which instance the pointer is over (read in useFrame, no React state).
@@ -927,6 +926,24 @@ export function ChunksScene({
         onZoomChange={handleZoomChange}
         flyToRef={flyToRef}
       />
+      {/* Background plane: catches proximity clicks and background-clear clicks.
+          stopPropagation on the instancedMesh's onPointerDown ensures this only
+          fires when the pointer misses all cards entirely. */}
+      <mesh
+        position={[0, 0, -1]}
+        onClick={(e) => {
+          e.stopPropagation();
+          const idx = hoveredIndexRef.current;
+          if (idx !== null) {
+            handleCardClick(idx);
+          } else {
+            clearFocus();
+          }
+        }}
+      >
+        <planeGeometry args={[1000000, 1000000]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
       <instancedMesh
         key={meshKey}
         ref={handleMeshRef}

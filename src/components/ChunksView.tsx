@@ -43,7 +43,7 @@ const CHUNKS_DEFAULTS: ChunksSettings = {
   nodeSizeMin: 0.6,
   nodeSizeMax: 2.0,
   nodeSizePivot: 30,
-  hoverRadius: 150,
+  hoverRadius: 70,
   shapeMorphNear: 800,
   shapeMorphFar: 3000,
   coarseResolution: 0.3,
