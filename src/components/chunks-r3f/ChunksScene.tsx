@@ -72,6 +72,46 @@ interface FocusSeed {
   addedAt: number;
 }
 
+/**
+ * Invisible full-screen plane that handles two click cases:
+ * 1. Proximity click — pointer was near a card but not directly on it
+ *    (isDirectHitRef=false, hoveredIndexRef set by useFrame proximity logic)
+ * 2. Background clear — pointer was not near any card (hoveredIndexRef=null)
+ *
+ * Direct card hits are handled by useInstancedMeshDrag's DOM pointerup path.
+ * The isDirectHitRef guard prevents double-firing: R3F onClick propagates
+ * independently of onPointerDown, so stopPropagation there does not help.
+ */
+function ProximityClickPlane({
+  hoveredIndexRef,
+  isDirectHitRef,
+  onCardClick,
+  onClearFocus,
+}: {
+  hoveredIndexRef: React.RefObject<number | null>;
+  isDirectHitRef: React.RefObject<boolean>;
+  onCardClick: (index: number) => void;
+  onClearFocus: () => void;
+}) {
+  return (
+    <mesh
+      position={[0, 0, -1]}
+      onClick={(e) => {
+        e.stopPropagation();
+        const idx = hoveredIndexRef.current;
+        if (idx !== null && !isDirectHitRef.current) {
+          onCardClick(idx);
+        } else if (idx === null) {
+          onClearFocus();
+        }
+      }}
+    >
+      <planeGeometry args={[1000000, 1000000]} />
+      <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+    </mesh>
+  );
+}
+
 // --- Props ---
 
 interface ChunksSceneProps {
@@ -945,24 +985,12 @@ export function ChunksScene({
         }}
         onPanEnd={() => { isPanningRef.current = false; }}
       />
-      {/* Background plane: catches proximity clicks and background-clear clicks.
-          stopPropagation on the instancedMesh's onPointerDown ensures this only
-          fires when the pointer misses all cards entirely. */}
-      <mesh
-        position={[0, 0, -1]}
-        onClick={(e) => {
-          e.stopPropagation();
-          const idx = hoveredIndexRef.current;
-          if (idx !== null) {
-            handleCardClick(idx);
-          } else {
-            clearFocus();
-          }
-        }}
-      >
-        <planeGeometry args={[1000000, 1000000]} />
-        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-      </mesh>
+      <ProximityClickPlane
+        hoveredIndexRef={hoveredIndexRef}
+        isDirectHitRef={isDirectHitRef}
+        onCardClick={handleCardClick}
+        onClearFocus={clearFocus}
+      />
       <instancedMesh
         key={meshKey}
         ref={handleMeshRef}
