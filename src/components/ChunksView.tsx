@@ -1,9 +1,11 @@
 /**
  * Orchestrator for the chunks UMAP visualization.
  * Extracts embeddings from chunk data, runs UMAP, and renders the canvas.
+ * Fetches cached layout (positions + cluster labels) from the server on mount,
+ * and POSTs UMAP results after completion to persist for future loads.
  */
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import type { ChunkEmbeddingData } from "@/app/api/chunks/embeddings/route";
 import type { ChunksSettings } from "@/components/ChunksControlSidebar";
 import { useUmapLayout } from "@/hooks/useUmapLayout";
@@ -13,6 +15,19 @@ import { ChunksControlSidebar } from "@/components/ChunksControlSidebar";
 import { ChunksCanvas } from "./chunks-r3f/ChunksCanvas";
 import { Reader } from "@/components/Reader";
 import { exportUmapGraph } from "@/lib/export-umap-graph";
+
+interface CachedLayout {
+  positions: number[];
+  edges: Array<{ source: number; target: number; weight: number }>;
+  chunkIds: string[];
+  coarseResolution: number;
+  fineResolution: number;
+  coarseClusters: Record<number, number>;
+  fineClusters: Record<number, number>;
+  coarseLabels: Record<number, string>;
+  fineLabels: Record<number, string>;
+  createdAt: string;
+}
 
 const CHUNKS_DEFAULTS: ChunksSettings = {
   nNeighbors: 15,
@@ -26,6 +41,12 @@ const CHUNKS_DEFAULTS: ChunksSettings = {
   nodeSizeMin: 0.6,
   nodeSizeMax: 2.0,
   nodeSizePivot: 30,
+  coarseResolution: 0.3,
+  fineResolution: 1.5,
+  coarseFadeStart: 6000,
+  coarseFadeEnd: 2000,
+  fineFadeStart: 2000,
+  fineFadeEnd: 400,
   sidebarCollapsed: false,
   sectionStates: {
     UMAP: true,
@@ -44,6 +65,22 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedChunkIds, setSelectedChunkIds] = useState<string[]>([]);
 
+  const [cachedLayout, setCachedLayout] = useState<CachedLayout | null>(null);
+  const [isLoadingCache, setIsLoadingCache] = useState(true);
+  const cachedLayoutRef = useRef<CachedLayout | null>(null);
+  cachedLayoutRef.current = cachedLayout;
+
+  const [umapSeed, setUmapSeed] = useState(0);
+
+  // Fetch cached layout on mount
+  useEffect(() => {
+    fetch("/api/chunks/layout")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: CachedLayout | null) => setCachedLayout(data))
+      .catch(() => null)
+      .finally(() => setIsLoadingCache(false));
+  }, []);
+
   const embeddings = useMemo(
     () => chunks.map((c) => c.embedding),
     [chunks]
@@ -59,7 +96,88 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
     nNeighbors: store.debounced.nNeighbors,
     minDist: store.debounced.minDist,
     spread: store.debounced.spread,
+    seed: umapSeed,
   });
+
+  // POST UMAP results to server after completion (only when no cache exists)
+  useEffect(() => {
+    if (isRunning || positions.length === 0 || cachedLayoutRef.current) return;
+    const chunkIds = chunks.map((c) => c.id);
+    fetch("/api/chunks/layout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        positions: Array.from(positions),
+        edges: neighborhoodEdges.map((e) => ({
+          source: e.source,
+          target: e.target,
+          weight: e.weight,
+        })),
+        chunkIds,
+        coarseResolution: store.debounced.coarseResolution,
+        fineResolution: store.debounced.fineResolution,
+      }),
+    })
+      .then((r) => r.json())
+      .then((data) =>
+        setCachedLayout({
+          positions: Array.from(positions),
+          edges: neighborhoodEdges.map((e) => ({
+            source: e.source,
+            target: e.target,
+            weight: e.weight,
+          })),
+          chunkIds,
+          coarseResolution: store.debounced.coarseResolution,
+          fineResolution: store.debounced.fineResolution,
+          coarseClusters: data.coarseClusters,
+          fineClusters: data.fineClusters,
+          coarseLabels: data.coarseLabels,
+          fineLabels: data.fineLabels,
+          createdAt: new Date().toISOString(),
+        })
+      )
+      .catch(console.error);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRunning]);
+
+  // Recluster when resolution sliders change (only if cached layout exists)
+  useEffect(() => {
+    if (!cachedLayoutRef.current) return;
+    fetch("/api/chunks/layout/recluster", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        coarseResolution: store.debounced.coarseResolution,
+        fineResolution: store.debounced.fineResolution,
+      }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.coarseClusters) {
+          setCachedLayout((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  coarseClusters: data.coarseClusters,
+                  fineClusters: data.fineClusters,
+                  coarseLabels: data.coarseLabels,
+                  fineLabels: data.fineLabels,
+                  coarseResolution: store.debounced.coarseResolution,
+                  fineResolution: store.debounced.fineResolution,
+                }
+              : null
+          );
+        }
+      })
+      .catch(console.error);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.debounced.coarseResolution, store.debounced.fineResolution]);
+
+  const handleRedoUmap = useCallback(() => {
+    setCachedLayout(null);
+    setUmapSeed((s) => s + 1);
+  }, []);
 
   const { results: searchResults, loading: searchLoading } = useSearch(
     searchQuery,
@@ -105,6 +223,13 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
     });
   }, []);
 
+  // Decide what positions/edges to show: prefer cached layout if available
+  const displayPositions = cachedLayout
+    ? new Float32Array(cachedLayout.positions)
+    : positions;
+  const displayEdges = cachedLayout ? cachedLayout.edges : neighborhoodEdges;
+  const displayIsRunning = isRunning && !cachedLayout;
+
   return (
     <div className="flex flex-col h-screen bg-zinc-50 dark:bg-zinc-950">
       {/* Header bar */}
@@ -128,7 +253,7 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
           {isStale && <span className="ml-2 text-amber-600 dark:text-amber-400">(offline)</span>}
         </span>
 
-        {isRunning && (
+        {displayIsRunning && (
           <div className="flex items-center gap-2 flex-1 max-w-xs">
             <div className="flex-1 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
               <div
@@ -154,25 +279,35 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
 
       {/* Sidebar + Canvas */}
       <main className="flex-1 relative overflow-hidden flex">
-        <ChunksControlSidebar store={store} />
+        <ChunksControlSidebar store={store} onRedoUmap={handleRedoUmap} />
         <div className="flex-1 relative min-w-0 overflow-hidden">
-          <ChunksCanvas
-            chunks={chunks}
-            umapPositions={positions}
-            searchOpacities={searchOpacities}
-            neighborhoodEdges={neighborhoodEdges}
-            neighborhoodEdgesVersion={neighborhoodEdgesVersion}
-            isRunning={isRunning}
-            onSelectChunk={handleSelectChunk}
-            colorSaturation={store.values.colorSaturation}
-            minSaturation={store.values.minSaturation}
-            chunkColorMix={store.values.chunkColorMix}
-            edgeThickness={store.values.edgeThickness}
-            edgeMidpoint={store.values.edgeMidpoint}
-            nodeSizeMin={store.values.nodeSizeMin}
-            nodeSizeMax={store.values.nodeSizeMax}
-            nodeSizePivot={store.values.nodeSizePivot}
-          />
+          {!isLoadingCache && (
+            <ChunksCanvas
+              chunks={chunks}
+              umapPositions={displayPositions}
+              searchOpacities={searchOpacities}
+              neighborhoodEdges={displayEdges}
+              neighborhoodEdgesVersion={neighborhoodEdgesVersion}
+              isRunning={displayIsRunning}
+              onSelectChunk={handleSelectChunk}
+              colorSaturation={store.values.colorSaturation}
+              minSaturation={store.values.minSaturation}
+              chunkColorMix={store.values.chunkColorMix}
+              edgeThickness={store.values.edgeThickness}
+              edgeMidpoint={store.values.edgeMidpoint}
+              nodeSizeMin={store.values.nodeSizeMin}
+              nodeSizeMax={store.values.nodeSizeMax}
+              nodeSizePivot={store.values.nodeSizePivot}
+              coarseClusters={cachedLayout?.coarseClusters ?? null}
+              fineClusters={cachedLayout?.fineClusters ?? null}
+              coarseLabels={cachedLayout?.coarseLabels ?? null}
+              fineLabels={cachedLayout?.fineLabels ?? null}
+              coarseFadeStart={store.values.coarseFadeStart}
+              coarseFadeEnd={store.values.coarseFadeEnd}
+              fineFadeStart={store.values.fineFadeStart}
+              fineFadeEnd={store.values.fineFadeEnd}
+            />
+          )}
           <Reader chunkId={selectedChunkIds.at(-1) ?? null} onClose={() => handleSelectChunk(null)} />
         </div>
       </main>

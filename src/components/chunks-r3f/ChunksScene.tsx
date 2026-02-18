@@ -10,6 +10,9 @@ import * as THREE from "three";
 
 import type { ChunkEmbeddingData } from "@/app/api/chunks/embeddings/route";
 import { CameraController } from "@/components/topics-r3f/CameraController";
+import { ClusterLabels3D } from "@/components/topics-r3f/ClusterLabels3D";
+import { computeLabelFade, type LabelFadeRange } from "@/lib/label-fade-coordinator";
+import type { SimNode } from "@/lib/map-renderer";
 import { useChunkForceLayout } from "@/hooks/useChunkForceLayout";
 import { useFocusPushAnimation } from "@/hooks/useFocusPushAnimation";
 import { useHoverPreviewDim } from "@/hooks/useHoverPreviewDim";
@@ -74,6 +77,14 @@ interface ChunksSceneProps {
   nodeSizeMax: number;
   nodeSizePivot: number;
   backgroundClickRef?: MutableRefObject<(() => void) | null>;
+  coarseClusters: Record<number, number> | null;
+  fineClusters: Record<number, number> | null;
+  coarseLabels: Record<number, string> | null;
+  fineLabels: Record<number, string> | null;
+  coarseFadeStart: number;
+  coarseFadeEnd: number;
+  fineFadeStart: number;
+  fineFadeEnd: number;
 }
 
 // --- Component ---
@@ -95,6 +106,14 @@ export function ChunksScene({
   nodeSizeMax,
   nodeSizePivot,
   backgroundClickRef,
+  coarseClusters,
+  fineClusters,
+  coarseLabels,
+  fineLabels,
+  coarseFadeStart,
+  coarseFadeEnd,
+  fineFadeStart,
+  fineFadeEnd,
 }: ChunksSceneProps) {
   const count = chunks.length;
   const [pcaTransform, setPcaTransform] = useState<PCATransform | null>(null);
@@ -428,6 +447,76 @@ export function ChunksScene({
     hoveredIndexRef.current = null;
   }, []);
 
+  // Cluster label fade state — updated from useFrame only when value changes significantly
+  const [coarseLabelFadeT, setCoarseLabelFadeT] = useState(0);
+  const [fineLabelFadeT, setFineLabelFadeT] = useState(0);
+  const [fineFadeInT, setFineFadeInT] = useState(0);
+  const coarseFadeRef = useRef(0);
+  const fineFadeRef = useRef(0);
+  const fineFadeInRef = useRef(0);
+
+  // Proxy SimNode arrays for ClusterLabels3D — positions read live from displayPositionsRef
+  const { coarseLabelNodes, coarseNodeToCluster, fineLabelNodes, fineNodeToCluster } = useMemo(() => {
+    const makeProxyNode = (chunk: ChunkEmbeddingData, i: number): SimNode => {
+      const node: Record<string, unknown> = {
+        id: chunk.id,
+        label: chunk.content?.slice(0, 20) ?? "",
+        hullLabel: undefined as string | undefined,
+        communityMembers: undefined as string[] | undefined,
+      };
+      Object.defineProperty(node, "x", {
+        get: () => displayPositionsRef.current[i * 2] ?? 0,
+        enumerable: true,
+        configurable: true,
+      });
+      Object.defineProperty(node, "y", {
+        get: () => displayPositionsRef.current[i * 2 + 1] ?? 0,
+        enumerable: true,
+        configurable: true,
+      });
+      return node as unknown as SimNode;
+    };
+
+    const coarseNodes = chunks.map(makeProxyNode);
+    const fineNodes = chunks.map(makeProxyNode);
+    const coarseMap = new Map<string, number>();
+    const fineMap = new Map<string, number>();
+    const coarseHubAssigned = new Set<number>();
+    const fineHubAssigned = new Set<number>();
+
+    for (let i = 0; i < chunks.length; i++) {
+      if (coarseClusters) {
+        const cid = coarseClusters[i];
+        if (cid !== undefined) {
+          coarseMap.set(chunks[i].id, cid);
+          if (!coarseHubAssigned.has(cid) && coarseLabels?.[cid]) {
+            coarseNodes[i].hullLabel = coarseLabels[cid];
+            (coarseNodes[i] as SimNode & { communityMembers: string[] }).communityMembers = [chunks[i].id];
+            coarseHubAssigned.add(cid);
+          }
+        }
+      }
+      if (fineClusters) {
+        const cid = fineClusters[i];
+        if (cid !== undefined) {
+          fineMap.set(chunks[i].id, cid);
+          if (!fineHubAssigned.has(cid) && fineLabels?.[cid]) {
+            fineNodes[i].hullLabel = fineLabels[cid];
+            (fineNodes[i] as SimNode & { communityMembers: string[] }).communityMembers = [chunks[i].id];
+            fineHubAssigned.add(cid);
+          }
+        }
+      }
+    }
+
+    return {
+      coarseLabelNodes: coarseNodes,
+      coarseNodeToCluster: coarseMap,
+      fineLabelNodes: fineNodes,
+      fineNodeToCluster: fineMap,
+    };
+  }, [chunks, coarseClusters, fineClusters, coarseLabels, fineLabels]);
+
   // Edge opacity fade-in over EDGE_FADE_DURATION_MS when simulation stops.
   // Uses a bounded rAF loop (not useFrame) so React re-renders propagate opacity to ChunkEdges.
   const [edgeOpacity, setEdgeOpacity] = useState(0);
@@ -518,6 +607,25 @@ export function ChunksScene({
     // Compute world-units-per-pixel once per frame (cards are near z=0, camera looks down z-axis).
     const camZ = camera.position.z;
     const fovRad = THREE.MathUtils.degToRad((camera as THREE.PerspectiveCamera).fov);
+
+    // Cluster label fades — update React state only when changed by >1%
+    const coarseRange: LabelFadeRange = { start: coarseFadeStart, full: coarseFadeEnd };
+    const fineRange: LabelFadeRange = { start: fineFadeStart, full: fineFadeEnd };
+    const newCoarseFade = computeLabelFade(camZ, coarseRange);
+    const newFineFade = computeLabelFade(camZ, fineRange);
+    const newFineFadeIn = newCoarseFade;
+    if (Math.abs(newCoarseFade - coarseFadeRef.current) > 0.01) {
+      coarseFadeRef.current = newCoarseFade;
+      setCoarseLabelFadeT(newCoarseFade);
+    }
+    if (Math.abs(newFineFade - fineFadeRef.current) > 0.01) {
+      fineFadeRef.current = newFineFade;
+      setFineLabelFadeT(newFineFade);
+    }
+    if (Math.abs(newFineFadeIn - fineFadeInRef.current) > 0.01) {
+      fineFadeInRef.current = newFineFadeIn;
+      setFineFadeInT(newFineFadeIn);
+    }
     const unitsPerPixel = (2 * Math.tan(fovRad / 2) * Math.max(camZ, 1e-3)) / (size.height / gl.getPixelRatio());
 
     for (let i = 0; i < n; i++) {
@@ -661,6 +769,27 @@ export function ChunksScene({
           screenRectsRef={chunkScreenRectsRef}
           textMaxWidth={CARD_WIDTH * 0.76}
           maxVisible={50}
+        />
+      )}
+      {coarseLabels && coarseNodeToCluster.size > 0 && !isRunning && (
+        <ClusterLabels3D
+          nodes={coarseLabelNodes}
+          nodeToCluster={coarseNodeToCluster}
+          labelFadeT={coarseLabelFadeT}
+          labelZ={CARD_Z_RANGE + 0.5}
+          baseFontSize={60}
+          useSemanticFonts={false}
+        />
+      )}
+      {fineLabels && fineNodeToCluster.size > 0 && !isRunning && (
+        <ClusterLabels3D
+          nodes={fineLabelNodes}
+          nodeToCluster={fineNodeToCluster}
+          labelFadeT={fineLabelFadeT}
+          fadeInT={fineFadeInT}
+          labelZ={CARD_Z_RANGE + 0.3}
+          baseFontSize={40}
+          useSemanticFonts={false}
         />
       )}
     </>

@@ -15,7 +15,7 @@ interface ChunksCanvasProps {
   chunks: ChunkEmbeddingData[];
   umapPositions: Float32Array;
   searchOpacities: Map<string, number>;
-  neighborhoodEdges: UmapEdge[];
+  neighborhoodEdges: UmapEdge[] | Array<{ source: number; target: number; weight: number }>;
   neighborhoodEdgesVersion: number;
   isRunning: boolean;
   onSelectChunk: (chunkId: string | null) => void;
@@ -27,6 +27,14 @@ interface ChunksCanvasProps {
   nodeSizeMin: number;
   nodeSizeMax: number;
   nodeSizePivot: number;
+  coarseClusters: Record<number, number> | null;
+  fineClusters: Record<number, number> | null;
+  coarseLabels: Record<number, string> | null;
+  fineLabels: Record<number, string> | null;
+  coarseFadeStart: number;
+  coarseFadeEnd: number;
+  fineFadeStart: number;
+  fineFadeEnd: number;
 }
 
 export function ChunksCanvas({
@@ -45,6 +53,14 @@ export function ChunksCanvas({
   nodeSizeMin,
   nodeSizeMax,
   nodeSizePivot,
+  coarseClusters,
+  fineClusters,
+  coarseLabels,
+  fineLabels,
+  coarseFadeStart,
+  coarseFadeEnd,
+  fineFadeStart,
+  fineFadeEnd,
 }: ChunksCanvasProps) {
   const [backgroundColor, setBackgroundColor] = useState(getBackgroundColor);
   const backgroundClickRef = useRef<(() => void) | null>(null);
@@ -74,7 +90,7 @@ export function ChunksCanvas({
           chunks={chunks}
           umapPositions={umapPositions}
           searchOpacities={searchOpacities}
-          neighborhoodEdges={neighborhoodEdges}
+          neighborhoodEdges={neighborhoodEdges as UmapEdge[]}
           neighborhoodEdgesVersion={neighborhoodEdgesVersion}
           isRunning={isRunning}
           onSelectChunk={onSelectChunk}
@@ -87,6 +103,14 @@ export function ChunksCanvas({
           nodeSizeMax={nodeSizeMax}
           nodeSizePivot={nodeSizePivot}
           backgroundClickRef={backgroundClickRef}
+          coarseClusters={coarseClusters}
+          fineClusters={fineClusters}
+          coarseLabels={coarseLabels}
+          fineLabels={fineLabels}
+          coarseFadeStart={coarseFadeStart}
+          coarseFadeEnd={coarseFadeEnd}
+          fineFadeStart={fineFadeStart}
+          fineFadeEnd={fineFadeEnd}
         />
       </Canvas>
     </div>

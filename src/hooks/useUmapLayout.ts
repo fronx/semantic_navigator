@@ -51,6 +51,8 @@ export interface UmapLayoutOptions {
   renderInterval?: number;
   /** Target radius of the layout in world units (default: 500) */
   targetRadius?: number;
+  /** Increment to force a UMAP restart without changing embeddings or params */
+  seed?: number;
 }
 
 const EMPTY_POSITIONS = new Float32Array(0);
@@ -162,13 +164,14 @@ function embeddingsKey(
   embeddings: number[][],
   nNeighbors: number,
   minDist: number,
-  spread: number
+  spread: number,
+  seed: number
 ): string {
   if (embeddings.length === 0) return "empty";
   const first = embeddings[0];
   const last = embeddings[embeddings.length - 1];
   // Sample a few values for fingerprinting + include parameters
-  return `${embeddings.length}:${first[0]}:${first[first.length - 1]}:${last[0]}:${last[last.length - 1]}:${nNeighbors}:${minDist}:${spread}`;
+  return `${embeddings.length}:${first[0]}:${first[first.length - 1]}:${last[0]}:${last[last.length - 1]}:${nNeighbors}:${minDist}:${spread}:${seed}`;
 }
 
 export function useUmapLayout(
@@ -182,6 +185,7 @@ export function useUmapLayout(
     stepsPerFrame = 8,
     renderInterval = 10,
     targetRadius = 500,
+    seed = 0,
   } = options;
 
   // Mutable state (no re-renders)
@@ -215,7 +219,7 @@ export function useUmapLayout(
   const prevKeyRef = useRef("");
 
   useEffect(() => {
-    const key = embeddingsKey(embeddings, nNeighbors, minDist, spread);
+    const key = embeddingsKey(embeddings, nNeighbors, minDist, spread, seed);
     if (key === prevKeyRef.current) return;
     prevKeyRef.current = key;
 

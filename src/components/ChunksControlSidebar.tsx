@@ -21,15 +21,22 @@ export interface ChunksSettings {
   nodeSizeMin: number;
   nodeSizeMax: number;
   nodeSizePivot: number;
+  coarseResolution: number;
+  fineResolution: number;
+  coarseFadeStart: number;
+  coarseFadeEnd: number;
+  fineFadeStart: number;
+  fineFadeEnd: number;
   sidebarCollapsed: boolean;
   sectionStates: Record<string, boolean>;
 }
 
 interface ChunksControlSidebarProps {
   store: PersistedStore<ChunksSettings>;
+  onRedoUmap?: () => void;
 }
 
-export function ChunksControlSidebar({ store }: ChunksControlSidebarProps): ReactElement {
+export function ChunksControlSidebar({ store, onRedoUmap }: ChunksControlSidebarProps): ReactElement {
   const { values, update } = store;
 
   function sectionProps(title: string) {
@@ -153,6 +160,71 @@ export function ChunksControlSidebar({ store }: ChunksControlSidebarProps): Reac
           step={5}
           format={(v) => `${v}`}
         />
+      </Section>
+
+      <Section {...sectionProps("Cluster Labels")}>
+        <Slider
+          label="Coarse resolution"
+          value={values.coarseResolution}
+          onChange={(v) => update("coarseResolution", v)}
+          min={0.1}
+          max={2.0}
+          step={0.1}
+          format={(v) => v.toFixed(1)}
+        />
+        <Slider
+          label="Fine resolution"
+          value={values.fineResolution}
+          onChange={(v) => update("fineResolution", v)}
+          min={0.5}
+          max={4.0}
+          step={0.1}
+          format={(v) => v.toFixed(1)}
+        />
+        <Slider
+          label="Coarse fade start Z"
+          value={values.coarseFadeStart}
+          onChange={(v) => update("coarseFadeStart", v)}
+          min={100}
+          max={8000}
+          step={100}
+          format={(v) => `${v}`}
+        />
+        <Slider
+          label="Coarse fade end Z"
+          value={values.coarseFadeEnd}
+          onChange={(v) => update("coarseFadeEnd", v)}
+          min={100}
+          max={8000}
+          step={100}
+          format={(v) => `${v}`}
+        />
+        <Slider
+          label="Fine fade start Z"
+          value={values.fineFadeStart}
+          onChange={(v) => update("fineFadeStart", v)}
+          min={100}
+          max={8000}
+          step={100}
+          format={(v) => `${v}`}
+        />
+        <Slider
+          label="Fine fade end Z"
+          value={values.fineFadeEnd}
+          onChange={(v) => update("fineFadeEnd", v)}
+          min={100}
+          max={8000}
+          step={100}
+          format={(v) => `${v}`}
+        />
+        {onRedoUmap && (
+          <button
+            onClick={onRedoUmap}
+            className="mt-2 w-full px-2 py-1 text-xs rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700"
+          >
+            Redo UMAP
+          </button>
+        )}
       </Section>
     </CollapsibleSidebar>
   );
