@@ -73,6 +73,7 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
 
   const [cachedLayout, setCachedLayout] = useState<CachedLayout | null>(null);
   const [isLoadingCache, setIsLoadingCache] = useState(true);
+  const [isReclustering, setIsReclustering] = useState(false);
   const cachedLayoutRef = useRef<CachedLayout | null>(null);
   cachedLayoutRef.current = cachedLayout;
 
@@ -159,6 +160,7 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
   // Recluster when resolution sliders change (only if cached layout exists)
   useEffect(() => {
     if (!cachedLayoutRef.current) return;
+    setIsReclustering(true);
     fetch("/api/chunks/layout/recluster", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -185,7 +187,8 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
           );
         }
       })
-      .catch(console.error);
+      .catch(console.error)
+      .finally(() => setIsReclustering(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.debounced.coarseResolution, store.debounced.fineResolution]);
 
@@ -271,6 +274,10 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
 
         {searchLoading && (
           <span className="text-xs text-zinc-400">Searching...</span>
+        )}
+
+        {isReclustering && (
+          <span className="text-xs text-zinc-400">Relabeling...</span>
         )}
 
         <span className="text-sm text-zinc-600 dark:text-zinc-400">

@@ -97,6 +97,11 @@ async function clusterAndLabel(
   const excerpts = await fetchChunkExcerpts(chunkIds);
 
   // Build cluster->excerpts arrays for both resolutions
+  // Note: clusters whose every member has null/empty content are omitted from the
+  // returned array and never sent to the LLM. This creates a gap between the
+  // complete coarseClusters/fineClusters records (all nodes) and the partial
+  // coarseLabels/fineLabels records (only clusters with ≥1 content-bearing chunk).
+  // computeClusterLabels silently skips those unlabeled cluster IDs when rendering.
   function buildClusterExcerpts(nodeToCluster: Map<number, number>) {
     const clusterExcerpts = new Map<number, string[]>();
     for (const [nodeIdx, clusterId] of nodeToCluster) {

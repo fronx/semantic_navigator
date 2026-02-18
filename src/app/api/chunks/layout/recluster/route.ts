@@ -47,19 +47,24 @@ export async function POST(request: Request) {
     // Fetch excerpts for labeling
     const supabase = createServerClient();
     const excerpts = new Map<string, string>();
-    const PAGE_SIZE = 500;
+    const PAGE_SIZE = 50; // Keep small — large .in() queries hit PostgREST URL length limits
     for (let i = 0; i < chunkIds.length; i += PAGE_SIZE) {
       const batch = chunkIds.slice(i, i + PAGE_SIZE);
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("nodes")
         .select("id, content")
         .in("id", batch);
+      if (error) {
+        console.error("[recluster] Failed to fetch excerpts batch:", error);
+        continue;
+      }
       for (const row of data ?? []) {
         if (row.content) excerpts.set(row.id, row.content.slice(0, EXCERPT_LENGTH));
       }
     }
 
-    // Build excerpts per cluster
+    // Build excerpts per cluster. Clusters with no content-bearing members are
+    // omitted and will have no entry in coarseLabels/fineLabels (see route.ts comment).
     function buildExcerpts(nodeToCluster: Map<number, number>) {
       const map = new Map<number, string[]>();
       for (const [idx, cid] of nodeToCluster) {
@@ -91,6 +96,13 @@ export async function POST(request: Request) {
     cache.fineLabels = fineLabels;
 
     await fs.writeFile(CACHE_PATH, JSON.stringify(cache));
+
+    const coarseLabelEntries = Object.entries(coarseLabels).sort(([a], [b]) => Number(a) - Number(b));
+    const fineLabelEntries = Object.entries(fineLabels).sort(([a], [b]) => Number(a) - Number(b));
+    console.log(`[recluster] Coarse labels (${coarseLabelEntries.length}):`);
+    for (const [id, label] of coarseLabelEntries) console.log(`  ${id}: ${label}`);
+    console.log(`[recluster] Fine labels (${fineLabelEntries.length}):`);
+    for (const [id, label] of fineLabelEntries) console.log(`  ${id}: ${label}`);
 
     return NextResponse.json({ coarseClusters, fineClusters, coarseLabels, fineLabels });
   } catch (error) {
