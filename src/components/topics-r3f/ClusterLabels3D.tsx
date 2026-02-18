@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, type MutableRefObject } from "react";
 import { Billboard } from "@react-three/drei";
 import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
@@ -53,6 +53,8 @@ export interface ClusterLabels3DProps {
   shadowStrength?: number;
   /** Use semantically-matched fonts (default true) */
   useSemanticFonts?: boolean;
+  /** When set, non-matching cluster labels dim to 0.15 opacity multiplier. */
+  hoveredClusterIdRef?: MutableRefObject<number | null>;
 }
 
 const DEFAULT_MIN_SCREEN_PX = 14;
@@ -89,6 +91,7 @@ export function ClusterLabels3D({
   focusState,
   shadowStrength = 0.8,
   useSemanticFonts = true,
+  hoveredClusterIdRef,
 }: ClusterLabels3DProps) {
   const { camera, size } = useThree();
   const labelRegistry = useRef(new Map<number, LabelRegistration>());
@@ -134,7 +137,10 @@ export function ClusterLabels3D({
       // When cluster labels are primary (labelFadeT near 0), skip size fade
       // to keep them visible even when small on screen
       const sizeFade = labelFadeT > 0.5 ? 1 - smoothstep(fadeT) : 1.0;
-      const finalOpacity = baseOpacity * sizeFade * fadeInT * (1 - labelFadeT);
+      const baseResult = baseOpacity * sizeFade * fadeInT * (1 - labelFadeT);
+      const hoveredId = hoveredClusterIdRef?.current ?? null;
+      const dimMul = hoveredId !== null && entry.communityId !== hoveredId ? 0.15 : 1;
+      const finalOpacity = baseResult * dimMul;
 
       for (const mat of [material, shadowMaterial]) {
         if (mat.opacity !== finalOpacity) {

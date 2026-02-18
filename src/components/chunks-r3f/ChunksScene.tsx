@@ -135,7 +135,7 @@ export function ChunksScene({
   fineLabels,
   labelFades,
   onCameraZChange,
-  hoverRadius: _hoverRadius, // unused until next task
+  hoverRadius,
 }: ChunksSceneProps) {
   const count = chunks.length;
   const [pcaTransform, setPcaTransform] = useState<PCATransform | null>(null);
@@ -191,6 +191,10 @@ export function ChunksScene({
   const prevHoveredRef = useRef<number | null>(null);
   // Animated hover progress per card: 0=normal scale, 1=full hover scale.
   const hoverProgressRef = useRef<Map<number, number>>(new Map());
+  // Tracks whether current hover came from direct raycasting (true) or proximity fallback (false).
+  const isDirectHitRef = useRef(false);
+  const hoverRadiusRef = useRef(hoverRadius);
+  hoverRadiusRef.current = hoverRadius;
 
   const [focusSeeds, setFocusSeeds] = useState<FocusSeed[]>([]);
   const focusSeedsRef = useRef<FocusSeed[]>(focusSeeds);
@@ -489,11 +493,13 @@ export function ChunksScene({
         const rank = zRankRef.current.get(id) ?? id;
         if (rank > bestRank) { bestRank = rank; bestId = id; }
       }
+      isDirectHitRef.current = bestId !== null;
       hoveredIndexRef.current = bestId;
     },
     [chunks.length, isDraggingNode, meshRef],
   );
   const handleHoverLeave = useCallback(() => {
+    isDirectHitRef.current = false;
     hoveredIndexRef.current = null;
   }, []);
 
@@ -506,6 +512,9 @@ export function ChunksScene({
   const coarseFadeOutRef = useRef(0);
   const fineFadeInRef = useRef(0);
   const fineFadeOutRef = useRef(0);
+  // Track which cluster the currently-hovered card belongs to, for label dimming.
+  const hoveredCoarseClusterIdRef = useRef<number | null>(null);
+  const hoveredFineClusterIdRef = useRef<number | null>(null);
 
   // Proxy SimNode arrays for ClusterLabels3D — positions read live from displayPositionsRef
   const { coarseLabelNodes, coarseNodeToCluster, fineLabelNodes, fineNodeToCluster } = useMemo(() => {
@@ -613,7 +622,7 @@ export function ChunksScene({
   }, [isRunning]);
 
   const HOVER_DURATION = 0.25; // seconds
-  useFrame((_state, delta) => {
+  useFrame((state, delta) => {
     const mesh = meshRef.current;
     if (!mesh || layoutPositions.length === 0) return;
 
@@ -671,6 +680,28 @@ export function ChunksScene({
       renderPositions = displayPositionsRef.current;
     }
 
+    // Proximity hover: when no direct raycasting hit, find nearest card within hoverRadius.
+    if (!isDirectHitRef.current && !isDraggingNode && hoverRadiusRef.current > 0) {
+      const camZForProx = camera.position.z;
+      const fovRadForProx = THREE.MathUtils.degToRad((camera as THREE.PerspectiveCamera).fov);
+      const halfH = Math.tan(fovRadForProx / 2) * camZForProx;
+      const halfW = halfH * (size.width / size.height);
+      const worldX = camera.position.x + state.pointer.x * halfW;
+      const worldY = camera.position.y + state.pointer.y * halfH;
+      const radiusSq = hoverRadiusRef.current * hoverRadiusRef.current;
+      let bestDist = radiusSq;
+      let bestIdx: number | null = null;
+      for (let i = 0; i < n; i++) {
+        const px = renderPositions[i * 2];
+        const py = renderPositions[i * 2 + 1];
+        const dx = px - worldX;
+        const dy = py - worldY;
+        const dSq = dx * dx + dy * dy;
+        if (dSq < bestDist) { bestDist = dSq; bestIdx = i; }
+      }
+      hoveredIndexRef.current = bestIdx;
+    }
+
     // All nodes visible (margins are small dots, not hidden)
     visibleNodeIndicesRef.current.clear();
     for (let i = 0; i < n; i++) visibleNodeIndicesRef.current.add(i);
@@ -682,6 +713,15 @@ export function ChunksScene({
       baseDragHandlers.notifyHoverChange?.(hovered, HOVER_SCALE_MULTIPLIER);
     }
     prevHoveredRef.current = hovered;
+
+    // Update cluster ID refs for label dimming (read per-frame by ClusterLabels3D).
+    const hoveredIdx = hoveredIndexRef.current;
+    hoveredCoarseClusterIdRef.current = hoveredIdx !== null && coarseClusters
+      ? (coarseClusters[hoveredIdx] ?? null)
+      : null;
+    hoveredFineClusterIdRef.current = hoveredIdx !== null && fineClusters
+      ? (fineClusters[hoveredIdx] ?? null)
+      : null;
 
     // Animate hover scale: progress 0->1 on hover-in, 1->0 on hover-out, over HOVER_DURATION.
     const hoverProgress = hoverProgressRef.current;
@@ -759,7 +799,12 @@ export function ChunksScene({
       const hoverScale = 1 + (HOVER_SCALE_MULTIPLIER - 1) * t;
       const baseScale = CARD_SCALE * countScale * pushScale * animatedScale;
       // Pulled ghosts are navigation hints — keep compact regardless of content length.
-      const heightRatio = isPulled ? 1 : (heightRatiosRef.current[i] ?? 1);
+      // Focus seeds always expand; hovered card expands via animated t; others stay compact.
+      const actualHeightRatio = heightRatiosRef.current[i] ?? 1;
+      const isFocusSeed = lensInfoRef.current?.depthMap.get(i) === 0;
+      const heightRatio = isPulled ? 1
+        : isFocusSeed ? actualHeightRatio
+        : 1 + (actualHeightRatio - 1) * t;
       // Cap hover growth so the card never exceeds 50% of viewport height.
       const maxHoverForVP = Math.max(1, (size.height / gl.getPixelRatio() * 0.5 * unitsPerPixel) / (CARD_HEIGHT * baseScale * heightRatio));
       const pulledScale = isPulled ? CHUNK_PULL_ZONE_SCALE : 1;
@@ -913,6 +958,7 @@ export function ChunksScene({
           labelZ={CARD_Z_RANGE + 0.5}
           baseFontSize={10}
           useSemanticFonts={false}
+          hoveredClusterIdRef={hoveredCoarseClusterIdRef}
         />
       )}
       {fineLabels && fineNodeToCluster.size > 0 && !isRunning && (
@@ -925,6 +971,7 @@ export function ChunksScene({
           labelZ={CARD_Z_RANGE + 0.3}
           baseFontSize={7}
           useSemanticFonts={false}
+          hoveredClusterIdRef={hoveredFineClusterIdRef}
         />
       )}
     </>
