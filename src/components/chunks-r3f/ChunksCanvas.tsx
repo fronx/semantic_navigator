@@ -24,11 +24,6 @@ interface ChunksCanvasProps {
   chunkColorMix: number;
   edgeThickness: number;
   edgeMidpoint: number;
-  lensCompressionStrength: number;
-  lensCenterScale: number;
-  lensEdgeScale: number;
-  lpNormP: number;
-  focusMode: "manifold" | "click";
   nodeSizeMin: number;
   nodeSizeMax: number;
   nodeSizePivot: number;
@@ -47,11 +42,6 @@ export function ChunksCanvas({
   chunkColorMix,
   edgeThickness,
   edgeMidpoint,
-  lensCompressionStrength,
-  lensCenterScale,
-  lensEdgeScale,
-  lpNormP,
-  focusMode,
   nodeSizeMin,
   nodeSizeMax,
   nodeSizePivot,
@@ -93,11 +83,6 @@ export function ChunksCanvas({
           chunkColorMix={chunkColorMix}
           edgeThickness={edgeThickness}
           edgeMidpoint={edgeMidpoint}
-          lensCompressionStrength={lensCompressionStrength}
-          lensCenterScale={lensCenterScale}
-          lensEdgeScale={lensEdgeScale}
-          lpNormP={lpNormP}
-          focusMode={focusMode}
           nodeSizeMin={nodeSizeMin}
           nodeSizeMax={nodeSizeMax}
           nodeSizePivot={nodeSizePivot}

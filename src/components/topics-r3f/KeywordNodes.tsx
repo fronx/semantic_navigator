@@ -16,11 +16,11 @@ import { getNodeColor, BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/rendering
 import { KEYWORD_TIER_SCALES } from "@/lib/semantic-filter-config";
 import { useInstancedMeshMaterial } from "@/hooks/useInstancedMeshMaterial";
 import { useStableInstanceCount } from "@/hooks/useStableInstanceCount";
+import { useFocusPushAnimation } from "@/hooks/useFocusPushAnimation";
 import { perspectiveUnitsPerPixel, maxScaleForScreenSize } from "@/lib/screen-size-clamp";
 import { isDarkMode } from "@/lib/theme";
 import {
   computeViewportZones,
-  clampToBounds,
   isInViewport,
   isInCliffZone,
 } from "@/lib/edge-pulling";
@@ -30,18 +30,6 @@ import { handleKeywordClick, handleKeywordHover } from "@/lib/keyword-interactio
 const VISIBILITY_THRESHOLD = 0.01;
 /** Max screen-pixel diameter for a keyword dot (prevents dots from dominating at close zoom) */
 const MAX_DOT_SCREEN_PX = 40;
-
-/** Ease-out cubic: fast start, smooth deceleration */
-function easeOutCubic(t: number): number {
-  return 1 - Math.pow(1 - t, 3);
-}
-
-interface FocusAnimationState {
-  entries: Map<string, { startX: number; startY: number; targetX: number; targetY: number }>;
-  startTime: number;
-  duration: number;
-  type: "push" | "return";
-}
 
 export interface KeywordNodesProps {
   /** Total node count for stable instancedMesh allocation (from nodes.length at parent) */
@@ -120,9 +108,9 @@ export function KeywordNodes({
   const colorRef = useRef(new THREE.Color());
   const glowTarget = useMemo(() => new THREE.Color(), []);
 
-  // Focus animation state (ref-driven, no React re-renders)
-  const focusAnimRef = useRef<FocusAnimationState | null>(null);
-  const prevFocusIdRef = useRef<string | null>(null);
+  // Focus push animation (shared hook)
+  const { positionsRef: focusPushPositions, tick: tickFocusPush } = useFocusPushAnimation<string>();
+  const simNodeMapRef = useRef<Map<string, SimNode> | null>(null);
 
   // Create geometry once - match Three.js renderer size
   const geometry = useMemo(() => new THREE.CircleGeometry(BASE_DOT_RADIUS * DOT_SCALE_FACTOR, 64), []);
@@ -170,95 +158,32 @@ export function KeywordNodes({
       }
     }
 
-    // ── Focus mode animation ──────────────────────────────────────────
+    // ── Focus push animation (shared hook) ─────────────────────────────
+    if (!simNodeMapRef.current) simNodeMapRef.current = new Map();
+    const simNodeMap = simNodeMapRef.current;
+    simNodeMap.clear();
+    for (const node of simNodes) simNodeMap.set(node.id, node);
+
+    tickFocusPush(focusState ? {
+      marginIds: focusState.marginNodeIds,
+      getPosition: (id) => {
+        const node = simNodeMap.get(id);
+        return { x: node?.x ?? 0, y: node?.y ?? 0 };
+      },
+      pullBounds: zones.pullBounds,
+      camX: zones.viewport.camX,
+      camY: zones.viewport.camY,
+    } : null);
+
+    // Sync to shared focusPositionsRef (preserves Map<string, {x,y}> contract for 6 consumers)
+    if (focusPositionsRef) {
+      focusPositionsRef.current.clear();
+      for (const [id, o] of focusPushPositions.current) {
+        focusPositionsRef.current.set(id, { x: o.x, y: o.y });
+      }
+    }
+
     const currentFocusId = focusState?.focusedKeywordId ?? null;
-    const prevFocusId = prevFocusIdRef.current;
-
-    if (currentFocusId !== prevFocusId) {
-      if (currentFocusId && focusState) {
-        // Focus activated or changed → start push animation
-        const entries = new Map<string, { startX: number; startY: number; targetX: number; targetY: number }>();
-        for (let i = 0; i < simNodes.length; i++) {
-          const node = simNodes[i];
-          if (!focusState.marginNodeIds.has(node.id)) continue;
-          const prevPos = focusPositionsRef?.current.get(node.id);
-          const startX = prevPos?.x ?? node.x ?? 0;
-          const startY = prevPos?.y ?? node.y ?? 0;
-          const target = clampToBounds(
-            node.x ?? 0, node.y ?? 0,
-            zones.viewport.camX, zones.viewport.camY,
-            zones.pullBounds.left, zones.pullBounds.right,
-            zones.pullBounds.bottom, zones.pullBounds.top,
-          );
-          entries.set(node.id, { startX, startY, targetX: target.x, targetY: target.y });
-        }
-        focusAnimRef.current = { entries, startTime: performance.now(), duration: 500, type: "push" };
-      } else if (prevFocusId && !currentFocusId) {
-        // Focus cleared → start return animation
-        const entries = new Map<string, { startX: number; startY: number; targetX: number; targetY: number }>();
-        if (focusPositionsRef) {
-          for (let i = 0; i < simNodes.length; i++) {
-            const node = simNodes[i];
-            const pos = focusPositionsRef.current.get(node.id);
-            if (!pos) continue;
-            entries.set(node.id, { startX: pos.x, startY: pos.y, targetX: node.x ?? 0, targetY: node.y ?? 0 });
-          }
-        }
-        focusAnimRef.current = { entries, startTime: performance.now(), duration: 400, type: "return" };
-      }
-      prevFocusIdRef.current = currentFocusId;
-    }
-
-    // Run focus animation interpolation
-    if (focusAnimRef.current && focusPositionsRef) {
-      const anim = focusAnimRef.current;
-      const elapsed = performance.now() - anim.startTime;
-      const rawT = Math.min(1, elapsed / anim.duration);
-      const t = easeOutCubic(rawT);
-
-      for (const [nodeId, entry] of anim.entries) {
-        focusPositionsRef.current.set(nodeId, {
-          x: entry.startX + (entry.targetX - entry.startX) * t,
-          y: entry.startY + (entry.targetY - entry.startY) * t,
-        });
-      }
-
-      if (rawT >= 1) {
-        if (anim.type === "return") {
-          focusPositionsRef.current.clear();
-        }
-        focusAnimRef.current = null;
-      }
-    }
-
-    // After push animation completes, continuously track viewport for margin nodes
-    // (handles camera pan/zoom while focus is active)
-    if (focusState && !focusAnimRef.current && focusPositionsRef) {
-      // Clean up: remove keywords no longer in margin set (e.g., clicked margin keyword became focus center)
-      // INVARIANT: focusPositionsRef must only contain keywords in marginNodeIds.
-      // When a margin keyword is clicked, it moves from marginNodeIds to focusedNodeIds.
-      // Without this cleanup, the keyword would remain at its margin position (viewport edge)
-      // instead of its natural position, preventing the camera from centering on it properly.
-      // See: src/lib/__tests__/focus-mode.test.ts → "clicking a margin keyword"
-      for (const nodeId of Array.from(focusPositionsRef.current.keys())) {
-        if (!focusState.marginNodeIds.has(nodeId)) {
-          focusPositionsRef.current.delete(nodeId);
-        }
-      }
-
-      // Update positions for current margin nodes
-      for (let i = 0; i < simNodes.length; i++) {
-        const node = simNodes[i];
-        if (!focusState.marginNodeIds.has(node.id)) continue;
-        const target = clampToBounds(
-          node.x ?? 0, node.y ?? 0,
-          zones.viewport.camX, zones.viewport.camY,
-          zones.pullBounds.left, zones.pullBounds.right,
-          zones.pullBounds.bottom, zones.pullBounds.top,
-        );
-        focusPositionsRef.current.set(node.id, { x: target.x, y: target.y });
-      }
-    }
 
     // ── Per-node matrix + color updates ───────────────────────────────
     for (let i = 0; i < simNodes.length; i++) {

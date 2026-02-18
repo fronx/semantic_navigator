@@ -13,12 +13,6 @@ import { ChunksControlSidebar } from "@/components/ChunksControlSidebar";
 import { ChunksCanvas } from "./chunks-r3f/ChunksCanvas";
 import { Reader } from "@/components/Reader";
 import { exportUmapGraph } from "@/lib/export-umap-graph";
-import {
-  DEFAULT_LENS_CENTER_SCALE,
-  DEFAULT_LENS_EDGE_SCALE,
-  DEFAULT_LENS_COMPRESSION_STRENGTH,
-} from "@/lib/chunks-lens";
-import { DEFAULT_LP_NORM_P } from "@/lib/fisheye-viewport";
 
 const CHUNKS_DEFAULTS: ChunksSettings = {
   nNeighbors: 15,
@@ -29,18 +23,12 @@ const CHUNKS_DEFAULTS: ChunksSettings = {
   chunkColorMix: 0.4,
   edgeThickness: 2,
   edgeMidpoint: 0.6,
-  lensCompressionStrength: DEFAULT_LENS_COMPRESSION_STRENGTH,
-  lensCenterScale: DEFAULT_LENS_CENTER_SCALE,
-  lensEdgeScale: DEFAULT_LENS_EDGE_SCALE,
-  lpNormP: DEFAULT_LP_NORM_P,
-  focusMode: "click",
   nodeSizeMin: 0.6,
   nodeSizeMax: 2.0,
   nodeSizePivot: 30,
   sidebarCollapsed: false,
   sectionStates: {
     UMAP: true,
-    "Focus Lens": true,
   },
 };
 
@@ -181,11 +169,6 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
             chunkColorMix={store.values.chunkColorMix}
             edgeThickness={store.values.edgeThickness}
             edgeMidpoint={store.values.edgeMidpoint}
-            lensCompressionStrength={store.values.lensCompressionStrength}
-            lensCenterScale={store.values.lensCenterScale}
-            lensEdgeScale={store.values.lensEdgeScale}
-            lpNormP={store.values.lpNormP}
-            focusMode={store.values.focusMode}
             nodeSizeMin={store.values.nodeSizeMin}
             nodeSizeMax={store.values.nodeSizeMax}
             nodeSizePivot={store.values.nodeSizePivot}

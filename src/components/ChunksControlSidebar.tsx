@@ -1,6 +1,6 @@
 /**
  * Collapsible sidebar for ChunksView controls.
- * UMAP parameters and focus lens settings in collapsible sections.
+ * UMAP parameters and display settings in collapsible sections.
  */
 
 import type { ReactElement } from "react";
@@ -8,7 +8,6 @@ import type { PersistedStore } from "@/hooks/usePersistedStore";
 import { CollapsibleSidebar } from "@/components/CollapsibleSidebar";
 import { Section } from "@/components/Section";
 import { Slider } from "@/components/Slider";
-import { SelectField } from "@/components/SelectField";
 
 export interface ChunksSettings {
   nNeighbors: number;
@@ -19,11 +18,6 @@ export interface ChunksSettings {
   chunkColorMix: number;
   edgeThickness: number;
   edgeMidpoint: number;
-  lensCompressionStrength: number;
-  lensCenterScale: number;
-  lensEdgeScale: number;
-  lpNormP: number;
-  focusMode: "manifold" | "click";
   nodeSizeMin: number;
   nodeSizeMax: number;
   nodeSizePivot: number;
@@ -158,55 +152,6 @@ export function ChunksControlSidebar({ store }: ChunksControlSidebarProps): Reac
           max={300}
           step={5}
           format={(v) => `${v}`}
-        />
-      </Section>
-
-      <Section {...sectionProps("Focus Lens")}>
-        <SelectField
-          label="Focus behavior"
-          value={values.focusMode}
-          onChange={(v) => update("focusMode", v as "manifold" | "click")}
-          options={[
-            { value: "click", label: "Click-based focus" },
-            { value: "manifold", label: "Manifold zoom focus" },
-          ]}
-        />
-        <div className="h-2" />
-        <Slider
-          label="Compression"
-          value={values.lensCompressionStrength}
-          onChange={(v) => update("lensCompressionStrength", v)}
-          min={1.0}
-          max={4.0}
-          step={0.1}
-          format={(v) => v.toFixed(1)}
-        />
-        <Slider
-          label="Center scale"
-          value={values.lensCenterScale}
-          onChange={(v) => update("lensCenterScale", v)}
-          min={1.0}
-          max={5.0}
-          step={0.1}
-          format={(v) => v.toFixed(1)}
-        />
-        <Slider
-          label="Edge scale"
-          value={values.lensEdgeScale}
-          onChange={(v) => update("lensEdgeScale", v)}
-          min={0.3}
-          max={1.0}
-          step={0.05}
-          format={(v) => v.toFixed(2)}
-        />
-        <Slider
-          label="Horizon shape"
-          value={values.lpNormP}
-          onChange={(v) => update("lpNormP", v)}
-          min={2}
-          max={12}
-          step={0.5}
-          format={(v) => `p=${v.toFixed(1)}`}
         />
       </Section>
     </CollapsibleSidebar>
