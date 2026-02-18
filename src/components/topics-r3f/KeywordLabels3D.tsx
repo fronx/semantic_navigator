@@ -13,6 +13,7 @@ import { calculateScales } from "@/lib/content-scale";
 import { useThreeTextGeometry } from "@/hooks/useThreeTextGeometry";
 import { getNodeColor, BASE_DOT_RADIUS, DOT_SCALE_FACTOR } from "@/lib/rendering-utils/node-renderer";
 import { isDarkMode } from "@/lib/theme";
+import { applyFocusGlow, initGlowTarget } from "@/lib/node-color-effects";
 import type { LabelRefs } from "./R3FLabelContext";
 import { handleKeywordClick, handleKeywordHover } from "@/lib/keyword-interaction-handlers";
 import { KEYWORD_TIER_SCALES } from "@/lib/semantic-filter-config";
@@ -159,6 +160,7 @@ export function KeywordLabels3D({
   const sortBuffer = useRef<{ id: string; dist: number }[]>([]);
 
   useFrame(() => {
+    initGlowTarget(glowTarget, isDarkMode());
     const cursor = cursorWorldPosRef?.current;
     const isFocusActive = (focusPositionsRef?.current.size ?? 0) > 0;
 
@@ -302,11 +304,7 @@ export function KeywordLabels3D({
       // Focus glow (70% intensity) and/or hover glow (full intensity)
       tempColor.copy(entry.baseColor);
       const isFocused = keywordTiers?.get(id) === "selected";
-      if (isFocused || isHovered) {
-        glowTarget.set(isDarkMode() ? 0xffffff : 0x000000);
-        if (isFocused) tempColor.lerp(glowTarget, 0.245);
-        if (isHovered) tempColor.lerp(glowTarget, isFocused ? 0.105 : 0.35);
-      }
+      applyFocusGlow(tempColor, glowTarget, isFocused, isHovered);
       if (!material.color.equals(tempColor)) {
         material.color.copy(tempColor);
       }

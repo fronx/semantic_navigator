@@ -34,7 +34,9 @@ import { loadPCATransform, centroidToColor, pcaProject, coordinatesToHSL, type P
 import { calculateZoomDesaturation } from "@/lib/zoom-phase-config";
 import { computeChunkPullState, type PulledChunkNode } from "@/lib/chunks-pull-state";
 import { computeViewportZones, PULLED_SCALE_FACTOR, PULLED_COLOR_FACTOR, isInViewport, isInCliffZone } from "@/lib/edge-pulling";
+import { applyFocusGlow, initGlowTarget } from "@/lib/node-color-effects";
 import { projectCardToScreenRect, type ScreenRect } from "@/lib/screen-rect-projection";
+import { isDarkMode } from "@/lib/theme";
 import { ChunkEdges } from "./ChunkEdges";
 import { CardTextLabels, type CardTextItem } from "@/components/r3f-shared/CardTextLabels";
 
@@ -54,6 +56,7 @@ const CARD_Z_RANGE = 2;
 const HOVER_SCALE_MULTIPLIER = 2;
 const EDGE_FADE_DURATION_MS = 500;
 const MAX_FOCUS_SEEDS = 2;
+const glowTarget = new THREE.Color();
 
 interface FocusSeed {
   index: number;
@@ -246,6 +249,10 @@ export function ChunksScene({
   );
 
   const lensActive = !!lensInfo && focusSeedIndices.length > 0 && !isRunning;
+  const lensInfoRef = useRef(lensInfo);
+  lensInfoRef.current = lensInfo;
+  const lensActiveRef = useRef(lensActive);
+  lensActiveRef.current = lensActive;
   const lensNodeSet = lensInfo?.nodeSet ?? null;
   const countScale = nodeSizeMin + (nodeSizeMax - nodeSizeMin) * (nodeSizePivot / (nodeSizePivot + count));
 
@@ -747,8 +754,9 @@ export function ChunksScene({
       || minSaturationRef.current !== prevMinSaturationRef.current;
 
     const previewActive = previewDimRef.current.size > 0;
-    if (colorChunksRef.current !== chunkColors || colorDirtyRef.current || desatChanged || previewActive || pullResult.pulledMap.size > 0 || !mesh.instanceColor) {
+    if (colorChunksRef.current !== chunkColors || colorDirtyRef.current || desatChanged || previewActive || pullResult.pulledMap.size > 0 || lensActiveRef.current || !mesh.instanceColor) {
       const searchActive = searchOpacitiesRef.current.size > 0;
+      initGlowTarget(glowTarget, isDarkMode());
       for (let i = 0; i < Math.min(n, chunkColors.length); i++) {
         // Apply desaturation to base color via HSL (fast, no chroma.js needed)
         chunkColors[i].getHSL(hslTemp.current);
@@ -762,6 +770,9 @@ export function ChunksScene({
         if (previewDim !== undefined) tempColor.current.multiplyScalar(previewDim);
         const pulledDataForColor = pullResult.pulledMap.get(i);
         if (pulledDataForColor) tempColor.current.multiplyScalar(PULLED_COLOR_FACTOR);
+        const isFocusSeed = lensInfoRef.current?.depthMap.get(i) === 0;
+        const isHovered = hoveredIndexRef.current === i;
+        applyFocusGlow(tempColor.current, glowTarget, isFocusSeed, isHovered);
         mesh.setColorAt(i, tempColor.current);
       }
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;

@@ -17,6 +17,8 @@ When fixing bugs or implementing features, always check for existing patterns/sy
 
 **Build reusable primitives, not local fixes.** When a behavior (fading, animation, filtering) is needed in one place, extract it as a hook or utility that works generically. Example: `useFadingMembership` animates any Set-based membership change, reused across edge rendering, content node visibility, etc. Inline solutions that solve one case are harder to reuse and tend to diverge.
 
+**Share rendering logic between views via `src/lib/`.** TopicsView and ChunksView share visual behaviors (glow, dim, edge pulling, desaturation). When adding a visual effect, implement it as a pure function in `src/lib/` (e.g., `node-color-effects.ts`, `edge-pulling.ts`) and import from both views. View-specific decisions (which nodes to highlight) stay in components; the effect implementation (how to highlight) lives in the shared module. Never duplicate rendering logic inline across views.
+
 ## Project Tools
 
 **Code simplification:** After implementing features or fixes, use the code-simplifier agent via the Task tool rather than doing manual simplification. Invoke with:
@@ -153,7 +155,8 @@ TopicsView supports three renderers. **R3F (React Three Fiber) is the primary re
 - `content-layout.ts` - Force-based content positioning around keywords
 - `content-zoom-config.ts` - Centralized zoom configuration
 - `label-fade-coordinator.ts` - Cross-component label visibility coordination
-- `edge-pulling.ts` - Pull off-screen nodes to viewport boundary as navigational ghosts
+- `edge-pulling.ts` - Pull off-screen nodes to viewport boundary as navigational ghosts (shared by TopicsView + ChunksView)
+- `chunks-pull-state.ts` - ChunksView-specific pull state computation (index-based flat model)
 - `fisheye-viewport.ts` - Lp-norm directional compression for rounded-rectangle focus areas
 - `chunks-lens.ts` - BFS neighborhood, lens scale blending, color emphasis for ChunksView
 - `chunks-geometry.ts` / `chunks-utils.ts` - ChunksView geometry and utilities
@@ -168,6 +171,7 @@ TopicsView supports three renderers. **R3F (React Three Fiber) is the primary re
 - **Layout**: UMAP embedding projection (`useUmapLayout`) instead of force-directed graph. D3 force refines positions after UMAP (`useChunkForceLayout`).
 - **Nodes**: Renders chunks (not keywords) as cards colored by source article.
 - **Interaction**: Click a chunk to activate a fisheye lens that compresses neighbors (BFS 1-hop via `chunks-lens.ts`). `useFocusZoomExit` auto-exits lens on zoom-out.
+- **Edge pulling**: Off-screen neighbors of visible chunks are pulled to viewport edges as ghosts (`chunks-pull-state.ts`). Shares `computePullPosition`, visual constants, and viewport zone utilities with TopicsView via `edge-pulling.ts`. Clicking a ghost flies to its real position + activates lens. See [Edge Pulling](docs/architecture/edge-pulling.md).
 - **Lens math**: `fisheye-viewport.ts` provides Lp-norm directional compression for rounded-rectangle shaped focus areas. `hyperbolic-compression.ts` handles radial compression.
 
 **Components** (`src/components/chunks-r3f/`): `ChunksCanvas.tsx` → `ChunksScene.tsx` → `ChunkEdges.tsx`, `ChunkTextLabels.tsx`. Settings via `ChunksControlSidebar.tsx` (UMAP params: nNeighbors, minDist, spread; lens params: compression, scale, horizon shape).

@@ -19,6 +19,7 @@ import { useStableInstanceCount } from "@/hooks/useStableInstanceCount";
 import { useFocusPushAnimation } from "@/hooks/useFocusPushAnimation";
 import { perspectiveUnitsPerPixel, maxScaleForScreenSize } from "@/lib/screen-size-clamp";
 import { isDarkMode } from "@/lib/theme";
+import { applyFocusGlow, initGlowTarget, MARGIN_DIM } from "@/lib/node-color-effects";
 import {
   computeViewportZones,
   isInViewport,
@@ -184,6 +185,7 @@ export function KeywordNodes({
     }
 
     const currentFocusId = focusState?.focusedKeywordId ?? null;
+    initGlowTarget(glowTarget, isDarkMode());
 
     // ── Per-node matrix + color updates ───────────────────────────────
     for (let i = 0; i < simNodes.length; i++) {
@@ -260,7 +262,7 @@ export function KeywordNodes({
 
       // Reduce opacity for margin nodes (focus) or pulled nodes (edge pulling)
       if (isFocusMargin || isPulled) {
-        colorRef.current.multiplyScalar(0.4);
+        colorRef.current.multiplyScalar(MARGIN_DIM);
       }
 
       // Apply opacity for distant keywords (dimmed for navigation)
@@ -282,11 +284,7 @@ export function KeywordNodes({
       // Focus glow (70% intensity) and/or hover glow (full intensity)
       const isFocused = currentFocusId === node.id;
       const isHovered = hoveredKeywordIdRef?.current === node.id;
-      if (isFocused || isHovered) {
-        glowTarget.set(isDarkMode() ? 0xffffff : 0x000000);
-        if (isFocused) colorRef.current.lerp(glowTarget, 0.245);
-        if (isHovered) colorRef.current.lerp(glowTarget, isFocused ? 0.105 : 0.35);
-      }
+      applyFocusGlow(colorRef.current, glowTarget, isFocused, isHovered);
 
       meshRef.current.setColorAt(i, colorRef.current);
     }

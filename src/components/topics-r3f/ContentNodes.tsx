@@ -20,6 +20,7 @@ import { useInstancedMeshMaterial } from "@/hooks/useInstancedMeshMaterial";
 import { useStableInstanceCount } from "@/hooks/useStableInstanceCount";
 import { adjustContrast } from "@/lib/colors";
 import { isDarkMode } from "@/lib/theme";
+import { MARGIN_DIM } from "@/lib/node-color-effects";
 import {
   computeViewportZones,
   isInViewport,
@@ -356,7 +357,7 @@ export function ContentNodes({
 
       // Reduce opacity for pulled nodes (dimmer appearance)
       if (isPulled) {
-        colorRef.current.multiplyScalar(0.4);
+        colorRef.current.multiplyScalar(MARGIN_DIM);
       }
 
       // Apply search opacity from parent keywords (use max across all parents)

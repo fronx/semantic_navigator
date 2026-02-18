@@ -1,6 +1,6 @@
 # Design: Edge Pulling
 
-**Status**: Implemented (2026-02-07)
+**Status**: Implemented (2026-02-07, extended to ChunksView 2026-02-18)
 
 ## Problem
 
@@ -243,6 +243,91 @@ R3FTopicsScene
 | `MAX_PULLED_NODES`         | 20    | count     | Cap on off-screen pulled keyword neighbors (cliff nodes uncapped)                  |
 | `MAX_PULLED_CONTENT_NODES` | 20    | count     | Cap on off-screen pulled content nodes                                             |
 
+## ChunksView Edge Pulling
+
+**Added**: 2026-02-18
+
+ChunksView reuses the same edge pulling concept adapted for its index-based flat model (no keyword/content hierarchy, no fisheye compression).
+
+### Differences from TopicsView
+
+| Aspect | TopicsView | ChunksView |
+| --- | --- | --- |
+| Node identity | String IDs (`keyword-123`) | Numeric indices (`0, 1, 2...`) |
+| Node types | Keywords + content (two pull states) | Chunks only (single pull state) |
+| Hierarchy | Parent-child (keyword → content) | Flat (all peers) |
+| Adjacency | Similarity edges | UMAP neighborhood edges |
+| Focus mode | Fisheye compression | Push animation via `useFocusPushAnimation` |
+| Pull position | `computePullPosition()` with fisheye option | `computePullPosition()` without fisheye |
+
+### Algorithm
+
+`computeChunkPullState()` in `src/lib/chunks-pull-state.ts` follows the same three-phase pattern:
+
+1. **Classify visible chunks**: Chunks inside `pullBounds` become primary. Cliff zone chunks (inside viewport but outside pull bounds) are clamped to the pull line.
+2. **Pull off-screen neighbors**: For each primary chunk, find off-screen neighbors via UMAP adjacency. Pull top `maxPulled` (ranked by connection count to primary nodes) to the pull line.
+3. **Validate anchors**: Remove pulled chunks with no primary connections.
+
+**Focus mode**: When `lensNodeSet` is provided, only chunks in the lens neighborhood are eligible for pulling.
+
+### Position Priority
+
+Same as TopicsView: `focusPush > pulled > natural`. In ChunksScene's useFrame, focus push overrides are applied first, then pulled positions overlay the remaining nodes.
+
+### Visual Treatment
+
+Pulled ghosts render at `PULLED_SCALE_FACTOR` (0.6x) scale and `PULLED_COLOR_FACTOR` (0.4x) color brightness — shared constants from `edge-pulling.ts`.
+
+### Click on Pulled Ghosts
+
+Clicking a pulled ghost flies the camera to the node's real position (`realX, realY`) and activates the fisheye lens on that chunk.
+
+### Edge Rendering
+
+`ChunkEdges` reads `pulledPositionsRef` each frame. Edges where both endpoints are unanchored pulled ghosts (no primary connections) are hidden. Otherwise, edge endpoints are overridden with pulled positions.
+
+### Zoom-Out Energy Injection
+
+When nodes transition from pulled (lined up at viewport edge) back to natural positions on zoom-out, the D3 force simulation needs energy to break them out of the linear arrangement. `useChunkForceLayout` uses `calculateSimulationAlpha()` and `calculateVelocityDecay()` from `simulation-zoom-config.ts` (same as TopicsView's ForceSimulation) to inject energy proportional to camera Z.
+
+### Reader Panel Occlusion
+
+The Reader panel uses flex layout (not absolute positioning) so it takes space from the canvas. `computeViewportZones` automatically sees the reduced canvas width, keeping pulled ghosts clear of the Reader.
+
+### Data Flow
+
+```
+neighborhoodEdges (prop)
+  │
+  ▼
+ChunksScene
+  ├── adjacency = useMemo(buildAdjacency(neighborhoodEdges))
+  │
+  ├── useFrame:
+  │     ├── computeChunkPullState(positions, adjacency, zones, lensNodeSet)
+  │     ├── merge: focusPush > pulled > natural → displayPositions
+  │     ├── per-instance: scale/color treatment for pulled ghosts, hide cliff zone
+  │     └── writes pulledChunkMapRef
+  │
+  ├── ChunkEdges
+  │     └── reads pulledChunkMapRef for endpoint overrides
+  │
+  └── CameraController
+        └── flyToRef(x, y) → animated pan on ghost click
+```
+
+### Files
+
+| File | Changes |
+| --- | --- |
+| `src/lib/edge-pulling.ts` | Added `computePullPosition`, `PULLED_SCALE_FACTOR`, `PULLED_COLOR_FACTOR` (shared across all views) |
+| `src/lib/chunks-pull-state.ts` | **New**: `computeChunkPullState()` for index-based flat model |
+| `src/components/chunks-r3f/ChunksScene.tsx` | Pull state computation, visual treatment, ghost click fly-to, cameraZ wiring |
+| `src/components/chunks-r3f/ChunkEdges.tsx` | `pulledPositionsRef` prop, endpoint overrides, unanchored edge hiding |
+| `src/hooks/useChunkForceLayout.ts` | Zoom-dependent energy injection via `simulation-zoom-config.ts` |
+| `src/components/ChunksView.tsx` | Reader moved to flex sibling for correct viewport bounds |
+| `src/components/Reader.tsx` | Changed from absolute to flex-shrink-0 layout |
+
 ## Open Questions
 
 1. **Pulled node overlap**: Multiple pulled nodes in similar directions pile up at the viewport edge. Should we add a spacing pass that nudges overlapping pulled nodes apart along the edge?
@@ -270,11 +355,12 @@ R3FTopicsScene
 
 ## Implementation Notes
 
-**Shared utilities** (`src/lib/edge-pulling.ts`): Both KeywordNodes and ContentNodes use shared utilities to maximize code reuse:
+**Shared utilities** (`src/lib/edge-pulling.ts`): All three pull state modules (keyword, content, chunks) use shared utilities:
 - `computeViewportZones()`: Computes viewport, pull bounds, and cliff bounds in one call
 - `clampToBounds()`: Ray-AABB intersection for clamping positions to viewport edge
+- `computePullPosition()`: Combined clamping with optional fisheye compression (extracted from duplicated code in keyword/content pull states, 2026-02-18)
 - `isInViewport()`, `isInCliffZone()`: Boundary checking helpers
-- Constants: `PULL_LINE_PX`, `UI_PROXIMITY_PX`, `MAX_PULLED_NODES`, `MAX_PULLED_CONTENT_NODES`
+- Constants: `PULL_LINE_PX`, `UI_PROXIMITY_PX`, `MAX_PULLED_NODES`, `MAX_PULLED_CONTENT_NODES`, `PULLED_SCALE_FACTOR`, `PULLED_COLOR_FACTOR`
 
 This centralization ensures consistent behavior, reduces duplication, and makes future adjustments easier.
 
