@@ -37,6 +37,7 @@
 - [Incremental Ingestion Pipeline](plans/incremental-ingestion-pipeline.md) - Two-phase pipeline for processing unlimited articles with batched ingestion, idempotency, and resumability
 - [Click-to-Focus with Margin Push](plans/click-to-focus-margin-push.md) - Replace click-to-filter with animated focus mode that pushes non-neighbors to viewport margins
 - [Lens Transition Animation](plans/2026-02-18-lens-transition-implementation.md) - Smooth 500ms easeOutCubic entrance animation for ChunksView fisheye lens mode via `useLensTransition` hook
+- [ChunksView Cluster Labels](plans/2026-02-18-chunks-cluster-labels-design.md) - Server-cached UMAP positions with Leiden clustering at two resolutions and Haiku-generated labels, reusing TopicsView's ClusterLabels3D
 
 ### Investigations
 
