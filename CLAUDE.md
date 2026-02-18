@@ -180,6 +180,8 @@ TopicsView supports three renderers. **R3F (React Three Fiber) is the primary re
 
 **Known gotcha — non-unique content node IDs**: `createContentNodes()` in `content-layout.ts` creates a separate `ContentSimNode` for each (keyword, chunk) pair. When a chunk is associated with multiple keywords, multiple nodes share the same `id`. Any Map keyed by `node.id` will silently lose data. Use composite keys like `${parentId}:${node.id}` when tracking content nodes. See [Empty Chunk Labels investigation](docs/investigations/empty-chunk-labels.md).
 
+**Cluster label coverage gap**: `coarseClusters`/`fineClusters` contain an entry for every node (Leiden is complete), but `coarseLabels`/`fineLabels` only cover clusters that had ≥1 content-bearing chunk when labels were generated. Unlabeled cluster IDs are silently skipped by `computeClusterLabels` and never rendered. Note: the recluster route fetches excerpts in PAGE_SIZE=50 batches — larger batches silently fail due to PostgREST URL length limits.
+
 **R3F rule — never call React setState inside useFrame**: `useFrame` runs every animation frame (60fps). Calling `setState` there causes React to re-render every frame with no error or warning. When bridging imperative animation loops with React state, track previous values and only update on actual changes.
 
 ## Three.js / R3F Patterns

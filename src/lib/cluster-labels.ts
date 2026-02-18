@@ -75,9 +75,10 @@ export function computeClusterLabels(options: ComputeClusterLabelsOptions): Clus
     // Find the hub (node with communityMembers set)
     const hub = visibleMembers.find((m) => m.communityMembers && m.communityMembers.length > 0);
 
-    // Label priority: semantic label > keyword label > first visible member
-    const rawLabel = hub?.hullLabel || hub?.label || visibleMembers[0]?.label || "";
+    // Label priority: semantic label > keyword label
+    const rawLabel = hub?.hullLabel || hub?.label || "";
     const label = rawLabel.toLowerCase();
+    if (!label) continue;
 
     const visibilityRatio = visibleMembers.length / members.length;
 
