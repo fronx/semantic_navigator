@@ -36,8 +36,10 @@ const CHUNKS_DEFAULTS: ChunksSettings = {
   colorSaturation: 0.6,
   minSaturation: 0.45,
   chunkColorMix: 0.4,
-  edgeThickness: 2,
+  edgeThickness: 4,
   edgeMidpoint: 0.6,
+  edgeCountPivot: 200,
+  edgeCountFloor: 0.3,
   nodeSizeMin: 0.6,
   nodeSizeMax: 2.0,
   nodeSizePivot: 30,
@@ -319,6 +321,8 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
               chunkColorMix={store.values.chunkColorMix}
               edgeThickness={store.values.edgeThickness}
               edgeMidpoint={store.values.edgeMidpoint}
+              edgeCountPivot={store.values.edgeCountPivot}
+              edgeCountFloor={store.values.edgeCountFloor}
               nodeSizeMin={store.values.nodeSizeMin}
               nodeSizeMax={store.values.nodeSizeMax}
               nodeSizePivot={store.values.nodeSizePivot}

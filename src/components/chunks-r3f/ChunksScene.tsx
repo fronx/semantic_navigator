@@ -87,6 +87,8 @@ interface ChunksSceneProps {
   chunkColorMix: number;
   edgeThickness: number;
   edgeMidpoint: number;
+  edgeCountPivot: number;
+  edgeCountFloor: number;
   nodeSizeMin: number;
   nodeSizeMax: number;
   nodeSizePivot: number;
@@ -117,6 +119,8 @@ export function ChunksScene({
   chunkColorMix,
   edgeThickness,
   edgeMidpoint,
+  edgeCountPivot,
+  edgeCountFloor,
   nodeSizeMin,
   nodeSizeMax,
   nodeSizePivot,
@@ -841,6 +845,8 @@ export function ChunksScene({
           opacity={edgeOpacity * 0.35}
           edgeThickness={edgeThickness * countScale}
           edgeMidpoint={edgeMidpoint}
+          edgeCountPivot={edgeCountPivot}
+          edgeCountFloor={edgeCountFloor}
           nodeColors={chunkColors}
           previewDimRef={previewDimRef}
           pulledPositionsRef={pulledChunkMapRef}

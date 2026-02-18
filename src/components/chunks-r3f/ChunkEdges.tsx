@@ -17,18 +17,20 @@
  *
  * ## Width computation
  *
- * The target pixel width scales inversely with camera distance so lines grow
- * thicker as you zoom in, clamped to a configurable maximum (default 5 px):
+ * Pixel width is count-driven: more edges → thinner lines, fewer → thicker.
  *
- *   basePixelWidth = clamp(edgeThickness × refZ / cameraZ, 0, maxPx)
+ *   countMul       = floor + (1-floor) × pivot / (pivot + edgeCount)
+ *   basePixelWidth = clamp(edgeThickness × countMul, minPx, maxPx)
  *   effectivePx    = max(basePixelWidth × weightFactor, minPx)
  *   worldHalfWidth = effectivePx × worldUnitsPerPixel / 2
  *
  * `weightFactor` maps each edge's normalized UMAP affinity weight to the
  * range [0.2, 1.0], so the strongest edges are 5× wider than the weakest.
- * Opacity also encodes weight (same as before) for a double visual cue.
+ * Opacity also encodes weight for a double visual cue.
  *
- * The `edgeThickness` slider in ChunksControlSidebar controls the base value.
+ * The `edgeThickness` slider sets the max pixel width (at countMul=1).
+ * `edgeCountPivot` sets the edge count at the midpoint.
+ * `edgeCountFloor` sets the minimum scale factor.
  */
 
 import { useEffect, useMemo, useRef } from "react";
@@ -52,7 +54,6 @@ const VIEWPORT_FADE_SPEED = 0.08;
 
 // Width constants
 const FOV_HALF_TAN = Math.tan((5 * Math.PI) / 180); // half of 10° FOV
-const REFERENCE_Z = 3000;
 
 // Zoom-based contrast: dim when zoomed out (many edges cluttered), sharp when zoomed in
 const CONTRAST_FAR_Z = 6000;
@@ -83,6 +84,8 @@ export interface ChunkEdgesProps {
   opacity: number;
   edgeThickness: number;
   edgeMidpoint: number;
+  edgeCountPivot: number;
+  edgeCountFloor: number;
   focusNodeSet?: Set<number> | null;
   projectOutsideFocus?: boolean;
   nodeColors?: THREE.Color[];
@@ -99,6 +102,8 @@ export function ChunkEdges({
   opacity,
   edgeThickness,
   edgeMidpoint,
+  edgeCountPivot,
+  edgeCountFloor,
   focusNodeSet,
   projectOutsideFocus = false,
   nodeColors,
@@ -173,10 +178,8 @@ export function ChunkEdges({
     const zoomT = Math.max(0, Math.min(1, (cameraZ - CONTRAST_NEAR_Z) / (CONTRAST_FAR_Z - CONTRAST_NEAR_Z)));
     const edgeContrast = CONTRAST_AT_NEAR + (CONTRAST_AT_FAR - CONTRAST_AT_NEAR) * zoomT;
     const worldPerPixel = (2 * cameraZ * FOV_HALF_TAN) / (size.height / gl.getPixelRatio());
-    const basePixelWidth = Math.min(
-      edgeThickness * (REFERENCE_Z / cameraZ),
-      MAX_PIXEL_WIDTH
-    );
+    const countMul = edgeCountFloor + (1 - edgeCountFloor) * (edgeCountPivot / (edgeCountPivot + edges.length));
+    const basePixelWidth = Math.max(MIN_PIXEL_WIDTH, Math.min(edgeThickness * countMul, MAX_PIXEL_WIDTH));
 
     // --- Centroid for arc curvature direction ---
     const nodeCount = positions.length / 2;

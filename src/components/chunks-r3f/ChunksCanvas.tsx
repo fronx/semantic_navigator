@@ -25,6 +25,8 @@ interface ChunksCanvasProps {
   chunkColorMix: number;
   edgeThickness: number;
   edgeMidpoint: number;
+  edgeCountPivot: number;
+  edgeCountFloor: number;
   nodeSizeMin: number;
   nodeSizeMax: number;
   nodeSizePivot: number;
@@ -52,6 +54,8 @@ export function ChunksCanvas({
   chunkColorMix,
   edgeThickness,
   edgeMidpoint,
+  edgeCountPivot,
+  edgeCountFloor,
   nodeSizeMin,
   nodeSizeMax,
   nodeSizePivot,
@@ -102,6 +106,8 @@ export function ChunksCanvas({
           chunkColorMix={chunkColorMix}
           edgeThickness={edgeThickness}
           edgeMidpoint={edgeMidpoint}
+          edgeCountPivot={edgeCountPivot}
+          edgeCountFloor={edgeCountFloor}
           nodeSizeMin={nodeSizeMin}
           nodeSizeMax={nodeSizeMax}
           nodeSizePivot={nodeSizePivot}

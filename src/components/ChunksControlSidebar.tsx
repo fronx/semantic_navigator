@@ -28,6 +28,8 @@ export interface ChunksSettings {
   chunkColorMix: number;
   edgeThickness: number;
   edgeMidpoint: number;
+  edgeCountPivot: number;
+  edgeCountFloor: number;
   nodeSizeMin: number;
   nodeSizeMax: number;
   nodeSizePivot: number;
@@ -141,6 +143,23 @@ export function ChunksControlSidebar({ store, onRedoUmap, cameraZ }: ChunksContr
           onChange={(v) => update("edgeMidpoint", v)}
           min={0.1}
           max={0.9}
+          step={0.05}
+        />
+        <Slider
+          label="Count pivot"
+          value={values.edgeCountPivot}
+          onChange={(v) => update("edgeCountPivot", v)}
+          min={10}
+          max={500}
+          step={10}
+          format={(v) => `${v}`}
+        />
+        <Slider
+          label="Min scale"
+          value={values.edgeCountFloor}
+          onChange={(v) => update("edgeCountFloor", v)}
+          min={0}
+          max={1}
           step={0.05}
         />
       </Section>
