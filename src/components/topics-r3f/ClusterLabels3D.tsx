@@ -69,6 +69,9 @@ const FADE_START_PX = 60;
 const FADE_END_PX = 100;
 const LABEL_LINE_HEIGHT = 1.05;
 
+/** Lerp speed per frame at 60fps for hover dim transitions (~0.5s) */
+const DIM_LERP_SPEED = 0.03;
+
 interface LabelRegistration {
   communityId: number;
   billboard: THREE.Group | null;
@@ -80,6 +83,7 @@ interface LabelRegistration {
   labelZ: number;
   baseColor: string;       // cluster color (restored when unhovered)
   isHighlighted: boolean;  // tracks current highlight state to avoid thrashing
+  currentDimMul: number;   // animated dim multiplier (lerped toward target each frame)
 }
 
 export function ClusterLabels3D({
@@ -121,7 +125,10 @@ export function ClusterLabels3D({
     []
   );
 
-  useFrame(() => {
+  useFrame((_state, delta) => {
+    const lerpFactor = 1 - Math.pow(1 - DIM_LERP_SPEED, Math.min(delta, 0.1) * 60);
+    const hoveredId = hoveredClusterIdRef?.current ?? null;
+
     labelRegistry.current.forEach((entry) => {
       const { billboard, material, shadowMaterial, baseOpacity, baseFontSize, clusterNodes, labelZ } = entry;
       if (!billboard) return;
@@ -149,14 +156,16 @@ export function ClusterLabels3D({
       // to keep them visible even when small on screen
       const sizeFade = labelFadeT > 0.5 ? 1 - smoothstep(fadeT) : 1.0;
       const baseResult = baseOpacity * sizeFade * fadeInT * (1 - labelFadeT);
-      const hoveredId = hoveredClusterIdRef?.current ?? null;
-      const dimMul = hoveredId !== null
-        ? (entry.communityId === hoveredId ? 1 : hideAllOnHover ? 0 : 0.15)
+
+      // Target dim: matching label stays full, others dim to 0.45 (colored but darker)
+      const targetDimMul = hoveredId !== null
+        ? (entry.communityId === hoveredId ? 1 : hideAllOnHover ? 0.45 : 0.15)
         : 1;
-      const finalOpacity = baseResult * dimMul;
+      entry.currentDimMul = entry.currentDimMul + (targetDimMul - entry.currentDimMul) * lerpFactor;
+      const finalOpacity = baseResult * entry.currentDimMul;
 
       for (const mat of [material, shadowMaterial]) {
-        if (mat.opacity !== finalOpacity) {
+        if (Math.abs(mat.opacity - finalOpacity) > 0.005) {
           mat.opacity = finalOpacity;
           mat.needsUpdate = true;
         }
@@ -383,6 +392,7 @@ function ClusterLabelSprite({
       labelZ,
       baseColor: color,
       isHighlighted: false,
+      currentDimMul: 1,
     };
     registrationRef.current = registration;
     registerLabel(communityId, registration);
