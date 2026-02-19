@@ -5,7 +5,7 @@
  */
 import { useRef, type MutableRefObject } from "react";
 import { clampToBounds } from "@/lib/edge-pulling";
-import { easeOutCubic } from "@/hooks/usePositionInterpolation";
+import { easeInCubic, easeOutCubic } from "@/hooks/usePositionInterpolation";
 
 export interface FocusPushFrame<TId> {
   marginIds: Set<TId>;
@@ -20,6 +20,8 @@ export interface FocusPushOverride {
   y: number;
   /** 0 = at natural position, 1 = fully off screen */
   progress: number;
+  /** True for margin nodes that remain in margin during a re-focus: already off-screen, skip re-animation */
+  stable?: boolean;
 }
 
 type Phase = "idle" | "pushing" | "tracking" | "returning";
@@ -55,12 +57,19 @@ export function useFocusPushAnimation<TId extends string | number>(
   const lastFrameRef = useRef<FocusPushFrame<TId> | null>(null);
   const prevMarginIdsRef = useRef<Set<TId> | null>(null);
 
-  /** Build push animation entries. Includes both nodes entering margin (push off screen)
-   *  and nodes leaving margin (return to natural) for smooth bidirectional animation. */
-  function startPush(frame: FocusPushFrame<TId>) {
+  /** Build push animation entries. Only animates nodes entering or leaving margin.
+   *  Nodes that remain in margin (prevMarginIds provided) stay stable — no re-animation. */
+  function startPush(frame: FocusPushFrame<TId>, prevMarginIds?: Set<TId> | null) {
     const entries = new Map<TId, AnimEntry>();
-    // Nodes in new margin set: push beyond viewport edge
+    // Nodes in new margin set: push beyond viewport edge (skip if already stably there)
     for (const id of frame.marginIds) {
+      const isStable = prevMarginIds?.has(id) && positionsRef.current.has(id);
+      if (isStable) {
+        // Mark as stable so inFleeAnim stays false — no pop, no re-animation
+        const prev = positionsRef.current.get(id)!;
+        positionsRef.current.set(id, { ...prev, stable: true });
+        continue;
+      }
       const pos = frame.getPosition(id);
       const prev = positionsRef.current.get(id);
       const startX = prev?.x ?? pos.x;
@@ -75,9 +84,9 @@ export function useFocusPushAnimation<TId extends string | number>(
       const targetY = frame.camY + (edge.y - frame.camY) * overshootFactor;
       entries.set(id, { startX, startY, targetX, targetY, returning: false });
     }
-    // Nodes leaving margin set: return from edge to natural position
+    // Nodes leaving margin set: return from current position to natural
     for (const [id, override] of positionsRef.current) {
-      if (entries.has(id)) continue; // already handled as push
+      if (entries.has(id) || frame.marginIds.has(id)) continue;
       const natural = frame.getPosition(id);
       entries.set(id, {
         startX: override.x, startY: override.y,
@@ -98,11 +107,10 @@ export function useFocusPushAnimation<TId extends string | number>(
     // 2. Detect transitions and set up animations
     if (isActive && !wasActive) {
       // null → non-null: push
-      startPush(frame);
+      startPush(frame, null);
     } else if (isActive && wasActive && frame.marginIds !== prevMarginIdsRef.current) {
-      // Focus target changed (e.g. clicked keyword B while A was focused):
-      // margin set changed while staying active → re-push with new margins
-      startPush(frame);
+      // Focus target changed: only animate nodes entering/leaving margin, skip stable ones
+      startPush(frame, prevMarginIdsRef.current);
     } else if (!isActive && wasActive) {
       // non-null → null: return
       const lastFrame = lastFrameRef.current!;
@@ -124,8 +132,9 @@ export function useFocusPushAnimation<TId extends string | number>(
     if (anim) {
       const elapsed = performance.now() - anim.startTime;
       const rawT = Math.min(1, elapsed / anim.duration);
-      const t = easeOutCubic(rawT);
       const phase = phaseRef.current;
+      // Push: accelerate into target (nodes shoot off screen). Return: decelerate into rest.
+      const t = phase === "pushing" ? easeInCubic(rawT) : easeOutCubic(rawT);
 
       for (const [id, entry] of anim.entries) {
         positionsRef.current.set(id, {

@@ -984,7 +984,7 @@ export function ChunksScene({
         continue;
       }
 
-      const inFleeAnim = fleeVisible && focusPushRef.current.has(i);
+      const inFleeAnim = fleeVisible && !focusPushRef.current.get(i)?.stable && focusPushRef.current.has(i);
       if (!inFleeAnim && !isChunkNodeVisible(i, visibilityParams)) {
         scaleVec.current.setScalar(0);
         matrixRef.current.compose(posVec.current, quat.current, scaleVec.current);

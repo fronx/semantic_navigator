@@ -81,10 +81,10 @@ interface LabelRegistration {
   baseFontSize: number;
   clusterNodes: SimNode[];
   labelZ: number;
-  baseColor: string;       // cluster color (restored when unhovered)
-  isHighlighted: boolean;  // tracks current highlight state to avoid thrashing
-  currentDimMul: number;   // animated hover dim multiplier (lerped toward target each frame)
-  searchDimMul: number;    // animated search dim multiplier (lerped toward target each frame)
+  baseColor: string;         // cluster color (restored when unhovered)
+  currentHighlightT: number; // animated highlight lerp (0 = base color, 1 = white)
+  currentDimMul: number;     // animated hover dim multiplier (lerped toward target each frame)
+  searchDimMul: number;      // animated search dim multiplier (lerped toward target each frame)
 }
 
 export function ClusterLabels3D({
@@ -115,6 +115,8 @@ export function ClusterLabels3D({
   const tempVec = useMemo(() => new THREE.Vector3(), []);
   const scaleVec = useMemo(() => new THREE.Vector3(), []);
   const cameraPos = useMemo(() => new THREE.Vector3(), []);
+  const tempColor = useMemo(() => new THREE.Color(), []);
+  const whiteColor = useMemo(() => new THREE.Color("white"), []);
 
   const registerLabel = useCallback(
     (communityId: number, data: LabelRegistration | null) => {
@@ -178,10 +180,11 @@ export function ClusterLabels3D({
         }
       }
 
-      const shouldHighlight = hoveredId !== null && entry.communityId === hoveredId;
-      if (shouldHighlight !== entry.isHighlighted) {
-        entry.isHighlighted = shouldHighlight;
-        material.color.set(shouldHighlight ? "white" : entry.baseColor);
+      const targetHighlightT = (hoveredId !== null && entry.communityId === hoveredId) ? 1 : 0;
+      entry.currentHighlightT += (targetHighlightT - entry.currentHighlightT) * lerpFactor;
+      tempColor.set(entry.baseColor).lerp(whiteColor, entry.currentHighlightT);
+      if (!material.color.equals(tempColor)) {
+        material.color.copy(tempColor);
         material.needsUpdate = true;
       }
     });
@@ -361,10 +364,6 @@ function ClusterLabelSprite({
   useEffect(() => {
     if (registrationRef.current) {
       registrationRef.current.baseColor = color;
-      // Only update the rendered color if we're not in highlighted state
-      if (!registrationRef.current.isHighlighted) {
-        material.color.set(color);
-      }
     } else {
       material.color.set(color);
     }
@@ -398,7 +397,7 @@ function ClusterLabelSprite({
       clusterNodes,
       labelZ,
       baseColor: color,
-      isHighlighted: false,
+      currentHighlightT: registrationRef.current?.currentHighlightT ?? 0,
       currentDimMul: registrationRef.current?.currentDimMul ?? 1,
       searchDimMul: registrationRef.current?.searchDimMul ?? 1,
     };
