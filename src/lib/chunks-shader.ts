@@ -12,6 +12,9 @@
 import * as THREE from "three";
 
 const CHUNK_VERTEX_SHADER = /* glsl */ `
+  #include <common>
+  #include <logdepthbuf_pars_vertex>
+
   varying vec2 vUv;
   varying vec3 vColor;
   varying float vOpacity;
@@ -42,12 +45,16 @@ const CHUNK_VERTEX_SHADER = /* glsl */ `
     #else
       gl_Position = projectionMatrix * modelViewMatrix * localPos;
     #endif
+
+    #include <logdepthbuf_vertex>
   }
 `;
 
 // Card dimensions matching CARD_WIDTH=30, CARD_HEIGHT=20 from chunks-geometry.ts.
 // Baked into the shader as constants — change both together if card size changes.
 const CHUNK_FRAGMENT_SHADER = /* glsl */ `
+  #include <logdepthbuf_pars_fragment>
+
   varying vec2 vUv;
   varying vec3 vColor;
   varying float vOpacity;
@@ -59,6 +66,10 @@ const CHUNK_FRAGMENT_SHADER = /* glsl */ `
   }
 
   void main() {
+    // Must be before any discard — log depth write is skipped for discarded fragments
+    // if this comes after, silently breaking depth precision for antialiased card edges.
+    #include <logdepthbuf_fragment>
+
     // Map UV [0,1] → card local coords: x in [-15,15], y in [-10,10]
     vec2 p = (vUv - 0.5) * vec2(30.0, 20.0);
 
@@ -88,6 +99,9 @@ export function createChunkShaderMaterial(): THREE.ShaderMaterial {
     transparent: true,
     depthTest: true,
     depthWrite: true,
+    polygonOffset: true,
+    polygonOffsetFactor: 0,
+    polygonOffsetUnits: 4,
   });
   material.toneMapped = false;
   return material;

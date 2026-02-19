@@ -88,7 +88,7 @@ export function ChunksCanvas({
           near: 1,
           far: 100000,
         }}
-        gl={{ antialias: true, alpha: false }}
+        gl={{ antialias: true, alpha: false, logarithmicDepthBuffer: true }}
         style={{ width: "100%", height: "100%" }}
         onPointerMissed={() => backgroundClickRef.current?.()}
       >
