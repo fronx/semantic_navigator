@@ -66,6 +66,11 @@ const MAX_PROMINENT_SCREEN_FRACTION = 0.85;
 const MAX_PULLED_SCREEN_FRACTION = 0.1;
 /** Focus-set pulled nodes must be at least this large so they're clearly clickable. */
 const MIN_FOCUS_PULLED_SCREEN_FRACTION = 0.07;
+/** Opacity applied to non-member nodes during cluster label hover. */
+const CLUSTER_HOVER_DIM = 0.15;
+/** Minimum effective label opacity for cluster label interactions to take precedence over cards.
+ * Labels must be near full bloom (not mid-fade) before they get interaction priority. */
+const CLUSTER_LABEL_INTERACTION_THRESHOLD = 0.70;
 /**
  * Screen height thresholds (px) for per-instance shape morphing.
  * Above NEAR_PX → rectangle (readable card). Below FAR_PX → circle (dot).
@@ -257,8 +262,63 @@ export function ChunksScene({
     focusSeedsRef.current = focusSeeds;
   }, [focusSeeds]);
 
+  const [clusterFocusSet, setClusterFocusSet] = useState<Set<number> | null>(null);
+  const clusterFocusSetRef = useRef(clusterFocusSet);
+  useEffect(() => { clusterFocusSetRef.current = clusterFocusSet; }, [clusterFocusSet]);
+
   const clearFocus = useCallback(() => {
     setFocusSeeds([]);
+    setClusterFocusSet(null);
+  }, []);
+
+  const handleCoarseClusterHover = useCallback((clusterId: number | null) => {
+    labelHoveredCoarseClusterIdRef.current = clusterId;
+    if (clusterId === null || !coarseClustersRef.current) {
+      hoveredClusterMemberSetRef.current.clear();
+      return;
+    }
+    const members = new Set<number>();
+    const clusters = coarseClustersRef.current;
+    for (let i = 0; i < chunksRef.current.length; i++) {
+      if (clusters[i] === clusterId) members.add(i);
+    }
+    hoveredClusterMemberSetRef.current = members;
+  }, []);
+
+  const handleFineClusterHover = useCallback((clusterId: number | null) => {
+    labelHoveredFineClusterIdRef.current = clusterId;
+    if (clusterId === null || !fineClustersRef.current) {
+      hoveredClusterMemberSetRef.current.clear();
+      return;
+    }
+    const members = new Set<number>();
+    const clusters = fineClustersRef.current;
+    for (let i = 0; i < chunksRef.current.length; i++) {
+      if (clusters[i] === clusterId) members.add(i);
+    }
+    hoveredClusterMemberSetRef.current = members;
+  }, []);
+
+  const handleCoarseClusterClick = useCallback((clusterId: number) => {
+    const clusters = coarseClustersRef.current;
+    if (!clusters) return;
+    const members = new Set<number>();
+    for (let i = 0; i < chunksRef.current.length; i++) {
+      if (clusters[i] === clusterId) members.add(i);
+    }
+    setFocusSeeds([]);
+    setClusterFocusSet(members);
+  }, []);
+
+  const handleFineClusterClick = useCallback((clusterId: number) => {
+    const clusters = fineClustersRef.current;
+    if (!clusters) return;
+    const members = new Set<number>();
+    for (let i = 0; i < chunksRef.current.length; i++) {
+      if (clusters[i] === clusterId) members.add(i);
+    }
+    setFocusSeeds([]);
+    setClusterFocusSet(members);
   }, []);
 
   useEffect(() => {
@@ -278,7 +338,7 @@ export function ChunksScene({
 
   // Focus zoom exit hook - exits lens mode when zooming out
   const { handleZoomChange, captureEntryZoom, cameraZ } = useFocusZoomExit({
-    isFocused: focusSeeds.length > 0,
+    isFocused: focusSeeds.length > 0 || clusterFocusSet !== null,
     onExitFocus: clearFocus,
     absoluteThreshold: 8000, // 80% of maxDistance=10000
     relativeMultiplier: 1.05,
@@ -289,12 +349,12 @@ export function ChunksScene({
 
   const prevFocusActiveRef = useRef(false);
   useEffect(() => {
-    const isActive = focusSeeds.length > 0;
+    const isActive = focusSeeds.length > 0 || clusterFocusSet !== null;
     if (isActive && !prevFocusActiveRef.current) {
       captureEntryZoom();
     }
     prevFocusActiveRef.current = isActive;
-  }, [focusSeeds.length, captureEntryZoom]);
+  }, [focusSeeds.length, clusterFocusSet, captureEntryZoom]);
 
   const {
     positions: layoutPositions,
@@ -327,12 +387,17 @@ export function ChunksScene({
     return map;
   }, [neighborhoodEdges]);
 
-  const lensInfo = useMemo<LensInfo | null>(
-    () => focusSeedIndices.length === 0 ? null : computeDualFocusNeighborhood(focusSeedIndices, adjacency, LENS_MAX_HOPS),
-    [focusSeedIndices, adjacency],
-  );
+  const lensInfo = useMemo<LensInfo | null>(() => {
+    if (clusterFocusSet !== null) {
+      const depthMap = new Map<number, number>();
+      for (const idx of clusterFocusSet) depthMap.set(idx, 0);
+      return { focusIndices: [], nodeSet: clusterFocusSet, depthMap };
+    }
+    if (focusSeedIndices.length === 0) return null;
+    return computeDualFocusNeighborhood(focusSeedIndices, adjacency, LENS_MAX_HOPS);
+  }, [clusterFocusSet, focusSeedIndices, adjacency]);
 
-  const lensActive = !!lensInfo && focusSeedIndices.length > 0 && !isRunning;
+  const lensActive = !!lensInfo && (focusSeedIndices.length > 0 || clusterFocusSet !== null) && !isRunning;
   const lensInfoRef = useRef(lensInfo);
   lensInfoRef.current = lensInfo;
   const lensActiveRef = useRef(lensActive);
@@ -379,11 +444,12 @@ export function ChunksScene({
     if (!focusChunk) return;
     const index = chunks.findIndex((c) => c.id === focusChunk.id);
     if (index < 0) return;
+    setClusterFocusSet(null);
     addFocusSeeds([index]);
     const x = layoutPositionsRef.current[index * 2];
     const y = layoutPositionsRef.current[index * 2 + 1];
     if (x !== undefined && y !== undefined) flyToRef.current?.(x, y);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusChunk]);
 
   const focusEdgesVersion = lensActive
@@ -518,6 +584,10 @@ export function ChunksScene({
       flyToRef.current(pulled.realX, pulled.realY);
     }
     onSelectChunk(chunks[index].id);
+    // Exit cluster focus mode when user clicks a node — enters single-node walk.
+    if (clusterFocusSetRef.current !== null) {
+      setClusterFocusSet(null);
+    }
     addFocusSeeds([index]);
   }, [bringToFront, onSelectChunk, addFocusSeeds, chunks]);
 
@@ -569,6 +639,18 @@ export function ChunksScene({
   // Track which cluster the currently-hovered card belongs to, for label dimming
   const hoveredCoarseClusterIdRef = useRef<number | null>(null);
   const hoveredFineClusterIdRef = useRef<number | null>(null);
+  // Set by onClusterLabelHover callbacks; merged into hoveredXxxClusterIdRef in useFrame.
+  const labelHoveredCoarseClusterIdRef = useRef<number | null>(null);
+  const labelHoveredFineClusterIdRef = useRef<number | null>(null);
+  // Chunk indices belonging to the currently-hovered cluster label (empty = no cluster hover).
+  const hoveredClusterMemberSetRef = useRef<Set<number>>(new Set());
+
+  const chunksRef = useRef(chunks);
+  chunksRef.current = chunks;
+  const coarseClustersRef = useRef(coarseClusters);
+  coarseClustersRef.current = coarseClusters;
+  const fineClustersRef = useRef(fineClusters);
+  fineClustersRef.current = fineClusters;
 
   // Proxy SimNode arrays for ClusterLabels3D — positions read live from displayPositionsRef
   const { coarseLabelNodes, coarseNodeToCluster, fineLabelNodes, fineNodeToCluster } = useMemo(() => {
@@ -736,7 +818,24 @@ export function ChunksScene({
 
     // Proximity hover: when no direct raycasting hit, find nearest card within hoverRadius.
     // Disabled during panning so cards don't light up as the camera sweeps past them.
-    if (!isDirectHitRef.current && !isDraggingNode && !isPanningRef.current && hoverRadiusRef.current > 0) {
+    // Also suppressed when a cluster label is hovered — label interaction takes precedence.
+    // Compute interaction-active here (before the clusterLabelHovered check) so we can clear
+    // stale refs if labels zoomed out or unmounted without firing a pointerout event.
+    const coarseInteractionActive = coarseFadeInRef.current * (1 - coarseFadeOutRef.current) > CLUSTER_LABEL_INTERACTION_THRESHOLD;
+    const fineInteractionActive = fineFadeInRef.current * (1 - fineFadeOutRef.current) > CLUSTER_LABEL_INTERACTION_THRESHOLD;
+    if (!coarseInteractionActive && labelHoveredCoarseClusterIdRef.current !== null) {
+      labelHoveredCoarseClusterIdRef.current = null;
+      hoveredClusterMemberSetRef.current.clear();
+    }
+    if (!fineInteractionActive && labelHoveredFineClusterIdRef.current !== null) {
+      labelHoveredFineClusterIdRef.current = null;
+      hoveredClusterMemberSetRef.current.clear();
+    }
+    const clusterLabelHovered = labelHoveredCoarseClusterIdRef.current !== null || labelHoveredFineClusterIdRef.current !== null;
+    if (clusterLabelHovered) {
+      hoveredIndexRef.current = null;
+      isDirectHitRef.current = false;
+    } else if (!isDirectHitRef.current && !isDraggingNode && !isPanningRef.current && hoverRadiusRef.current > 0) {
       const camZForProx = camera.position.z;
       const fovRadForProx = THREE.MathUtils.degToRad((camera as THREE.PerspectiveCamera).fov);
       const halfH = Math.tan(fovRadForProx / 2) * camZForProx;
@@ -760,12 +859,14 @@ export function ChunksScene({
     prevHoveredRef.current = hovered;
 
     // Update cluster ID refs for label dimming (read per-frame by ClusterLabels3D).
-    hoveredCoarseClusterIdRef.current = hovered !== null && coarseClusters
-      ? (coarseClusters[hovered] ?? null)
-      : null;
-    hoveredFineClusterIdRef.current = hovered !== null && fineClusters
-      ? (fineClusters[hovered] ?? null)
-      : null;
+    // Label hover takes precedence over card-based cluster detection.
+    // Only propagate card-based cluster ID when labels are NOT interactive —
+    // otherwise any tiny card hover hides the visible labels (flicker).
+    // (coarseInteractionActive / fineInteractionActive already computed above for stale-clearing)
+    hoveredCoarseClusterIdRef.current = labelHoveredCoarseClusterIdRef.current
+      ?? (!coarseInteractionActive && hovered !== null && coarseClusters ? (coarseClusters[hovered] ?? null) : null);
+    hoveredFineClusterIdRef.current = labelHoveredFineClusterIdRef.current
+      ?? (!fineInteractionActive && hovered !== null && fineClusters ? (fineClusters[hovered] ?? null) : null);
 
     // Animate hover scale: progress 0->1 on hover-in, 1->0 on hover-out, over HOVER_DURATION.
     const hoverProgress = hoverProgressRef.current;
@@ -847,7 +948,7 @@ export function ChunksScene({
       const hoverScale = 1 + (effectiveHoverMul - 1) * t;
       // Height: pulled=compact, focus seed=full, others expand in proportion to zoom-readiness.
       const actualHeightRatio = heightRatiosRef.current[i] ?? 1;
-      const isFocusSeed = lensInfoRef.current?.depthMap.get(i) === 0;
+      const isFocusSeed = clusterFocusSetRef.current === null && lensInfoRef.current?.depthMap.get(i) === 0;
       const isHoveredNode = hoveredIndexRef.current === i;
       const heightRatio = isPulled ? 1
         : isFocusSeed ? actualHeightRatio
@@ -931,12 +1032,16 @@ export function ChunksScene({
         tempColor.current.setHSL(hslTemp.current.h, hslTemp.current.s, hslTemp.current.l);
         // Dim factors go to per-instance opacity (fade to transparent, not black)
         const searchOpacity = searchActive ? (searchOpacitiesRef.current.get(chunks[i].id) ?? 1.0) : 1.0;
-        const previewDim = previewDimRef.current.get(i) ?? 1.0;
+        const clusterHoverActive = hoveredClusterMemberSetRef.current.size > 0;
+        const isClusterHoverMember = clusterHoverActive && hoveredClusterMemberSetRef.current.has(i);
+        const previewDim = clusterHoverActive
+          ? (isClusterHoverMember ? 1.0 : CLUSTER_HOVER_DIM)
+          : (previewDimRef.current.get(i) ?? 1.0);
         const pulledDim = pullResult.pulledMap.has(i) ? PULLED_COLOR_FACTOR : 1.0;
         if (opacityAttr) (opacityAttr.array as Float32Array)[i] = searchOpacity * previewDim * pulledDim;
-        const isFocusSeed = lensInfoRef.current?.depthMap.get(i) === 0;
+        const isFocusSeed = clusterFocusSetRef.current === null && lensInfoRef.current?.depthMap.get(i) === 0;
         const isHovered = hoveredIndexRef.current === i;
-        applyFocusGlow(tempColor.current, glowTarget, isFocusSeed, isHovered);
+        applyFocusGlow(tempColor.current, glowTarget, isFocusSeed, isHovered || isClusterHoverMember);
         mesh.setColorAt(i, tempColor.current);
       }
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
@@ -952,6 +1057,9 @@ export function ChunksScene({
   });
 
   const shouldRenderEdges = !isRunning && focusEdges.length > 0 && edgeOpacity > 0;
+
+  const coarseInteractionEnabled = !lensActive && coarseFadeInT * (1 - coarseFadeOutT) > CLUSTER_LABEL_INTERACTION_THRESHOLD;
+  const fineInteractionEnabled = !lensActive && fineFadeInT * (1 - fineFadeOutT) > CLUSTER_LABEL_INTERACTION_THRESHOLD;
 
   // Use overridden positions if focus push or edge pulling is active, else raw layout
   const hasOverrides = (focusPushRef.current.size > 0 || pulledChunkMapRef.current.size > 0)
@@ -1028,6 +1136,9 @@ export function ChunksScene({
           colorDesaturation={coarseDesaturation}
           hoveredClusterIdRef={hoveredCoarseClusterIdRef}
           hideAllOnHover
+          interactionEnabled={coarseInteractionEnabled}
+          onClusterLabelHover={handleCoarseClusterHover}
+          onClusterLabelClick={handleCoarseClusterClick}
         />
       )}
       {fineLabels && fineNodeToCluster.size > 0 && !isRunning && (
@@ -1043,6 +1154,9 @@ export function ChunksScene({
           colorDesaturation={fineDesaturation}
           hoveredClusterIdRef={hoveredFineClusterIdRef}
           hideAllOnHover
+          interactionEnabled={fineInteractionEnabled}
+          onClusterLabelHover={handleFineClusterHover}
+          onClusterLabelClick={handleFineClusterClick}
         />
       )}
     </>

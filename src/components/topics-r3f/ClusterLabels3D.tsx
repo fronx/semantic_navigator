@@ -57,6 +57,10 @@ export interface ClusterLabels3DProps {
   hoveredClusterIdRef?: MutableRefObject<number | null>;
   /** When true, hide ALL labels while hoveredClusterIdRef is non-null (for ChunksView where hovered card should dominate). */
   hideAllOnHover?: boolean;
+  /** Called when pointer enters/leaves a label. null = pointer left. */
+  onClusterLabelHover?: (clusterId: number | null) => void;
+  /** When false, pointer events (hover + click) are disabled. Default true. */
+  interactionEnabled?: boolean;
 }
 
 const DEFAULT_MIN_SCREEN_PX = 14;
@@ -74,6 +78,8 @@ interface LabelRegistration {
   baseFontSize: number;
   clusterNodes: SimNode[];
   labelZ: number;
+  baseColor: string;       // cluster color (restored when unhovered)
+  isHighlighted: boolean;  // tracks current highlight state to avoid thrashing
 }
 
 export function ClusterLabels3D({
@@ -95,6 +101,8 @@ export function ClusterLabels3D({
   useSemanticFonts = true,
   hoveredClusterIdRef,
   hideAllOnHover = false,
+  onClusterLabelHover,
+  interactionEnabled = true,
 }: ClusterLabels3DProps) {
   const { camera, size } = useThree();
   const labelRegistry = useRef(new Map<number, LabelRegistration>());
@@ -143,7 +151,7 @@ export function ClusterLabels3D({
       const baseResult = baseOpacity * sizeFade * fadeInT * (1 - labelFadeT);
       const hoveredId = hoveredClusterIdRef?.current ?? null;
       const dimMul = hoveredId !== null
-        ? (hideAllOnHover ? 0 : entry.communityId !== hoveredId ? 0.15 : 1)
+        ? (entry.communityId === hoveredId ? 1 : hideAllOnHover ? 0 : 0.15)
         : 1;
       const finalOpacity = baseResult * dimMul;
 
@@ -152,6 +160,13 @@ export function ClusterLabels3D({
           mat.opacity = finalOpacity;
           mat.needsUpdate = true;
         }
+      }
+
+      const shouldHighlight = hoveredId !== null && entry.communityId === hoveredId;
+      if (shouldHighlight !== entry.isHighlighted) {
+        entry.isHighlighted = shouldHighlight;
+        material.color.set(shouldHighlight ? "white" : entry.baseColor);
+        material.needsUpdate = true;
       }
     });
   });
@@ -224,6 +239,8 @@ export function ClusterLabels3D({
             labelZ={labelZ}
             shadowStrength={shadowStrength}
             useSemanticFonts={useSemanticFonts}
+            onClusterLabelHover={onClusterLabelHover}
+            interactionEnabled={interactionEnabled}
           />
         );
       })}
@@ -245,6 +262,8 @@ interface ClusterLabelSpriteProps {
   labelZ: number;
   shadowStrength: number;
   useSemanticFonts: boolean;
+  onClusterLabelHover?: (clusterId: number | null) => void;
+  interactionEnabled?: boolean;
 }
 
 function ClusterLabelSprite({
@@ -261,6 +280,8 @@ function ClusterLabelSprite({
   labelZ,
   shadowStrength,
   useSemanticFonts,
+  onClusterLabelHover,
+  interactionEnabled = true,
 }: ClusterLabelSpriteProps) {
   // Get semantic font for this label (falls back to default if disabled)
   const fontUrl = useMemo(
@@ -281,6 +302,15 @@ function ClusterLabelSprite({
     const { min, max } = geometryEntry.planeBounds;
     return [(min.x + max.x) / 2, (min.y + max.y) / 2];
   }, [geometryEntry]);
+
+  // Invisible hit plane covering text bounds + halo for reliable hover/click detection.
+  // Placed as a Billboard sibling (not inside the group) so (0,0) is already centered on text.
+  const hitPlaneDims = useMemo<[number, number] | null>(() => {
+    if (!geometryEntry) return null;
+    const { min, max } = geometryEntry.planeBounds;
+    const halo = baseFontSize * 0.8;
+    return [max.x - min.x + halo * 2, max.y - min.y + halo * 2];
+  }, [geometryEntry, baseFontSize]);
   const material = useMemo(
     () =>
       new THREE.MeshBasicMaterial({
@@ -313,7 +343,15 @@ function ClusterLabelSprite({
   }, [baseOpacity]);
 
   useEffect(() => {
-    material.color.set(color);
+    if (registrationRef.current) {
+      registrationRef.current.baseColor = color;
+      // Only update the rendered color if we're not in highlighted state
+      if (!registrationRef.current.isHighlighted) {
+        material.color.set(color);
+      }
+    } else {
+      material.color.set(color);
+    }
   }, [material, color]);
 
   useEffect(() => {
@@ -343,6 +381,8 @@ function ClusterLabelSprite({
       baseFontSize,
       clusterNodes,
       labelZ,
+      baseColor: color,
+      isHighlighted: false,
     };
     registrationRef.current = registration;
     registerLabel(communityId, registration);
@@ -358,10 +398,26 @@ function ClusterLabelSprite({
     }
   }, [baseOpacity]);
 
-  const handleClick = onClusterLabelClick
+  const handleClick = (onClusterLabelClick && interactionEnabled)
     ? (event: ThreeEvent<MouseEvent>) => {
         event.stopPropagation();
         onClusterLabelClick(communityId);
+      }
+    : undefined;
+
+  const handlePointerOver = (onClusterLabelHover && interactionEnabled)
+    ? (event: ThreeEvent<PointerEvent>) => {
+        event.stopPropagation();
+        onClusterLabelHover(communityId);
+      }
+    : undefined;
+
+  // Not gated by interactionEnabled — pointer-out must always clear hover state,
+  // even if interactionEnabled flips false mid-hover (e.g. during zoom transition).
+  const handlePointerOut = onClusterLabelHover
+    ? (event: ThreeEvent<PointerEvent>) => {
+        event.stopPropagation();
+        onClusterLabelHover(null);
       }
     : undefined;
 
@@ -378,8 +434,24 @@ function ClusterLabelSprite({
 
   const shadowOffset = baseFontSize * (2 / DEFAULT_BASE_FONT_SIZE);
 
+  const hasInteraction = !!(handleClick || handlePointerOver || handlePointerOut);
+
   return (
     <Billboard ref={setBillboardRef} position={position} follow={false} lockZ>
+      {/* Invisible hit plane: covers full text bounds + halo so gaps between letters are interactive.
+          Offset matches the inner group so the plane is centered on the rendered text. */}
+      {hasInteraction && hitPlaneDims && (
+        <mesh
+          position={[-anchorOffset[0], -anchorOffset[1], -0.1]}
+          frustumCulled={false}
+          onClick={handleClick}
+          onPointerOver={handlePointerOver}
+          onPointerOut={handlePointerOut}
+        >
+          <planeGeometry args={hitPlaneDims} />
+          <meshBasicMaterial transparent opacity={0} depthTest={false} depthWrite={false} />
+        </mesh>
+      )}
       <group position={[-anchorOffset[0], -anchorOffset[1], 0]}>
         {/* Shadow layer positioned close behind text */}
         {shadowStrength > 0 && (
@@ -390,12 +462,11 @@ function ClusterLabelSprite({
             frustumCulled={false}
           />
         )}
-        {/* Label mesh (rendered last, appears in front) */}
+        {/* Label mesh */}
         <mesh
           geometry={geometryEntry.geometry}
           material={material}
           frustumCulled={false}
-          onClick={handleClick}
         />
       </group>
     </Billboard>
