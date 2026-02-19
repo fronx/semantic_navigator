@@ -18,7 +18,7 @@ export interface FocusPushFrame<TId> {
 export interface FocusPushOverride {
   x: number;
   y: number;
-  /** 0 = at natural position, 1 = at viewport edge */
+  /** 0 = at natural position, 1 = fully off screen */
   progress: number;
 }
 
@@ -38,13 +38,15 @@ interface AnimState<TId> {
 }
 
 export function useFocusPushAnimation<TId extends string | number>(
-  options?: { pushDuration?: number; returnDuration?: number },
+  options?: { pushDuration?: number; returnDuration?: number; overshootFactor?: number },
 ): {
   positionsRef: MutableRefObject<Map<TId, FocusPushOverride>>;
+  phaseRef: MutableRefObject<Phase>;
   tick: (frame: FocusPushFrame<TId> | null) => void;
 } {
-  const pushDuration = options?.pushDuration ?? 500;
-  const returnDuration = options?.returnDuration ?? 400;
+  const pushDuration = options?.pushDuration ?? 1200;
+  const returnDuration = options?.returnDuration ?? 900;
+  const overshootFactor = options?.overshootFactor ?? 2.5;
 
   const positionsRef = useRef<Map<TId, FocusPushOverride>>(new Map());
   const phaseRef = useRef<Phase>("idle");
@@ -53,22 +55,25 @@ export function useFocusPushAnimation<TId extends string | number>(
   const lastFrameRef = useRef<FocusPushFrame<TId> | null>(null);
   const prevMarginIdsRef = useRef<Set<TId> | null>(null);
 
-  /** Build push animation entries. Includes both nodes entering margin (push to edge)
+  /** Build push animation entries. Includes both nodes entering margin (push off screen)
    *  and nodes leaving margin (return to natural) for smooth bidirectional animation. */
   function startPush(frame: FocusPushFrame<TId>) {
     const entries = new Map<TId, AnimEntry>();
-    // Nodes in new margin set: push to viewport edge
+    // Nodes in new margin set: push beyond viewport edge
     for (const id of frame.marginIds) {
       const pos = frame.getPosition(id);
       const prev = positionsRef.current.get(id);
       const startX = prev?.x ?? pos.x;
       const startY = prev?.y ?? pos.y;
-      const target = clampToBounds(
+      // Find ray-AABB intersection (viewport edge), then extend by overshootFactor
+      const edge = clampToBounds(
         pos.x, pos.y, frame.camX, frame.camY,
         frame.pullBounds.left, frame.pullBounds.right,
         frame.pullBounds.bottom, frame.pullBounds.top,
       );
-      entries.set(id, { startX, startY, targetX: target.x, targetY: target.y, returning: false });
+      const targetX = frame.camX + (edge.x - frame.camX) * overshootFactor;
+      const targetY = frame.camY + (edge.y - frame.camY) * overshootFactor;
+      entries.set(id, { startX, startY, targetX, targetY, returning: false });
     }
     // Nodes leaving margin set: return from edge to natural position
     for (const [id, override] of positionsRef.current) {
@@ -166,5 +171,5 @@ export function useFocusPushAnimation<TId extends string | number>(
     prevMarginIdsRef.current = frame?.marginIds ?? null;
   }
 
-  return { positionsRef, tick };
+  return { positionsRef, phaseRef, tick };
 }

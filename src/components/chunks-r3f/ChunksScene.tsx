@@ -462,13 +462,6 @@ export function ChunksScene({
     focusActive: lensActive
   });
 
-  const focusEdges = useMemo(() => {
-    if (!lensActive || !lensInfo) return neighborhoodEdges;
-    const set = lensInfo.nodeSet;
-    return neighborhoodEdges.filter(
-      (edge) => set.has(edge.source) && set.has(edge.target),
-    );
-  }, [lensActive, lensInfo, neighborhoodEdges]);
 
   const addFocusSeeds = useCallback((indices: number[]) => {
     if (indices.length === 0) return;
@@ -496,11 +489,7 @@ export function ChunksScene({
     selectedChunkIndexRef.current = index >= 0 ? index : null;
   }, [selectedChunkId, chunks]);
 
-  const focusEdgesVersion = lensActive
-    ? neighborhoodEdgesVersion * 31 + (lensInfo?.nodeSet.size ?? 0)
-    : neighborhoodEdgesVersion;
-
-  const { positionsRef: focusPushRef, tick: tickFocusPush } = useFocusPushAnimation<number>();
+  const { positionsRef: focusPushRef, phaseRef: focusPushPhaseRef, tick: tickFocusPush } = useFocusPushAnimation<number>();
 
   const marginIds = useMemo<Set<number> | null>(() => {
     if (!lensNodeSet) return null;
@@ -513,6 +502,8 @@ export function ChunksScene({
 
   const displayPositionsRef = useRef<Float32Array>(new Float32Array(0));
   const pulledChunkMapRef = useRef<Map<number, PulledChunkNode>>(new Map());
+  // Maps node index → (1 - progress) for edges connected to fleeing/returning nodes
+  const fleeDimRef = useRef<Map<number, number>>(new Map());
   const flyToRef = useRef<((x: number, y: number) => void) | null>(null);
 
   const lensVisibleIdsRef = useRef<Set<string | number>>(new Set());
@@ -837,6 +828,13 @@ export function ChunksScene({
       camY: zones.viewport.camY,
     } : null);
 
+    // Sync flee opacity for edges: (1 - progress) so edges fade as nodes fly off
+    const fleeMap = fleeDimRef.current;
+    fleeMap.clear();
+    for (const [idx, override] of focusPushRef.current) {
+      fleeMap.set(idx, 1 - override.progress);
+    }
+
     // Edge pulling: classify chunks and compute pulled positions
     const pullResult = computeChunkPullState({
       positions: layoutPositions,
@@ -952,6 +950,11 @@ export function ChunksScene({
     chunkScreenRectsRef.current.clear();
     const cardZStep = n > 1 ? CARD_Z_RANGE / n : CARD_Z_RANGE;
 
+    // Nodes actively fleeing (pushing) or returning from off-screen are visible even
+    // though lensActive hides them from isChunkNodeVisible.
+    const fleePhase = focusPushPhaseRef.current;
+    const fleeVisible = fleePhase === "pushing" || fleePhase === "returning";
+
     // Compute world-units-per-pixel once per frame (cards are near z=0, camera looks down z-axis).
     const camZ = camera.position.z;
     const fovRad = THREE.MathUtils.degToRad((camera as THREE.PerspectiveCamera).fov);
@@ -981,7 +984,8 @@ export function ChunksScene({
         continue;
       }
 
-      if (!isChunkNodeVisible(i, visibilityParams)) {
+      const inFleeAnim = fleeVisible && focusPushRef.current.has(i);
+      if (!inFleeAnim && !isChunkNodeVisible(i, visibilityParams)) {
         scaleVec.current.setScalar(0);
         matrixRef.current.compose(posVec.current, quat.current, scaleVec.current);
         mesh.setMatrixAt(i, matrixRef.current);
@@ -1097,7 +1101,7 @@ export function ChunksScene({
       || brightnessRef.current !== prevBrightnessRef.current;
 
     const previewActive = previewDimRef.current.size > 0;
-    if (colorChunksRef.current !== chunkColors || colorDirtyRef.current || desatChanged || previewActive || pullResult.pulledMap.size > 0 || lensActiveRef.current || !mesh.instanceColor) {
+    if (colorChunksRef.current !== chunkColors || colorDirtyRef.current || desatChanged || previewActive || pullResult.pulledMap.size > 0 || lensActiveRef.current || focusPushRef.current.size > 0 || !mesh.instanceColor) {
       const searchActive = searchOpacitiesRef.current.size > 0;
       initGlowTarget(glowTarget, isDarkMode());
       const opacityAttr = mesh.geometry.getAttribute('instanceOpacity') as THREE.BufferAttribute | null;
@@ -1114,8 +1118,10 @@ export function ChunksScene({
           ? (isClusterHoverMember ? 1.0 : CLUSTER_HOVER_DIM)
           : (previewDimRef.current.get(i) ?? 1.0);
         const pulledDim = pullResult.pulledMap.has(i) ? PULLED_COLOR_FACTOR : 1.0;
+        const fleePush = focusPushRef.current.get(i);
+        const fleeDim = fleePush ? (1 - fleePush.progress) : 1.0;
         const opacityFloor = Math.max(0, (brightnessRef.current - 1) * 0.05);
-        if (opacityAttr) (opacityAttr.array as Float32Array)[i] = Math.max(opacityFloor, searchOpacity * previewDim * pulledDim);
+        if (opacityAttr) (opacityAttr.array as Float32Array)[i] = Math.max(opacityFloor, searchOpacity * previewDim * pulledDim * fleeDim);
         const isFocusSeed = clusterFocusSetRef.current === null && lensInfoRef.current?.depthMap.get(i) === 0;
         const isHovered = hoveredIndexRef.current === i;
         applyFocusGlow(tempColor.current, glowTarget, isFocusSeed, isHovered || isClusterHoverMember);
@@ -1135,7 +1141,7 @@ export function ChunksScene({
     mesh.boundingSphere = null;
   });
 
-  const shouldRenderEdges = !isRunning && focusEdges.length > 0 && edgeOpacity > 0;
+  const shouldRenderEdges = !isRunning && neighborhoodEdges.length > 0 && edgeOpacity > 0;
 
   const coarseInteractionEnabled = coarseFadeInT * (1 - coarseFadeOutT) > CLUSTER_LABEL_INTERACTION_THRESHOLD;
   const fineInteractionEnabled = fineFadeInT * (1 - fineFadeOutT) > CLUSTER_LABEL_INTERACTION_THRESHOLD;
@@ -1150,8 +1156,8 @@ export function ChunksScene({
     <>
       {shouldRenderEdges && (
         <ChunkEdges
-          edges={focusEdges}
-          edgesVersion={focusEdgesVersion}
+          edges={neighborhoodEdges}
+          edgesVersion={neighborhoodEdgesVersion}
           positions={displayPositions}
           opacity={edgeOpacity * 0.35}
           edgeThickness={edgeThickness * countScale}
@@ -1164,6 +1170,7 @@ export function ChunksScene({
           pulledPositionsRef={pulledChunkMapRef}
           searchOpacitiesRef={searchOpacitiesRef}
           chunkIds={chunkIds}
+          fleeDimRef={fleeDimRef}
         />
       )}
       <CameraController

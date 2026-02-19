@@ -102,6 +102,8 @@ export interface ChunkEdgesProps {
   searchOpacitiesRef?: React.RefObject<Map<string, number>>;
   /** Chunk IDs indexed by node index, for search opacity lookup */
   chunkIds?: string[];
+  /** Per-node flee/return opacity (node index → 0..1, absent = 1.0). Min of both endpoints applied. */
+  fleeDimRef?: React.RefObject<Map<number, number>>;
 }
 
 export function ChunkEdges({
@@ -121,6 +123,7 @@ export function ChunkEdges({
   pulledPositionsRef,
   searchOpacitiesRef,
   chunkIds,
+  fleeDimRef,
 }: ChunkEdgesProps) {
   const meshRef = useRef<THREE.Mesh | null>(null);
   const edgeFadeRef = useRef<Float32Array>(new Float32Array(0));
@@ -379,8 +382,12 @@ export function ChunkEdges({
       const previewMul = dimMap && dimMap.size > 0
         ? Math.min(dimMap.get(edge.source) ?? 1, dimMap.get(edge.target) ?? 1)
         : 1;
+      const fleeMap = fleeDimRef?.current;
+      const fleeMul = fleeMap && fleeMap.size > 0
+        ? Math.min(fleeMap.get(edge.source) ?? 1, fleeMap.get(edge.target) ?? 1)
+        : 1;
       const searchMul = isSearchActive ? Math.pow(minEndpointSO, 2) : 1;
-      const rawAlpha = baseAlpha * opacity * edgeFade[edgeIndex] * previewMul * searchMul;
+      const rawAlpha = baseAlpha * opacity * edgeFade[edgeIndex] * previewMul * fleeMul * searchMul;
       const opacityFloor = Math.max(0, (brightness - 1) * 0.1);
       const alpha = Math.max(opacityFloor, rawAlpha);
 
