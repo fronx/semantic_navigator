@@ -62,6 +62,10 @@ const CONTRAST_AT_FAR = 4;
 const CONTRAST_AT_NEAR = 13;
 const MAX_PIXEL_WIDTH = 5;
 const MIN_PIXEL_WIDTH = 0.3;
+/** Minimum pixel width for edges connecting two search-matched nodes. */
+const SEARCH_MATCH_MIN_PIXEL_WIDTH = 1.5;
+/** Opacity threshold above which an endpoint is considered a search match. */
+const SEARCH_MATCH_THRESHOLD = 0.2;
 
 /**
  * Normalized logistic S-curve on [0,1].
@@ -317,7 +321,17 @@ export function ChunkEdges({
       const normalizedWeight = maxWeight > 0 ? edge.weight / maxWeight : 0;
       const curved = applySCurve(normalizedWeight, edgeContrast, edgeMidpoint);
       const weightFactor = 0.2 + 0.8 * curved;
-      const pixelWidth = Math.max(basePixelWidth * weightFactor, MIN_PIXEL_WIDTH);
+
+      // Search opacity — computed once, reused for both width floor and alpha dim
+      const searchMap = searchOpacitiesRef?.current;
+      const isSearchActive = !!(searchMap && searchMap.size > 0 && chunkIds);
+      const sourceSO = isSearchActive ? (searchMap!.get(chunkIds![edge.source]) ?? 1) : 1;
+      const targetSO = isSearchActive ? (searchMap!.get(chunkIds![edge.target]) ?? 1) : 1;
+      const minEndpointSO = Math.min(sourceSO, targetSO);
+      const isMatchedEdge = isSearchActive && sourceSO > SEARCH_MATCH_THRESHOLD && targetSO > SEARCH_MATCH_THRESHOLD;
+      const searchMinPx = isMatchedEdge ? SEARCH_MATCH_MIN_PIXEL_WIDTH : 0;
+
+      const pixelWidth = Math.max(basePixelWidth * weightFactor, MIN_PIXEL_WIDTH, searchMinPx);
       const halfWidth = (pixelWidth * worldPerPixel) / 2;
 
       // Emit ribbon vertices: at each arc point, offset ±halfWidth along the normal
@@ -365,10 +379,7 @@ export function ChunkEdges({
       const previewMul = dimMap && dimMap.size > 0
         ? Math.min(dimMap.get(edge.source) ?? 1, dimMap.get(edge.target) ?? 1)
         : 1;
-      const searchMap = searchOpacitiesRef?.current;
-      const searchMul = searchMap && searchMap.size > 0 && chunkIds
-        ? Math.pow(Math.min(searchMap.get(chunkIds[edge.source]) ?? 1, searchMap.get(chunkIds[edge.target]) ?? 1), 2)
-        : 1;
+      const searchMul = isSearchActive ? Math.pow(minEndpointSO, 2) : 1;
       const rawAlpha = baseAlpha * opacity * edgeFade[edgeIndex] * previewMul * searchMul;
       const opacityFloor = Math.max(0, (brightness - 1) * 0.1);
       const alpha = Math.max(opacityFloor, rawAlpha);

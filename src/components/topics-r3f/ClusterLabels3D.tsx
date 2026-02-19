@@ -83,7 +83,8 @@ interface LabelRegistration {
   labelZ: number;
   baseColor: string;       // cluster color (restored when unhovered)
   isHighlighted: boolean;  // tracks current highlight state to avoid thrashing
-  currentDimMul: number;   // animated dim multiplier (lerped toward target each frame)
+  currentDimMul: number;   // animated hover dim multiplier (lerped toward target each frame)
+  searchDimMul: number;    // animated search dim multiplier (lerped toward target each frame)
 }
 
 export function ClusterLabels3D({
@@ -110,6 +111,7 @@ export function ClusterLabels3D({
 }: ClusterLabels3DProps) {
   const { camera, size } = useThree();
   const labelRegistry = useRef(new Map<number, LabelRegistration>());
+  const clusterSearchOpacityRef = useRef<Map<number, number> | null>(null);
   const tempVec = useMemo(() => new THREE.Vector3(), []);
   const scaleVec = useMemo(() => new THREE.Vector3(), []);
   const cameraPos = useMemo(() => new THREE.Vector3(), []);
@@ -162,7 +164,12 @@ export function ClusterLabels3D({
         ? (entry.communityId === hoveredId ? 1 : hideAllOnHover ? 0.45 : 0.15)
         : 1;
       entry.currentDimMul = entry.currentDimMul + (targetDimMul - entry.currentDimMul) * lerpFactor;
-      const finalOpacity = baseResult * entry.currentDimMul;
+
+      // Search dim: clusters without matching results fade out
+      const targetSearchDimMul = clusterSearchOpacityRef.current?.get(entry.communityId) ?? 1;
+      entry.searchDimMul = entry.searchDimMul + (targetSearchDimMul - entry.searchDimMul) * lerpFactor;
+
+      const finalOpacity = baseResult * entry.currentDimMul * entry.searchDimMul;
 
       for (const mat of [material, shadowMaterial]) {
         if (Math.abs(mat.opacity - finalOpacity) > 0.005) {
@@ -217,6 +224,7 @@ export function ClusterLabels3D({
     () => buildClusterSearchOpacity(nodeToCluster, searchOpacities),
     [nodeToCluster, searchOpacities]
   );
+  clusterSearchOpacityRef.current = clusterSearchOpacity;
 
   if (!visible || labelData.length === 0) {
     return null;
@@ -230,8 +238,7 @@ export function ClusterLabels3D({
         );
         const text = data.label.split(/\s+/).join("\n");
         const visibilityOpacity = Math.max(0.2, data.visibilityRatio) * 0.7;
-        const searchOpacity = clusterSearchOpacity?.get(data.communityId) ?? 1;
-        const baseOpacity = Math.min(1, visibilityOpacity * searchOpacity);
+        const baseOpacity = Math.min(1, visibilityOpacity);
         return (
           <ClusterLabelSprite
             key={data.communityId}
@@ -392,7 +399,8 @@ function ClusterLabelSprite({
       labelZ,
       baseColor: color,
       isHighlighted: false,
-      currentDimMul: 1,
+      currentDimMul: registrationRef.current?.currentDimMul ?? 1,
+      searchDimMul: registrationRef.current?.searchDimMul ?? 1,
     };
     registrationRef.current = registration;
     registerLabel(communityId, registration);

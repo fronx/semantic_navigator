@@ -66,6 +66,10 @@ const MAX_PROMINENT_SCREEN_FRACTION = 0.85;
 const MAX_PULLED_SCREEN_FRACTION = 0.1;
 /** Focus-set pulled nodes must be at least this large so they're clearly clickable. */
 const MIN_FOCUS_PULLED_SCREEN_FRACTION = 0.07;
+/** Search result nodes are pinned to at least this screen height so they remain visible when zoomed out. */
+const SEARCH_MATCH_MIN_SCREEN_PX = 8;
+/** Opacity threshold above which a chunk is considered a search match (above the 0.1 non-match floor). */
+const SEARCH_MATCH_THRESHOLD = 0.2;
 /** Opacity applied to non-member nodes during cluster label hover. */
 const CLUSTER_HOVER_DIM = 0.15;
 /** Minimum effective label opacity for cluster label interactions to take precedence over cards.
@@ -1025,7 +1029,15 @@ export function ChunksScene({
           : MAX_CARD_SCREEN_FRACTION;
       const maxFinalScale = (vpHeight * screenFraction * unitsPerPixel) / (CARD_HEIGHT * heightRatio);
       const isFocusPulled = isPulled && !!lensNodeSet?.has(i);
-      const minFinalScale = isFocusPulled ? Math.min((vpHeight * MIN_FOCUS_PULLED_SCREEN_FRACTION * unitsPerPixel) / (CARD_HEIGHT * heightRatio), baseScale) : 0;
+      const isSearchActive = searchOpacitiesRef.current.size > 0;
+      const searchOpacityForNode = isSearchActive ? (searchOpacitiesRef.current.get(chunks[i].id) ?? 1) : 0;
+      const searchMinScale = !isPulled && isSearchActive && searchOpacityForNode > SEARCH_MATCH_THRESHOLD
+        ? SEARCH_MATCH_MIN_SCREEN_PX * unitsPerPixel / CARD_HEIGHT
+        : 0;
+      const minFinalScale = Math.max(
+        isFocusPulled ? Math.min((vpHeight * MIN_FOCUS_PULLED_SCREEN_FRACTION * unitsPerPixel) / (CARD_HEIGHT * heightRatio), baseScale) : 0,
+        searchMinScale,
+      );
       const focusSeedBoost = computeFocusSeedBoost(isFocusSeed, rawProgress);
       const finalScale = Math.max(Math.min(baseScale * Math.min(hoverScale, maxHoverForVP) * pulledScale * focusSeedBoost, maxFinalScale), minFinalScale);
       const finalScaleY = finalScale * heightRatio;
