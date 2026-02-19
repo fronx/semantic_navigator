@@ -15,6 +15,7 @@ import { OfflineModeToggle } from "@/components/OfflineModeToggle";
 import { InlineTitleInput } from "@/components/InlineTitleInput";
 import { ControlSidebar } from "@/components/ControlSidebar";
 import { GranularityToggle } from "@/components/GranularityToggle";
+import MusicPlayer from "@/components/MusicPlayer";
 import type { KeywordNode, SimilarityEdge, ProjectNode } from "@/lib/graph-queries";
 import type { PrecomputedClusterData } from "@/hooks/useClusterLabels";
 import type { SemanticFilter } from "@/lib/topics-filter";
@@ -577,6 +578,7 @@ export default function TopicsPage() {
           isUpdating={isUpdating}
         />
       </main>
+      <MusicPlayer />
     </div>
   );
 }

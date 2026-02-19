@@ -566,9 +566,26 @@ body {
   gap: 6px;
 }
 
+.music-player-bar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+.music-player-track-title {
+  max-width: 160px;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.75rem;
+  opacity: 0.6;
+}
+
 .music-player-controls {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 6px;
 }
 
@@ -585,6 +602,24 @@ body {
 
 .music-volume-bar {
   height: 3px;
+  border-radius: 1.5px;
+  background: var(--foreground);
+  transition: opacity 0.1s ease;
+}
+
+.music-volume-slider-h {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+}
+
+.music-volume-bar-h {
+  width: 3px;
   border-radius: 1.5px;
   background: var(--foreground);
   transition: opacity 0.1s ease;

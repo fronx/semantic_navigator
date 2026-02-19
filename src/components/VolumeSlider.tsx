@@ -7,9 +7,11 @@ const BAR_COUNT = 8;
 export function VolumeSlider({
   volume,
   onChange,
+  horizontal = false,
 }: {
   volume: number;
   onChange: (v: number) => void;
+  horizontal?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
@@ -22,6 +24,45 @@ export function VolumeSlider({
     },
     [onChange]
   );
+
+  const volumeFromX = useCallback(
+    (clientX: number) => {
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      onChange(Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)));
+    },
+    [onChange]
+  );
+
+  if (horizontal) {
+    return (
+      <div
+        ref={containerRef}
+        className="music-volume-slider-h"
+        onPointerDown={(e) => {
+          draggingRef.current = true;
+          (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+          volumeFromX(e.clientX);
+        }}
+        onPointerMove={(e) => draggingRef.current && volumeFromX(e.clientX)}
+        onPointerUp={() => (draggingRef.current = false)}
+      >
+        {Array.from({ length: BAR_COUNT }, (_, i) => {
+          // i=0 is leftmost (quiet), i=BAR_COUNT-1 is rightmost (loud)
+          const level = (i + 1) / BAR_COUNT;
+          const active = volume >= level - 0.5 / BAR_COUNT;
+          const heightPx = 8 + (i / (BAR_COUNT - 1)) * 14;
+          return (
+            <div
+              key={i}
+              className="music-volume-bar-h"
+              style={{ height: `${heightPx}px`, opacity: active ? 0.9 : 0.2 }}
+            />
+          );
+        })}
+      </div>
+    );
+  }
 
   return (
     <div

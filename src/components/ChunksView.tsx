@@ -13,8 +13,8 @@ import { usePersistedStore } from "@/hooks/usePersistedStore";
 import { useSearch } from "@/hooks/useSearch";
 import { ChunksControlSidebar } from "@/components/ChunksControlSidebar";
 import { ChunksCanvas } from "./chunks-r3f/ChunksCanvas";
+import MusicPlayer from "@/components/MusicPlayer";
 import { Reader } from "@/components/Reader";
-import { exportUmapGraph } from "@/lib/export-umap-graph";
 
 interface CachedLayout {
   positions: number[];
@@ -223,14 +223,6 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
   const progressPercent = Math.round(progress * 100);
   const matchCount = searchResults.length;
 
-  const handleExport = useCallback(() => {
-    if (positions.length === 0) {
-      alert("No graph data to export. Wait for UMAP to complete.");
-      return;
-    }
-    exportUmapGraph(chunks, positions, neighborhoodEdges);
-  }, [chunks, positions, neighborhoodEdges]);
-
   const handleSelectChunk = useCallback((chunkId: string | null) => {
     if (chunkId === null) {
       setSelectedChunkIds([]);
@@ -269,51 +261,50 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
     <div className="flex flex-col h-screen bg-zinc-50 dark:bg-zinc-950">
       {/* Header bar */}
       <header className="flex-shrink-0 px-3 py-1.5 flex items-center gap-4 border-b bg-white dark:bg-zinc-900 dark:border-zinc-800">
-        <input
-          type="text"
-          placeholder="Search chunks..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="flex-1 max-w-md px-3 py-1 text-sm rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-        />
+        {/* Left: search + status indicators — flexible */}
+        <div className="flex-1 min-w-0 flex items-center gap-4">
+          <input
+            type="text"
+            placeholder="Search chunks..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="flex-1 max-w-md px-3 py-1 text-sm rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          />
 
-        {searchLoading && (
-          <span className="text-xs text-zinc-400">Searching...</span>
-        )}
+          {searchLoading && (
+            <span className="text-xs text-zinc-400">Searching...</span>
+          )}
 
-        {isReclustering && (
-          <span className="text-xs text-zinc-400">Relabeling...</span>
-        )}
+          {isReclustering && (
+            <span className="text-xs text-zinc-400">Relabeling...</span>
+          )}
 
-        <span className="text-sm text-zinc-600 dark:text-zinc-400">
-          {searchOpacities.size > 0
-            ? `${matchCount} / ${chunks.length} chunks`
-            : `${chunks.length} chunks`}
-          {isStale && <span className="ml-2 text-amber-600 dark:text-amber-400">(offline)</span>}
-        </span>
+          <span className="text-sm text-zinc-600 dark:text-zinc-400 whitespace-nowrap">
+            {searchOpacities.size > 0
+              ? `${matchCount} / ${chunks.length} chunks`
+              : `${chunks.length} chunks`}
+            {isStale && <span className="ml-2 text-amber-600 dark:text-amber-400">(offline)</span>}
+          </span>
 
-        {displayIsRunning && (
-          <div className="flex items-center gap-2 flex-1 max-w-xs">
-            <div className="flex-1 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
-              <div
-                className="h-full rounded-full bg-blue-500 transition-[width] duration-100 ease-out"
-                style={{ width: `${progressPercent}%` }}
-              />
+          {displayIsRunning && (
+            <div className="flex items-center gap-2 flex-1 max-w-xs">
+              <div className="flex-1 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-blue-500 transition-[width] duration-100 ease-out"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+              <span className="text-xs text-zinc-400">
+                UMAP {progressPercent}%
+              </span>
             </div>
-            <span className="text-xs text-zinc-400">
-              UMAP {progressPercent}%
-            </span>
-          </div>
-        )}
+          )}
+        </div>
 
-        <button
-          onClick={handleExport}
-          disabled={positions.length === 0}
-          className="px-3 py-1 text-sm rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          title="Export graph to JSON file"
-        >
-          Export Graph
-        </button>
+        {/* Right: music — always visible */}
+        <div className="flex-shrink-0 flex items-center gap-4">
+          <MusicPlayer horizontal />
+        </div>
       </header>
 
       {/* Sidebar + Canvas */}

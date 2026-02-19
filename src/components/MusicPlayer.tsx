@@ -20,7 +20,7 @@ function loadSaved(): { url?: string; volume?: number; playing?: boolean } {
   }
 }
 
-export default function MusicPlayer() {
+export default function MusicPlayer({ horizontal = false }: { horizontal?: boolean }) {
   const [tracks, setTracks] = useState<Track[]>([]);
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(() => loadSaved().playing ?? false);
@@ -110,6 +110,32 @@ export default function MusicPlayer() {
 
   const track = tracks[index];
   if (!track) return null;
+
+  if (horizontal) {
+    return (
+      <div className="music-player-bar">
+        <div className="music-player-track-title" title={track.title}>
+          {track.title}
+        </div>
+        <div className="music-player-controls">
+          <button className="music-player-btn" onClick={prev} aria-label="Previous track">
+            <span className="music-icon-prev" />
+          </button>
+          <button
+            className="music-player-btn"
+            onClick={togglePlay}
+            aria-label={playing ? "Pause" : "Play"}
+          >
+            <span className={playing ? "music-icon-pause" : "music-icon-play"} />
+          </button>
+          <button className="music-player-btn" onClick={skip} aria-label="Next track">
+            <span className="music-icon-skip" />
+          </button>
+        </div>
+        <VolumeSlider volume={volume} onChange={setVolume} horizontal />
+      </div>
+    );
+  }
 
   return (
     <div className="music-player">
