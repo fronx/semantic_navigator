@@ -208,6 +208,14 @@ export function Reader({ chunkId, onClose, onActiveChunkChange }: ReaderProps) {
           </div>
         )}
 
+        {displayData && (
+          <div className="pl-20 pr-6 pt-12 pb-6">
+            <h1 className="text-xl font-semibold text-zinc-800 dark:text-zinc-100 leading-snug">
+              {articleTitle(displayData.sourcePath)}
+            </h1>
+          </div>
+        )}
+
         {displayData?.chunks.map((chunk) => {
           const isActiveChunk = chunk.id === displayChunkId;
           const color = getChunkColor(chunk.id) ?? "#9ca3af";
@@ -243,6 +251,8 @@ export function Reader({ chunkId, onClose, onActiveChunkChange }: ReaderProps) {
             </div>
           );
         })}
+
+        {displayData && <div className="pb-16" />}
       </div>
     </div>
   );
