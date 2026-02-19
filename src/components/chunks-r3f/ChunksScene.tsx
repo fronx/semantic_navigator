@@ -35,7 +35,7 @@ import { loadPCATransform, centroidToColor, pcaProject, coordinatesToHSL, comput
 import { calculateZoomDesaturation } from "@/lib/zoom-phase-config";
 import { computeChunkPullState, isChunkNodeVisible, findNearestVisibleChunk, type PulledChunkNode, type ChunkVisibilityParams } from "@/lib/chunks-pull-state";
 import { computeViewportZones, PULLED_SCALE_FACTOR, PULLED_COLOR_FACTOR } from "@/lib/edge-pulling";
-import { applyBrightness, applyFocusGlow, initGlowTarget } from "@/lib/node-color-effects";
+import { applyBrightness, applyFocusGlow, initGlowTarget, HOVER_GLOW_FACTOR } from "@/lib/node-color-effects";
 import { projectCardToScreenRect, type ScreenRect } from "@/lib/screen-rect-projection";
 import { isDarkMode } from "@/lib/theme";
 import { ChunkEdges } from "./ChunkEdges";
@@ -72,6 +72,8 @@ const SEARCH_MATCH_MIN_SCREEN_PX = 8;
 const SEARCH_MATCH_THRESHOLD = 0.2;
 /** Opacity applied to non-member nodes during cluster label hover. */
 const CLUSTER_HOVER_DIM = 0.15;
+/** Lerp speed (per frame at 60fps) for cluster hover dim/glow fade-in. */
+const CLUSTER_HOVER_LERP_SPEED = 0.08;
 /** Minimum effective label opacity for cluster label interactions to take precedence over cards.
  * Labels must be near full bloom (not mid-fade) before they get interaction priority. */
 const CLUSTER_LABEL_INTERACTION_THRESHOLD = 0.70;
@@ -694,6 +696,8 @@ export function ChunksScene({
   const labelHoveredFineClusterIdRef = useRef<number | null>(null);
   // Chunk indices belonging to the currently-hovered cluster label (empty = no cluster hover).
   const hoveredClusterMemberSetRef = useRef<Set<number>>(new Set());
+  // Animated 0→1 intensity for cluster hover dim/glow (lerped in useFrame).
+  const clusterHoverIntensityRef = useRef(0);
 
   const chunksRef = useRef(chunks);
   chunksRef.current = chunks;
@@ -1100,8 +1104,15 @@ export function ChunksScene({
       || minSaturationRef.current !== prevMinSaturationRef.current
       || brightnessRef.current !== prevBrightnessRef.current;
 
+    // Animate cluster hover intensity (0 = no hover, 1 = full hover)
+    const clusterHoverActive = hoveredClusterMemberSetRef.current.size > 0;
+    const clusterLerpFactor = 1 - Math.pow(1 - CLUSTER_HOVER_LERP_SPEED, Math.min(delta, 0.1) * 60);
+    clusterHoverIntensityRef.current += ((clusterHoverActive ? 1 : 0) - clusterHoverIntensityRef.current) * clusterLerpFactor;
+    const clusterIntensity = clusterHoverIntensityRef.current;
+
     const previewActive = previewDimRef.current.size > 0;
-    if (colorChunksRef.current !== chunkColors || colorDirtyRef.current || desatChanged || previewActive || pullResult.pulledMap.size > 0 || lensActiveRef.current || focusPushRef.current.size > 0 || !mesh.instanceColor) {
+    const clusterHoverAnimating = clusterIntensity > 0.001;
+    if (colorChunksRef.current !== chunkColors || colorDirtyRef.current || desatChanged || previewActive || clusterHoverAnimating || pullResult.pulledMap.size > 0 || lensActiveRef.current || focusPushRef.current.size > 0 || !mesh.instanceColor) {
       const searchActive = searchOpacitiesRef.current.size > 0;
       initGlowTarget(glowTarget, isDarkMode());
       const opacityAttr = mesh.geometry.getAttribute('instanceOpacity') as THREE.BufferAttribute | null;
@@ -1112,11 +1123,10 @@ export function ChunksScene({
         tempColor.current.setHSL(hslTemp.current.h, hslTemp.current.s, hslTemp.current.l);
         // Dim factors go to per-instance opacity (fade to transparent, not black)
         const searchOpacity = searchActive ? (searchOpacitiesRef.current.get(chunks[i].id) ?? 1.0) : 1.0;
-        const clusterHoverActive = hoveredClusterMemberSetRef.current.size > 0;
-        const isClusterHoverMember = clusterHoverActive && hoveredClusterMemberSetRef.current.has(i);
-        const previewDim = clusterHoverActive
-          ? (isClusterHoverMember ? 1.0 : CLUSTER_HOVER_DIM)
-          : (previewDimRef.current.get(i) ?? 1.0);
+        const isClusterHoverMember = hoveredClusterMemberSetRef.current.has(i);
+        // Animated cluster dim: non-members fade to CLUSTER_HOVER_DIM, members stay at 1.0
+        const clusterDim = isClusterHoverMember ? 1.0 : 1.0 - clusterIntensity * (1.0 - CLUSTER_HOVER_DIM);
+        const previewDim = Math.min(clusterDim, previewDimRef.current.get(i) ?? 1.0);
         const pulledDim = pullResult.pulledMap.has(i) ? PULLED_COLOR_FACTOR : 1.0;
         const fleePush = focusPushRef.current.get(i);
         const fleeDim = fleePush ? (1 - fleePush.progress) : 1.0;
@@ -1124,7 +1134,11 @@ export function ChunksScene({
         if (opacityAttr) (opacityAttr.array as Float32Array)[i] = Math.max(opacityFloor, searchOpacity * previewDim * pulledDim * fleeDim);
         const isFocusSeed = clusterFocusSetRef.current === null && lensInfoRef.current?.depthMap.get(i) === 0;
         const isHovered = hoveredIndexRef.current === i;
-        applyFocusGlow(tempColor.current, glowTarget, isFocusSeed, isHovered || isClusterHoverMember);
+        applyFocusGlow(tempColor.current, glowTarget, isFocusSeed, isHovered);
+        // Member glow fades in proportional to cluster hover intensity
+        if (isClusterHoverMember && clusterIntensity > 0.001) {
+          tempColor.current.lerp(glowTarget, clusterIntensity * HOVER_GLOW_FACTOR);
+        }
         applyBrightness(tempColor.current, brightnessRef.current);
         mesh.setColorAt(i, tempColor.current);
       }
@@ -1171,6 +1185,8 @@ export function ChunksScene({
           searchOpacitiesRef={searchOpacitiesRef}
           chunkIds={chunkIds}
           fleeDimRef={fleeDimRef}
+          clusterHoverIntensityRef={clusterHoverIntensityRef}
+          clusterHoverMemberSetRef={hoveredClusterMemberSetRef}
         />
       )}
       <CameraController

@@ -104,6 +104,10 @@ export interface ChunkEdgesProps {
   chunkIds?: string[];
   /** Per-node flee/return opacity (node index → 0..1, absent = 1.0). Min of both endpoints applied. */
   fleeDimRef?: React.RefObject<Map<number, number>>;
+  /** Animated cluster hover intensity (0 = no hover, 1 = full). Used with clusterHoverMemberSetRef. */
+  clusterHoverIntensityRef?: React.RefObject<number>;
+  /** Set of chunk indices belonging to the hovered cluster label. */
+  clusterHoverMemberSetRef?: React.RefObject<Set<number>>;
 }
 
 export function ChunkEdges({
@@ -124,6 +128,8 @@ export function ChunkEdges({
   searchOpacitiesRef,
   chunkIds,
   fleeDimRef,
+  clusterHoverIntensityRef,
+  clusterHoverMemberSetRef,
 }: ChunkEdgesProps) {
   const meshRef = useRef<THREE.Mesh | null>(null);
   const edgeFadeRef = useRef<Float32Array>(new Float32Array(0));
@@ -387,7 +393,15 @@ export function ChunkEdges({
         ? Math.min(fleeMap.get(edge.source) ?? 1, fleeMap.get(edge.target) ?? 1)
         : 1;
       const searchMul = isSearchActive ? Math.pow(minEndpointSO, 2) : 1;
-      const rawAlpha = baseAlpha * opacity * edgeFade[edgeIndex] * previewMul * fleeMul * searchMul;
+      const clusterIntensity = clusterHoverIntensityRef?.current ?? 0;
+      let clusterMul = 1.0;
+      if (clusterIntensity > 0.001 && clusterHoverMemberSetRef?.current) {
+        const memberSet = clusterHoverMemberSetRef.current;
+        const srcDim = memberSet.has(edge.source) ? 1.0 : 1.0 - clusterIntensity * (1.0 - 0.15);
+        const tgtDim = memberSet.has(edge.target) ? 1.0 : 1.0 - clusterIntensity * (1.0 - 0.15);
+        clusterMul = Math.min(srcDim, tgtDim);
+      }
+      const rawAlpha = baseAlpha * opacity * edgeFade[edgeIndex] * previewMul * fleeMul * searchMul * clusterMul;
       const opacityFloor = Math.max(0, (brightness - 1) * 0.1);
       const alpha = Math.max(opacityFloor, rawAlpha);
 
