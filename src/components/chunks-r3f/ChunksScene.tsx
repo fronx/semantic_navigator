@@ -110,11 +110,15 @@ interface FocusSeed {
 function ProximityClickPlane({
   hoveredIndexRef,
   isDirectHitRef,
+  lastCardClickRef,
+  doubleClickMs,
   onCardClick,
   onClearFocus,
 }: {
   hoveredIndexRef: React.RefObject<number | null>;
   isDirectHitRef: React.RefObject<boolean>;
+  lastCardClickRef: React.RefObject<{ index: number; time: number } | null>;
+  doubleClickMs: number;
   onCardClick: (index: number) => void;
   onClearFocus: () => void;
 }) {
@@ -127,7 +131,12 @@ function ProximityClickPlane({
         if (idx !== null && !isDirectHitRef.current) {
           onCardClick(idx);
         } else if (idx === null) {
-          onClearFocus();
+          // Suppress background clear if a card was clicked recently — pointer may have
+          // drifted slightly between the two clicks of a double-click, making idx null here
+          // while the user intends a double-click on the card they just clicked.
+          const last = lastCardClickRef.current;
+          const recentCardClick = last !== null && (performance.now() - last.time) < doubleClickMs;
+          if (!recentCardClick) onClearFocus();
         }
       }}
     >
@@ -342,7 +351,7 @@ export function ChunksScene({
   useEffect(() => {
     if (!backgroundClickRef) return;
     const handler = () => {
-      if (focusSeedsRef.current.length > 0) {
+      if (focusSeedsRef.current.length > 0 || clusterFocusSetRef.current !== null) {
         clearFocus();
       }
     };
@@ -598,6 +607,9 @@ export function ChunksScene({
     [chunks.length, meshRef],
   );
 
+  const DOUBLE_CLICK_MS = 300;
+  const lastClickRef = useRef<{ index: number; time: number } | null>(null);
+
   const handleCardClick = useCallback((index: number) => {
     bringToFront(index);
     const pulled = pulledChunkMapRef.current.get(index);
@@ -605,11 +617,18 @@ export function ChunksScene({
       flyToRef.current(pulled.realX, pulled.realY);
     }
     onSelectChunk(chunks[index].id);
-    // Exit cluster focus mode when user clicks a node — enters single-node walk.
-    if (clusterFocusSetRef.current !== null) {
-      setClusterFocusSet(null);
+
+    // Double-click to focus: re-centers lens on the node (works in all focus modes).
+    // Single click only selects (opens Reader) without moving the lens.
+    const now = performance.now();
+    const last = lastClickRef.current;
+    const isDoubleClick = last !== null && last.index === index && (now - last.time) < DOUBLE_CLICK_MS;
+    lastClickRef.current = { index, time: now };
+
+    if (isDoubleClick) {
+      if (clusterFocusSetRef.current !== null) setClusterFocusSet(null);
+      addFocusSeeds([index]);
     }
-    addFocusSeeds([index]);
   }, [bringToFront, onSelectChunk, addFocusSeeds, chunks]);
 
   const dragHandlers = useInstancedMeshDrag({
@@ -1127,6 +1146,8 @@ export function ChunksScene({
       <ProximityClickPlane
         hoveredIndexRef={hoveredIndexRef}
         isDirectHitRef={isDirectHitRef}
+        lastCardClickRef={lastClickRef}
+        doubleClickMs={DOUBLE_CLICK_MS}
         onCardClick={handleCardClick}
         onClearFocus={clearFocus}
       />

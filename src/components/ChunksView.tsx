@@ -231,7 +231,7 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
       return;
     }
     setSelectedChunkIds((prev) => {
-      if (prev.includes(chunkId)) return prev.filter((id) => id !== chunkId);
+      if (prev.includes(chunkId)) return prev; // Already shown — no-op (prevents double-click toggle)
       return prev.length >= 2 ? [prev[1], chunkId] : [...prev, chunkId];
     });
   }, []);
