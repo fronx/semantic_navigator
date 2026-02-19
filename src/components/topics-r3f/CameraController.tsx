@@ -153,7 +153,30 @@ export function CameraController({
   // Ease-out cubic: decelerates smoothly
   const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
 
+  // Compensate camera X when canvas width changes to keep left edge stable.
+  // When the reader panel opens/closes, the canvas narrows/widens from the right.
+  // Without compensation, the world center shifts because the canvas center moved.
+  const prevWidthRef = useRef<number | null>(null);
+
   // Animate flyTo per frame
+  useFrame((state) => {
+    // Viewport-width compensation: keep the left edge of the canvas anchored to the same world point.
+    const currentWidth = state.size.width;
+    const prevWidth = prevWidthRef.current;
+    if (prevWidth !== null && prevWidth !== currentWidth) {
+      const fovRadians = (CAMERA_FOV_DEGREES * Math.PI) / 180;
+      const worldPerPx = (2 * camera.position.z * Math.tan(fovRadians / 2)) / state.size.height;
+      const delta = ((currentWidth - prevWidth) / 2) * worldPerPx;
+      camera.position.x += delta;
+      if (controlsRef.current) {
+        controlsRef.current.target.set(camera.position.x, camera.position.y, 0);
+        controlsRef.current.update();
+      }
+    }
+    prevWidthRef.current = currentWidth;
+  });
+
+  // Animate flyTo per frame (separate useFrame to keep concerns distinct)
   useFrame(() => {
     const anim = flyToAnimRef.current;
     if (!anim) {
