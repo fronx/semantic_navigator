@@ -175,6 +175,8 @@ interface ChunksSceneProps {
   onCameraZChange?: (z: number) => void;
   hoverRadius: number;
   selectedChunkId?: string | null;
+  /** Called to clear search. Returns true if there was an active search to clear. */
+  onClearSearch?: () => boolean;
 }
 
 export function ChunksScene({
@@ -206,6 +208,7 @@ export function ChunksScene({
   onCameraZChange,
   hoverRadius,
   selectedChunkId,
+  onClearSearch,
 }: ChunksSceneProps) {
   const count = chunks.length;
   const [pcaTransform, setPcaTransform] = useState<PCATransform | null>(null);
@@ -335,7 +338,8 @@ export function ChunksScene({
     }
     setFocusSeeds([]);
     setClusterFocusSet(members);
-  }, []);
+    onClearSearch?.();
+  }, [onClearSearch]);
 
   const handleFineClusterClick = useCallback((clusterId: number) => {
     const clusters = fineClustersRef.current;
@@ -346,7 +350,8 @@ export function ChunksScene({
     }
     setFocusSeeds([]);
     setClusterFocusSet(members);
-  }, []);
+    onClearSearch?.();
+  }, [onClearSearch]);
 
   useEffect(() => {
     if (!backgroundClickRef) return;
@@ -363,16 +368,18 @@ export function ChunksScene({
     };
   }, [backgroundClickRef, clearFocus]);
 
-  // Esc exits focus/lens mode
+  // Esc: first clears search (if active), then exits focus/lens mode
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && (focusSeedsRef.current.length > 0 || clusterFocusSetRef.current !== null)) {
+      if (e.key !== "Escape") return;
+      const clearedSearch = onClearSearch?.() ?? false;
+      if (!clearedSearch && (focusSeedsRef.current.length > 0 || clusterFocusSetRef.current !== null)) {
         clearFocus();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [clearFocus]);
+  }, [clearFocus, onClearSearch]);
 
   // Focus zoom exit hook - exits lens mode when zooming out
   const { handleZoomChange, captureEntryZoom, cameraZ } = useFocusZoomExit({
@@ -635,8 +642,9 @@ export function ChunksScene({
     if (isDoubleClick) {
       if (clusterFocusSetRef.current !== null) setClusterFocusSet(null);
       addFocusSeeds([index]);
+      onClearSearch?.();
     }
-  }, [bringToFront, onSelectChunk, addFocusSeeds, chunks]);
+  }, [bringToFront, onSelectChunk, addFocusSeeds, chunks, onClearSearch]);
 
   const dragHandlers = useInstancedMeshDrag({
     pickInstance: pickTopInstance,

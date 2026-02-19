@@ -40,6 +40,7 @@ interface ChunksCanvasProps {
   onLayoutSettled?: (positions: Float32Array) => void;
   onCameraZChange?: (z: number) => void;
   selectedChunkId?: string | null;
+  onClearSearch?: () => boolean;
 }
 
 export function ChunksCanvas({
@@ -70,6 +71,7 @@ export function ChunksCanvas({
   onLayoutSettled,
   onCameraZChange,
   selectedChunkId,
+  onClearSearch,
 }: ChunksCanvasProps) {
   const [backgroundColor, setBackgroundColor] = useState(getBackgroundColor);
   const backgroundClickRef = useRef<(() => void) | null>(null);
@@ -124,6 +126,7 @@ export function ChunksCanvas({
           onLayoutSettled={onLayoutSettled}
           onCameraZChange={onCameraZChange}
           selectedChunkId={selectedChunkId}
+          onClearSearch={onClearSearch}
         />
       </Canvas>
     </div>

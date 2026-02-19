@@ -348,6 +348,7 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
               onLayoutSettled={handleLayoutSettled}
               onCameraZChange={setCameraZ}
               selectedChunkId={selectedChunkId}
+              onClearSearch={() => { const had = !!searchQuery.trim(); setSearchQuery(""); return had; }}
             />
           )}
           {!started && (
