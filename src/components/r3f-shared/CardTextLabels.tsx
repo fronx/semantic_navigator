@@ -412,6 +412,7 @@ function CardTextLabel({ index, preview, maxWidth, registerLabel, onItemGeomHeig
         material={material}
         position={[0, 0, 0]}
         frustumCulled={false}
+        renderOrder={1}
       />
     </group>
   );
