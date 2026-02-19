@@ -832,10 +832,12 @@ export function ChunksScene({
       hoveredClusterMemberSetRef.current.clear();
     }
     const clusterLabelHovered = labelHoveredCoarseClusterIdRef.current !== null || labelHoveredFineClusterIdRef.current !== null;
-    if (clusterLabelHovered) {
+    // In focus mode, labels don't suppress card hover — nodes take natural precedence.
+    // Outside focus mode, label hover wins (labels are the primary navigation surface).
+    if (clusterLabelHovered && !lensActiveRef.current) {
       hoveredIndexRef.current = null;
       isDirectHitRef.current = false;
-    } else if (!isDirectHitRef.current && !isDraggingNode && !isPanningRef.current && hoverRadiusRef.current > 0) {
+    } else if (!clusterLabelHovered && !isDirectHitRef.current && !isDraggingNode && !isPanningRef.current && hoverRadiusRef.current > 0) {
       const camZForProx = camera.position.z;
       const fovRadForProx = THREE.MathUtils.degToRad((camera as THREE.PerspectiveCamera).fov);
       const halfH = Math.tan(fovRadForProx / 2) * camZForProx;
@@ -1058,8 +1060,8 @@ export function ChunksScene({
 
   const shouldRenderEdges = !isRunning && focusEdges.length > 0 && edgeOpacity > 0;
 
-  const coarseInteractionEnabled = !lensActive && coarseFadeInT * (1 - coarseFadeOutT) > CLUSTER_LABEL_INTERACTION_THRESHOLD;
-  const fineInteractionEnabled = !lensActive && fineFadeInT * (1 - fineFadeOutT) > CLUSTER_LABEL_INTERACTION_THRESHOLD;
+  const coarseInteractionEnabled = coarseFadeInT * (1 - coarseFadeOutT) > CLUSTER_LABEL_INTERACTION_THRESHOLD;
+  const fineInteractionEnabled = fineFadeInT * (1 - fineFadeOutT) > CLUSTER_LABEL_INTERACTION_THRESHOLD;
 
   // Use overridden positions if focus push or edge pulling is active, else raw layout
   const hasOverrides = (focusPushRef.current.size > 0 || pulledChunkMapRef.current.size > 0)
