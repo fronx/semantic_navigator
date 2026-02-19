@@ -40,23 +40,23 @@ export interface CameraTransformViewport {
 
 export type CameraTransformEvent =
   | {
-      type: "pan";
-      cameraX: number;
-      cameraY: number;
-      cameraZ: number;
-      worldDelta: { x: number; y: number };
-      viewport: CameraTransformViewport;
-    }
+    type: "pan";
+    cameraX: number;
+    cameraY: number;
+    cameraZ: number;
+    worldDelta: { x: number; y: number };
+    viewport: CameraTransformViewport;
+  }
   | {
-      type: "zoom";
-      cameraX: number;
-      cameraY: number;
-      cameraZ: number;
-      anchor: { x: number; y: number };
-      direction: "in" | "out";
-      zoomFactor: number;
-      viewport: CameraTransformViewport;
-    };
+    type: "zoom";
+    cameraX: number;
+    cameraY: number;
+    cameraZ: number;
+    anchor: { x: number; y: number };
+    direction: "in" | "out";
+    zoomFactor: number;
+    viewport: CameraTransformViewport;
+  };
 
 function computeViewportInfo(camera: Camera, width: number, height: number): CameraTransformViewport {
   const perspective = camera as PerspectiveCamera;
@@ -210,7 +210,7 @@ export function CameraController({
       targetX,
       targetY,
       startTime: performance.now(),
-      duration: 400,
+      duration: 1200,
     };
   }, [camera]);
 
