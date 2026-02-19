@@ -94,6 +94,10 @@ export interface ChunkEdgesProps {
   previewDimRef?: React.RefObject<Map<number, number>>;
   /** Pulled chunk positions for edge endpoint overrides (index -> ghost position) */
   pulledPositionsRef?: React.RefObject<Map<number, PulledChunkNode>>;
+  /** Per-chunk search opacity (keyed by chunk ID, absent = 1.0) */
+  searchOpacitiesRef?: React.RefObject<Map<string, number>>;
+  /** Chunk IDs indexed by node index, for search opacity lookup */
+  chunkIds?: string[];
 }
 
 export function ChunkEdges({
@@ -111,6 +115,8 @@ export function ChunkEdges({
   brightness = 1,
   previewDimRef,
   pulledPositionsRef,
+  searchOpacitiesRef,
+  chunkIds,
 }: ChunkEdgesProps) {
   const meshRef = useRef<THREE.Mesh | null>(null);
   const edgeFadeRef = useRef<Float32Array>(new Float32Array(0));
@@ -359,7 +365,11 @@ export function ChunkEdges({
       const previewMul = dimMap && dimMap.size > 0
         ? Math.min(dimMap.get(edge.source) ?? 1, dimMap.get(edge.target) ?? 1)
         : 1;
-      const rawAlpha = baseAlpha * opacity * edgeFade[edgeIndex] * previewMul;
+      const searchMap = searchOpacitiesRef?.current;
+      const searchMul = searchMap && searchMap.size > 0 && chunkIds
+        ? Math.pow(Math.min(searchMap.get(chunkIds[edge.source]) ?? 1, searchMap.get(chunkIds[edge.target]) ?? 1), 2)
+        : 1;
+      const rawAlpha = baseAlpha * opacity * edgeFade[edgeIndex] * previewMul * searchMul;
       const opacityFloor = Math.max(0, (brightness - 1) * 0.1);
       const alpha = Math.max(opacityFloor, rawAlpha);
 

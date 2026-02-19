@@ -238,9 +238,9 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
     });
   }, []);
 
-  const [focusChunk, setFocusChunk] = useState<{ id: string; seq: number } | null>(null);
+  const [selectedChunkId, setSelectedChunkId] = useState<string | null>(null);
   const handleActiveChunkChange = useCallback((chunkId: string) => {
-    setFocusChunk((prev) => ({ id: chunkId, seq: (prev?.seq ?? 0) + 1 }));
+    setSelectedChunkId(chunkId);
   }, []);
 
   // Decide what positions/edges to show: prefer cached layout if available.
@@ -347,7 +347,7 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
               labelFades={labelFades}
               onLayoutSettled={handleLayoutSettled}
               onCameraZChange={setCameraZ}
-              focusChunk={focusChunk}
+              selectedChunkId={selectedChunkId}
             />
           )}
           {!started && (

@@ -174,7 +174,7 @@ interface ChunksSceneProps {
   labelFades: LabelFadeConfig;
   onCameraZChange?: (z: number) => void;
   hoverRadius: number;
-  focusChunk?: { id: string; seq: number } | null;
+  selectedChunkId?: string | null;
 }
 
 export function ChunksScene({
@@ -205,7 +205,7 @@ export function ChunksScene({
   labelFades,
   onCameraZChange,
   hoverRadius,
-  focusChunk,
+  selectedChunkId,
 }: ChunksSceneProps) {
   const count = chunks.length;
   const [pcaTransform, setPcaTransform] = useState<PCATransform | null>(null);
@@ -363,6 +363,17 @@ export function ChunksScene({
     };
   }, [backgroundClickRef, clearFocus]);
 
+  // Esc exits focus/lens mode
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && (focusSeedsRef.current.length > 0 || clusterFocusSetRef.current !== null)) {
+        clearFocus();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [clearFocus]);
+
   // Focus zoom exit hook - exits lens mode when zooming out
   const { handleZoomChange, captureEntryZoom, cameraZ } = useFocusZoomExit({
     isFocused: focusSeeds.length > 0 || clusterFocusSet !== null,
@@ -466,18 +477,13 @@ export function ChunksScene({
     });
   }, []);
 
-  // When Reader switches article tabs, focus and fly to the corresponding chunk.
+  // Track which chunk index is currently selected for reading (visual highlight only — no lens movement).
+  const selectedChunkIndexRef = useRef<number | null>(null);
   useEffect(() => {
-    if (!focusChunk) return;
-    const index = chunks.findIndex((c) => c.id === focusChunk.id);
-    if (index < 0) return;
-    setClusterFocusSet(null);
-    addFocusSeeds([index]);
-    const x = layoutPositionsRef.current[index * 2];
-    const y = layoutPositionsRef.current[index * 2 + 1];
-    if (x !== undefined && y !== undefined) flyToRef.current?.(x, y);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusChunk]);
+    if (!selectedChunkId) { selectedChunkIndexRef.current = null; return; }
+    const index = chunks.findIndex((c) => c.id === selectedChunkId);
+    selectedChunkIndexRef.current = index >= 0 ? index : null;
+  }, [selectedChunkId, chunks]);
 
   const focusEdgesVersion = lensActive
     ? neighborhoodEdgesVersion * 31 + (lensInfo?.nodeSet.size ?? 0)
@@ -564,6 +570,7 @@ export function ChunksScene({
     () => chunks.map((chunk, i) => ({ id: i, content: chunk.content })),
     [chunks]
   );
+  const chunkIds = useMemo(() => chunks.map(c => c.id), [chunks]);
   const getPositionRef = useRef((i: number) => ({
     x: displayPositionsRef.current[i * 2] ?? 0,
     y: displayPositionsRef.current[i * 2 + 1] ?? 0,
@@ -1135,6 +1142,8 @@ export function ChunksScene({
           brightness={brightnessRef.current}
           previewDimRef={previewDimRef}
           pulledPositionsRef={pulledChunkMapRef}
+          searchOpacitiesRef={searchOpacitiesRef}
+          chunkIds={chunkIds}
         />
       )}
       <CameraController
@@ -1183,6 +1192,7 @@ export function ChunksScene({
           nodes={coarseLabelNodes}
           nodeToCluster={coarseNodeToCluster}
           clusterColors={coarseClusterColors}
+          searchOpacities={searchOpacities}
           fadeInT={coarseFadeInT}
           labelFadeT={coarseFadeOutT}
           labelZ={CARD_Z_RANGE + 0.5}
@@ -1201,6 +1211,7 @@ export function ChunksScene({
           nodes={fineLabelNodes}
           nodeToCluster={fineNodeToCluster}
           clusterColors={fineClusterColors}
+          searchOpacities={searchOpacities}
           fadeInT={fineFadeInT}
           labelFadeT={fineFadeOutT}
           labelZ={CARD_Z_RANGE + 0.3}
