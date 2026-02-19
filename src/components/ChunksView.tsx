@@ -14,6 +14,7 @@ import { useSearch } from "@/hooks/useSearch";
 import { ChunksControlSidebar } from "@/components/ChunksControlSidebar";
 import { ChunksCanvas } from "./chunks-r3f/ChunksCanvas";
 import MusicPlayer from "@/components/MusicPlayer";
+import { BrightnessControl } from "@/components/BrightnessControl";
 import { Reader } from "@/components/Reader";
 
 interface CachedLayout {
@@ -35,6 +36,7 @@ const CHUNKS_DEFAULTS: ChunksSettings = {
   spread: 1.0,
   colorSaturation: 0.6,
   minSaturation: 0.45,
+  brightness: 1.0,
   chunkColorMix: 0.4,
   edgeThickness: 4,
   edgeMidpoint: 0.6,
@@ -301,8 +303,12 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
           )}
         </div>
 
-        {/* Right: music — always visible */}
+        {/* Right: brightness + music — always visible */}
         <div className="flex-shrink-0 flex items-center gap-4">
+          <BrightnessControl
+            value={store.values.brightness}
+            onChange={(v) => store.update("brightness", v)}
+          />
           <MusicPlayer horizontal />
         </div>
       </header>
@@ -322,6 +328,7 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
               onSelectChunk={handleSelectChunk}
               colorSaturation={store.values.colorSaturation}
               minSaturation={store.values.minSaturation}
+              brightness={store.values.brightness}
               chunkColorMix={store.values.chunkColorMix}
               edgeThickness={store.values.edgeThickness}
               edgeMidpoint={store.values.edgeMidpoint}

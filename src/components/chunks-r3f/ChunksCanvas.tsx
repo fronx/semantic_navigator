@@ -22,6 +22,7 @@ interface ChunksCanvasProps {
   onSelectChunk: (chunkId: string | null) => void;
   colorSaturation: number;
   minSaturation: number;
+  brightness: number;
   chunkColorMix: number;
   edgeThickness: number;
   edgeMidpoint: number;
@@ -51,6 +52,7 @@ export function ChunksCanvas({
   onSelectChunk,
   colorSaturation,
   minSaturation,
+  brightness,
   chunkColorMix,
   edgeThickness,
   edgeMidpoint,
@@ -103,6 +105,7 @@ export function ChunksCanvas({
           onSelectChunk={onSelectChunk}
           colorSaturation={colorSaturation}
           minSaturation={minSaturation}
+          brightness={brightness}
           chunkColorMix={chunkColorMix}
           edgeThickness={edgeThickness}
           edgeMidpoint={edgeMidpoint}

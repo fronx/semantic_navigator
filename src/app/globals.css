@@ -625,6 +625,32 @@ body {
   transition: opacity 0.1s ease;
 }
 
+.brightness-control {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 8px;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+}
+
+.brightness-icon {
+  font-size: 11px;
+  opacity: 0.45;
+  margin-right: 3px;
+  line-height: 1;
+}
+
+.brightness-bar {
+  width: 4px;
+  height: 13px;
+  border-radius: 2px;
+  background: var(--foreground);
+  transition: opacity 0.1s ease;
+}
+
 .music-player-btn {
   width: 28px;
   height: 28px;

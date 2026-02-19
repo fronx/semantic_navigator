@@ -27,6 +27,18 @@ export function initGlowTarget(glowTarget: THREE.Color, isDark: boolean): void {
 }
 
 /**
+ * Apply a global brightness multiplier to a color (RGB scale).
+ * Mutates `color` in place. No-op when multiplier is 1.
+ * multiplier > 1 brightens; < 1 dims.
+ */
+export function applyBrightness(color: THREE.Color, multiplier: number): void {
+  if (multiplier === 1) return;
+  color.r = Math.min(1, color.r * multiplier);
+  color.g = Math.min(1, color.g * multiplier);
+  color.b = Math.min(1, color.b * multiplier);
+}
+
+/**
  * Apply focus and/or hover glow to a color via lerp toward glowTarget.
  * Mutates `color` in place. No-op if neither focused nor hovered.
  */

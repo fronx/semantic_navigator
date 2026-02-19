@@ -35,7 +35,7 @@ import { loadPCATransform, centroidToColor, pcaProject, coordinatesToHSL, comput
 import { calculateZoomDesaturation } from "@/lib/zoom-phase-config";
 import { computeChunkPullState, isChunkNodeVisible, findNearestVisibleChunk, type PulledChunkNode, type ChunkVisibilityParams } from "@/lib/chunks-pull-state";
 import { computeViewportZones, PULLED_SCALE_FACTOR, PULLED_COLOR_FACTOR } from "@/lib/edge-pulling";
-import { applyFocusGlow, initGlowTarget } from "@/lib/node-color-effects";
+import { applyBrightness, applyFocusGlow, initGlowTarget } from "@/lib/node-color-effects";
 import { projectCardToScreenRect, type ScreenRect } from "@/lib/screen-rect-projection";
 import { isDarkMode } from "@/lib/theme";
 import { ChunkEdges } from "./ChunkEdges";
@@ -147,6 +147,7 @@ interface ChunksSceneProps {
   onSelectChunk: (chunkId: string | null) => void;
   colorSaturation: number;
   minSaturation: number;
+  brightness: number;
   chunkColorMix: number;
   edgeThickness: number;
   edgeMidpoint: number;
@@ -177,6 +178,7 @@ export function ChunksScene({
   onSelectChunk,
   colorSaturation,
   minSaturation,
+  brightness,
   chunkColorMix,
   edgeThickness,
   edgeMidpoint,
@@ -246,6 +248,22 @@ export function ChunksScene({
   }, [chunks, chunkColors]);
 
   const [isDraggingNode, setIsDraggingNode] = useState(false);
+  const pointerInCanvasRef = useRef(false);
+  useEffect(() => {
+    const canvas = gl.domElement;
+    const onEnter = () => { pointerInCanvasRef.current = true; };
+    const onLeave = () => {
+      pointerInCanvasRef.current = false;
+      hoveredIndexRef.current = null;
+      isDirectHitRef.current = false;
+    };
+    canvas.addEventListener("pointerenter", onEnter);
+    canvas.addEventListener("pointerleave", onLeave);
+    return () => {
+      canvas.removeEventListener("pointerenter", onEnter);
+      canvas.removeEventListener("pointerleave", onLeave);
+    };
+  }, [gl.domElement]);
   const hoveredIndexRef = useRef<number | null>(null);
   const prevHoveredRef = useRef<number | null>(null);
   // Animated hover progress per card: 0=normal scale, 1=full hover scale.
@@ -547,10 +565,13 @@ export function ChunksScene({
   const colorDirtyRef = useRef(false);
   const prevDesaturationRef = useRef(-1);
   const prevMinSaturationRef = useRef(-1);
+  const prevBrightnessRef = useRef(-1);
   const colorSaturationRef = useRef(colorSaturation);
   colorSaturationRef.current = colorSaturation;
   const minSaturationRef = useRef(minSaturation);
   minSaturationRef.current = minSaturation;
+  const brightnessRef = useRef(brightness);
+  brightnessRef.current = brightness;
   const hslTemp = useRef({ h: 0, s: 0, l: 0 }); // Reusable object for getHSL/setHSL (avoids allocation per frame)
   if (searchOpacitiesRef.current !== searchOpacities) {
     searchOpacitiesRef.current = searchOpacities;
@@ -837,7 +858,7 @@ export function ChunksScene({
     if (clusterLabelHovered && !lensActiveRef.current) {
       hoveredIndexRef.current = null;
       isDirectHitRef.current = false;
-    } else if (!clusterLabelHovered && !isDirectHitRef.current && !isDraggingNode && !isPanningRef.current && hoverRadiusRef.current > 0) {
+    } else if (!clusterLabelHovered && !isDirectHitRef.current && !isDraggingNode && !isPanningRef.current && hoverRadiusRef.current > 0 && pointerInCanvasRef.current) {
       const camZForProx = camera.position.z;
       const fovRadForProx = THREE.MathUtils.degToRad((camera as THREE.PerspectiveCamera).fov);
       const halfH = Math.tan(fovRadForProx / 2) * camZForProx;
@@ -1020,7 +1041,8 @@ export function ChunksScene({
     );
     const effectiveDesaturation = Math.min(1, zoomDesat + (1 - colorSaturationRef.current));
     const desatChanged = Math.abs(effectiveDesaturation - prevDesaturationRef.current) > 0.005
-      || minSaturationRef.current !== prevMinSaturationRef.current;
+      || minSaturationRef.current !== prevMinSaturationRef.current
+      || brightnessRef.current !== prevBrightnessRef.current;
 
     const previewActive = previewDimRef.current.size > 0;
     if (colorChunksRef.current !== chunkColors || colorDirtyRef.current || desatChanged || previewActive || pullResult.pulledMap.size > 0 || lensActiveRef.current || !mesh.instanceColor) {
@@ -1040,10 +1062,12 @@ export function ChunksScene({
           ? (isClusterHoverMember ? 1.0 : CLUSTER_HOVER_DIM)
           : (previewDimRef.current.get(i) ?? 1.0);
         const pulledDim = pullResult.pulledMap.has(i) ? PULLED_COLOR_FACTOR : 1.0;
-        if (opacityAttr) (opacityAttr.array as Float32Array)[i] = searchOpacity * previewDim * pulledDim;
+        const opacityFloor = Math.max(0, (brightnessRef.current - 1) * 0.05);
+        if (opacityAttr) (opacityAttr.array as Float32Array)[i] = Math.max(opacityFloor, searchOpacity * previewDim * pulledDim);
         const isFocusSeed = clusterFocusSetRef.current === null && lensInfoRef.current?.depthMap.get(i) === 0;
         const isHovered = hoveredIndexRef.current === i;
         applyFocusGlow(tempColor.current, glowTarget, isFocusSeed, isHovered || isClusterHoverMember);
+        applyBrightness(tempColor.current, brightnessRef.current);
         mesh.setColorAt(i, tempColor.current);
       }
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
@@ -1052,6 +1076,7 @@ export function ChunksScene({
       colorDirtyRef.current = false;
       prevDesaturationRef.current = effectiveDesaturation;
       prevMinSaturationRef.current = minSaturationRef.current;
+      prevBrightnessRef.current = brightnessRef.current;
     }
 
     mesh.instanceMatrix.needsUpdate = true;
@@ -1082,6 +1107,7 @@ export function ChunksScene({
           edgeCountPivot={edgeCountPivot}
           edgeCountFloor={edgeCountFloor}
           nodeColors={chunkColors}
+          brightness={brightnessRef.current}
           previewDimRef={previewDimRef}
           pulledPositionsRef={pulledChunkMapRef}
         />

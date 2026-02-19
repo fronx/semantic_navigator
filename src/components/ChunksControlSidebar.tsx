@@ -25,6 +25,7 @@ export interface ChunksSettings {
   spread: number;
   colorSaturation: number;
   minSaturation: number;
+  brightness: number;
   chunkColorMix: number;
   edgeThickness: number;
   edgeMidpoint: number;
@@ -87,6 +88,14 @@ export function ChunksControlSidebar({ store, onRedoUmap, cameraZ }: ChunksContr
           onChange={(v) => update("minSaturation", v)}
           min={0}
           max={1}
+          step={0.05}
+        />
+        <Slider
+          label="Brightness"
+          value={values.brightness}
+          onChange={(v) => update("brightness", v)}
+          min={0.5}
+          max={3}
           step={0.05}
         />
         <Slider
