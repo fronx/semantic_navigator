@@ -881,6 +881,12 @@ export function ChunksScene({
     }
     prevHoveredRef.current = hovered;
 
+    // Update cursor: pointer when hovering a clickable target (chunk card or cluster label).
+    const wantPointer = hovered !== null || clusterLabelHovered;
+    if (wantPointer !== (gl.domElement.style.cursor === "pointer")) {
+      gl.domElement.style.cursor = wantPointer ? "pointer" : "";
+    }
+
     // Update cluster ID refs for label dimming (read per-frame by ClusterLabels3D).
     // Label hover takes precedence over card-based cluster detection.
     // Only propagate card-based cluster ID when labels are NOT interactive —
