@@ -14,6 +14,7 @@ import { useSearch } from "@/hooks/useSearch";
 import { ChunksControlSidebar } from "@/components/ChunksControlSidebar";
 import { ChunksCanvas } from "./chunks-r3f/ChunksCanvas";
 import MusicPlayer from "@/components/MusicPlayer";
+import { StartOverlay } from "@/components/StartOverlay";
 import { BrightnessControl } from "@/components/BrightnessControl";
 import { Reader } from "@/components/Reader";
 
@@ -69,6 +70,7 @@ interface ChunksViewProps {
 
 export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
   const store = usePersistedStore("chunks-umap-v3", CHUNKS_DEFAULTS, 300);
+  const [started, setStarted] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedChunkIds, setSelectedChunkIds] = useState<string[]>([]);
   const [cameraZ, setCameraZ] = useState<number | undefined>(undefined);
@@ -346,6 +348,20 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
               onLayoutSettled={handleLayoutSettled}
               onCameraZChange={setCameraZ}
               focusChunk={focusChunk}
+            />
+          )}
+          {!started && (
+            <StartOverlay
+              transparent
+              onStart={() => {
+                try {
+                  const saved = JSON.parse(localStorage.getItem("music-player") || "{}");
+                  if (saved.playing) {
+                    document.dispatchEvent(new CustomEvent("music:start"));
+                  }
+                } catch {}
+                setStarted(true);
+              }}
             />
           )}
         </div>

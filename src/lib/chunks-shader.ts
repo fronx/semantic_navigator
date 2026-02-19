@@ -65,6 +65,13 @@ const CHUNK_FRAGMENT_SHADER = /* glsl */ `
     return length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - r;
   }
 
+  // Hash-based grain noise, stable in card-local space.
+  float hash2(vec2 p) {
+    p = fract(p * vec2(127.1, 311.7));
+    p += dot(p, p + 19.19);
+    return fract(p.x * p.y);
+  }
+
   void main() {
     // Must be before any discard — log depth write is skipped for discarded fragments
     // if this comes after, silently breaking depth precision for antialiased card edges.
@@ -87,7 +94,22 @@ const CHUNK_FRAGMENT_SHADER = /* glsl */ `
     float alpha = 1.0 - smoothstep(-edge, edge, sdf);
     if (alpha < 0.001) discard;
 
-    gl_FragColor = vec4(vColor, alpha * vOpacity);
+    // --- Bevel ---
+    // SDF gradient via screen-space derivatives gives the outward surface normal.
+    // Light from top-left: in p-space +y is up, -x is left.
+    vec2 sdfGrad = normalize(vec2(dFdx(sdf), dFdy(sdf)));
+    vec2 lightDir = normalize(vec2(-1.0, 1.0));
+    // Ramps from 0 (1.5 world units inside) to 1 (at the edge). Negative SDF = inside card.
+    float bevelZone = smoothstep(-1.5, 0.0, sdf);
+    float bevel = dot(sdfGrad, lightDir) * bevelZone * 0.05;
+
+    // --- Grain ---
+    // Scaled so one hash cell ≈ 2.5 world units (visible texture on a 30-unit-wide card).
+    float grain = (hash2(p * 0.4) * 2.0 - 1.0) * 0.04;
+
+    vec3 finalColor = clamp(vColor + bevel + grain, 0.0, 1.0);
+
+    gl_FragColor = vec4(finalColor, alpha * vOpacity);
   }
 `;
 
