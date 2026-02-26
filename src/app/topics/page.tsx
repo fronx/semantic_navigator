@@ -506,8 +506,6 @@ export default function TopicsPage() {
             edges={data.edges}
             projectNodes={graphProjects}
             nodeType={settings.nodeType}
-            knnStrength={settings.knnStrength}
-            contrast={settings.contrast}
             clusterResolution={debouncedClusterResolution}
             colorMixRatio={settings.colorMixRatio}
             colorDesaturation={effectiveDesaturation}
@@ -526,7 +524,6 @@ export default function TopicsPage() {
                 setCurrentCameraZ(CAMERA_Z_SCALE_BASE / scale);
               }
             }}
-            rendererType={settings.rendererType}
             externalFilter={null}
             focusKeywordIds={focusKeywordIds}
             onCreateProject={handleCreateProject}

@@ -36,7 +36,6 @@
     "three": "^0.182.0",
     "three-text": "^0.4.9",
     "umap-js": "^1.4.0",
-    "umapper": "file:../umapper",
     "unist-util-visit": "^5.0.0"
   },
   "devDependencies": {

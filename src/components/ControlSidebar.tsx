@@ -4,7 +4,6 @@
  */
 
 import type { ZoomPhaseConfig } from "@/lib/zoom-phase-config";
-import type { RendererType } from "@/components/TopicsView";
 import type { TopicsSettings } from "@/hooks/useTopicsSettings";
 import type { SemanticFilter } from "@/lib/topics-filter";
 import type { KeywordNode } from "@/lib/graph-queries";
@@ -126,18 +125,9 @@ export function ControlSidebar({
             </div>
           )}
 
-          {/* Renderer */}
-          <Section {...section("Renderer")}>
-            <SelectField
-              value={settings.rendererType}
-              onChange={(v) => update("rendererType", v as RendererType)}
-              options={[
-                { value: "d3", label: "D3/SVG" },
-                { value: "r3f", label: "R3F/drei" },
-              ]}
-            />
-
-            <div className="mt-2">
+          {/* Focus & Display */}
+          <Section {...section("Focus & Display")}>
+            <div>
               <SelectField
                 label="Focus Mode Strategy"
                 value={settings.focusStrategy}
@@ -300,24 +290,6 @@ export function ControlSidebar({
                 label="Show k-NN edges"
                 checked={settings.showKNNEdges}
                 onChange={(v) => update("showKNNEdges", v)}
-              />
-              <Slider
-                label="k-NN (D3)"
-                value={strengthToSlider(settings.knnStrength)}
-                onChange={(v) => update("knnStrength", sliderToStrength(v))}
-                min={0}
-                max={100}
-                step={1}
-                format={() => settings.knnStrength.toFixed(2)}
-              />
-              <Slider
-                label="Contrast (D3)"
-                value={settings.contrast}
-                onChange={(v) => update("contrast", v)}
-                min={1}
-                max={5}
-                step={0.1}
-                format={(v) => v.toFixed(1)}
               />
             </div>
           </Section>

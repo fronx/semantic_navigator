@@ -4,8 +4,29 @@
  */
 
 import * as d3 from "d3";
-import type { MapNode } from "@/app/api/map/route";
 import { colors } from "@/lib/colors";
+
+/** Node data structure for map visualization (formerly from /api/map route). */
+export interface MapNode {
+  id: string;
+  type: "keyword" | "article" | "chunk" | "project";
+  label: string;
+  size?: number;
+  content?: string | null;
+  communityId?: number;
+  communityMembers?: string[];
+  hullLabel?: string;
+  embedding?: number[];
+  degree?: number;
+}
+
+/** Edge data structure for map visualization (formerly from /api/map route). */
+export interface MapEdge {
+  source: string;
+  target: string;
+  similarity?: number;
+  isKNN?: boolean;
+}
 import { createHoverTooltip } from "@/lib/d3-utils";
 import { createHullRenderer, groupNodesByCommunity, communityColorScale, type HullData } from "@/lib/hull-renderer";
 import {

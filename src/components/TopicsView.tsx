@@ -7,7 +7,6 @@ import { useStableCallback } from "@/hooks/useStableRef";
 import { useFocusZoomExit } from "@/hooks/useFocusZoomExit";
 import { useTopicsFilter } from "@/hooks/useTopicsFilter";
 import { useProjectCreation } from "@/hooks/useProjectCreation";
-import { useD3TopicsRenderer } from "@/hooks/useD3TopicsRenderer";
 import { useR3FTopicsRenderer } from "@/hooks/useR3FTopicsRenderer";
 import { useContentLoading } from "@/hooks/useContentLoading";
 import { R3FTopicsCanvas } from "@/components/topics-r3f/R3FTopicsCanvas";
@@ -28,8 +27,6 @@ import { calculatePanelRatio, calculatePanelThickness } from "@/lib/transmission
 // Types
 // ============================================================================
 
-export type RendererType = "d3" | "r3f";
-
 export type { BaseRendererOptions };
 
 export interface TopicsViewProps {
@@ -39,10 +36,6 @@ export interface TopicsViewProps {
   projectNodes?: ProjectNode[];
   /** Node type: 'article' or 'chunk' (determines granularity level) */
   nodeType: 'article' | 'chunk';
-  /** k-NN edge strength multiplier */
-  knnStrength: number;
-  /** Contrast exponent for similarity-based layout */
-  contrast: number;
   /** Louvain resolution for client-side clustering (higher = more clusters) */
   clusterResolution: number;
   /** Color mix ratio: 0 = cluster color, 1 = node's own color */
@@ -61,8 +54,6 @@ export interface TopicsViewProps {
   onProjectClick?: (projectId: string) => void;
   /** Callback when zoom level changes */
   onZoomChange?: (zoomScale: number) => void;
-  /** Which renderer to use: "d3" (SVG) or "r3f" (React Three Fiber WebGL) */
-  rendererType?: RendererType;
   /** External filter from project selection - keywords in this set are shown */
   externalFilter?: Set<string> | null;
   /** External focus request: if provided, these keywords will be focused (like clicking them) */
@@ -149,8 +140,6 @@ export function TopicsView({
   edges,
   projectNodes = [],
   nodeType,
-  knnStrength,
-  contrast,
   clusterResolution,
   colorMixRatio,
   colorDesaturation,
@@ -160,7 +149,6 @@ export function TopicsView({
   onFocusChange,
   onProjectClick,
   onZoomChange,
-  rendererType = "d3",
   externalFilter,
   focusKeywordIds,
   onCreateProject,
@@ -196,7 +184,6 @@ export function TopicsView({
   focusStrategy = 'direct',
   focusMaxHops = 3,
 }: TopicsViewProps) {
-  const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Focus mode state (click-to-focus pushes non-neighbors to margins)
@@ -362,9 +349,7 @@ export function TopicsView({
 
   // Stable callbacks - won't trigger effect re-runs when parent re-renders
   const handleZoomChange = useStableCallback((zoomScale: number) => {
-    if (rendererType === "r3f") {
-      handleFocusZoomChange(zoomScale);
-    }
+    handleFocusZoomChange(zoomScale);
     onZoomChange?.(zoomScale);
   });
   // Handle keyword click - apply semantic filter
@@ -474,20 +459,16 @@ export function TopicsView({
   }, []);
 
   // Click handler for drill-down filtering - needs refs from the active renderer
-  const d3GetPosition = useRef<(id: string) => { x: number; y: number } | undefined>(() => undefined);
   const r3fGetPosition = useRef<(id: string) => { x: number; y: number } | undefined>(() => undefined);
 
   const handleFilterClick = useStableCallback(() => {
-    const getPosition = rendererType === "d3" ? d3GetPosition.current : r3fGetPosition.current;
-    const highlightedIds = rendererType === "d3" ? d3RendererResult.highlightedIdsRef.current : r3fRendererResult.highlightedIdsRef.current;
-
-    capturePositions(getPosition);
-    applyFilter(highlightedIds);
+    capturePositions(r3fGetPosition.current);
+    applyFilter(r3fRendererResult.highlightedIdsRef.current);
   });
 
-  // Shared renderer options
+  // Renderer options
   const baseRendererOptions: BaseRendererOptions = {
-    enabled: false, // overridden per-renderer
+    enabled: true,
     activeNodes,
     activeEdges,
     projectNodesRef,
@@ -509,29 +490,17 @@ export function TopicsView({
     projectInteractionRef,
   };
 
-  // D3 renderer hook
-  const d3RendererResult = useD3TopicsRenderer({
-    ...baseRendererOptions,
-    enabled: rendererType === "d3",
-    svgRef,
-    knnStrength,
-    contrast,
-  });
-
   // R3F renderer hook
   const r3fRendererResult = useR3FTopicsRenderer({
     ...baseRendererOptions,
-    enabled: rendererType === "r3f",
     containerRef,
   });
 
-  // Update position getter refs
-  d3GetPosition.current = d3RendererResult.getNodePosition;
+  // Update position getter ref
   r3fGetPosition.current = r3fRendererResult.getNodePosition;
 
   // Update cluster assignments when clustering changes (without restarting simulation)
   useEffect(() => {
-    // Build hub-to-cluster lookup (shared by both renderers)
     const hubToCluster = new Map<string, number>();
     for (const [clusterId, cluster] of baseClusters) {
       hubToCluster.set(cluster.hub, clusterId);
@@ -549,96 +518,69 @@ export function TopicsView({
       }
     }
 
-    // Handle D3 renderer
-    if (rendererType === "d3" && d3RendererResult.simulationNodesRef.current.length > 0 && d3RendererResult.rendererRef.current) {
-      for (const node of d3RendererResult.simulationNodesRef.current) {
-        assignClusterFields(node);
-      }
-      d3RendererResult.rendererRef.current.refreshClusters();
-      d3RendererResult.rendererRef.current.tick();
-    }
-
-    // Handle R3F renderer
-    if (rendererType === "r3f" && r3fRendererResult.labelsRef.current) {
+    if (r3fRendererResult.labelsRef.current) {
       for (const node of r3fRendererResult.labelsRef.current.getNodes()) {
         if (node.type !== "keyword") continue;
         assignClusterFields(node);
       }
     }
-  }, [nodeToCluster, baseClusters, labels, rendererType, keywordNodes, d3RendererResult.simulationNodesRef, d3RendererResult.rendererRef, r3fRendererResult.labelsRef]);
-
-  // Update colors when colorMixRatio changes (without relayout) - D3 only
-  useEffect(() => {
-    if (!d3RendererResult.rendererRef.current || !d3RendererResult.immediateParamsRef.current) return;
-
-    d3RendererResult.immediateParamsRef.current.current.colorMixRatio = colorMixRatio;
-    d3RendererResult.rendererRef.current.updateVisuals();
-  }, [colorMixRatio, d3RendererResult.rendererRef, d3RendererResult.immediateParamsRef]);
-
-  if (rendererType === "r3f") {
-    return (
-      <div className="w-full h-full relative">
-        <R3FTopicsCanvas
-          ref={r3fRendererResult.labelsRef}
-          nodes={activeNodes}
-          totalKeywordCount={keywordNodes.length}
-          edges={activeEdges}
-          projectNodes={projectNodes}
-          contentsByKeyword={contentsByKeyword}
-          colorMixRatio={colorMixRatio}
-          colorDesaturation={colorDesaturation}
-          clusterLabelDesaturation={clusterLabelDesaturation}
-          pcaTransform={pcaTransform}
-          blurEnabled={blurEnabled}
-          showKNNEdges={showKNNEdges}
-          panelDistanceRatio={panelDistanceRatio}
-          panelThickness={panelThickness}
-          zoomPhaseConfig={zoomPhaseConfig ?? DEFAULT_ZOOM_PHASE_CONFIG}
-          contentZDepth={contentZDepth}
-          contentTextDepthScale={contentTextDepthScale}
-          keywordSizeMultiplier={keywordSizeMultiplier}
-          nodeSizeMultipliers={nodeSizeMultipliers}
-          contentSizeMultiplier={contentSizeMultiplier}
-          contentTextContrast={contentTextContrast}
-          contentSpringStrength={contentSpringStrength}
-          chargeStrength={chargeStrength}
-          unifiedSimulation={unifiedSimulation}
-          panelRoughness={panelRoughness}
-          panelTransmission={panelTransmission}
-          panelAnisotropicBlur={panelAnisotropicBlur}
-          keywordTiers={focusState ? focusState.keywordTiers : keywordTiers}
-          focusState={focusState}
-          nodeToCluster={nodeToCluster}
-          searchOpacities={undefined}
-          cameraZ={cameraZ}
-          clusterLabelShadowStrength={clusterLabelShadowStrength}
-          useSemanticFontsForClusters={useSemanticFontsForClusters}
-          useSemanticFontsForKeywords={useSemanticFontsForKeywords}
-          onKeywordClick={handleFocusClick}
-          onKeywordLabelClick={handleFocusClick}
-          onClusterLabelClick={handleClusterLabelClick}
-          onBackgroundClick={handleBackgroundClick}
-          onProjectClick={handleProjectClick}
-          onProjectDrag={handleProjectDrag}
-          onZoomChange={handleZoomChange}
-          onChunkHover={onChunkHover}
-          onKeywordHover={onKeywordHover ?? (() => {})}
-          onContentNodeClick={handleContentNodeClick}
-        />
-        <Reader chunkId={selectedChunkId} onClose={() => setSelectedChunkId(null)} />
-        {isLoading && (
-          <div className="absolute top-4 right-4 px-3 py-2 bg-black/70 text-white text-sm rounded-md">
-            Loading chunks...
-          </div>
-        )}
-      </div>
-    );
-  }
+  }, [nodeToCluster, baseClusters, labels, keywordNodes, r3fRendererResult.labelsRef]);
 
   return (
-    <svg
-      ref={svgRef}
-      className="w-full h-full cursor-grab"
-    />
+    <div className="w-full h-full relative">
+      <R3FTopicsCanvas
+        ref={r3fRendererResult.labelsRef}
+        nodes={activeNodes}
+        totalKeywordCount={keywordNodes.length}
+        edges={activeEdges}
+        projectNodes={projectNodes}
+        contentsByKeyword={contentsByKeyword}
+        colorMixRatio={colorMixRatio}
+        colorDesaturation={colorDesaturation}
+        clusterLabelDesaturation={clusterLabelDesaturation}
+        pcaTransform={pcaTransform}
+        blurEnabled={blurEnabled}
+        showKNNEdges={showKNNEdges}
+        panelDistanceRatio={panelDistanceRatio}
+        panelThickness={panelThickness}
+        zoomPhaseConfig={zoomPhaseConfig ?? DEFAULT_ZOOM_PHASE_CONFIG}
+        contentZDepth={contentZDepth}
+        contentTextDepthScale={contentTextDepthScale}
+        keywordSizeMultiplier={keywordSizeMultiplier}
+        nodeSizeMultipliers={nodeSizeMultipliers}
+        contentSizeMultiplier={contentSizeMultiplier}
+        contentTextContrast={contentTextContrast}
+        contentSpringStrength={contentSpringStrength}
+        chargeStrength={chargeStrength}
+        unifiedSimulation={unifiedSimulation}
+        panelRoughness={panelRoughness}
+        panelTransmission={panelTransmission}
+        panelAnisotropicBlur={panelAnisotropicBlur}
+        keywordTiers={focusState ? focusState.keywordTiers : keywordTiers}
+        focusState={focusState}
+        nodeToCluster={nodeToCluster}
+        searchOpacities={undefined}
+        cameraZ={cameraZ}
+        clusterLabelShadowStrength={clusterLabelShadowStrength}
+        useSemanticFontsForClusters={useSemanticFontsForClusters}
+        useSemanticFontsForKeywords={useSemanticFontsForKeywords}
+        onKeywordClick={handleFocusClick}
+        onKeywordLabelClick={handleFocusClick}
+        onClusterLabelClick={handleClusterLabelClick}
+        onBackgroundClick={handleBackgroundClick}
+        onProjectClick={handleProjectClick}
+        onProjectDrag={handleProjectDrag}
+        onZoomChange={handleZoomChange}
+        onChunkHover={onChunkHover}
+        onKeywordHover={onKeywordHover ?? (() => {})}
+        onContentNodeClick={handleContentNodeClick}
+      />
+      <Reader chunkId={selectedChunkId} onClose={() => setSelectedChunkId(null)} />
+      {isLoading && (
+        <div className="absolute top-4 right-4 px-3 py-2 bg-black/70 text-white text-sm rounded-md">
+          Loading chunks...
+        </div>
+      )}
+    </div>
   );
 }

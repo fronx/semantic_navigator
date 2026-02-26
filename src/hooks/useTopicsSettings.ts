@@ -4,14 +4,11 @@
  */
 
 import { useCallback, useMemo } from "react";
-import type { RendererType } from "@/components/TopicsView";
 import { DEFAULT_ZOOM_PHASE_CONFIG, sanitizeZoomPhaseConfig, type ZoomPhaseConfig } from "@/lib/zoom-phase-config";
 import { usePersistedStore } from "@/hooks/usePersistedStore";
 
 export interface TopicsSettings {
   // Graph layout
-  knnStrength: number;
-  contrast: number;
   clusterSensitivity: number;
 
   // Hover behavior
@@ -20,7 +17,6 @@ export interface TopicsSettings {
   colorMixRatio: number;
 
   // Display options
-  rendererType: RendererType;
   nodeType: 'article' | 'chunk';
   blurEnabled: boolean;
   showKNNEdges: boolean;
@@ -77,13 +73,10 @@ export interface TopicsSettings {
 }
 
 const DEFAULT_SETTINGS: TopicsSettings = {
-  knnStrength: 4.0,
-  contrast: 5.0,
   clusterSensitivity: 1.5,
   hoverSimilarity: 0.7,
   baseDim: 0.7,
   colorMixRatio: 0.3,
-  rendererType: "d3",
   nodeType: "article",
   blurEnabled: true,
   showKNNEdges: true,
