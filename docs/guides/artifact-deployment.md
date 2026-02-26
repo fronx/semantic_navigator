@@ -41,6 +41,36 @@ Visit `http://localhost:3000/artifact` while the dev server is running. Verify:
 - Clicking a chunk opens the article reader sidebar
 - No requests to Supabase or OpenAI in the browser network tab
 
+## Deployment Status
+
+**Not yet deployed.** See [Blockers](#blockers) below before proceeding.
+
+## Blockers
+
+### `umapper` is a local file dependency
+
+`package.json` references `"umapper": "file:../umapper"` — a locally checked-out package that does not exist on Vercel's build servers. The build fails with:
+
+```
+Module not found: Can't resolve 'umapper'
+```
+
+`umapper` is used by `src/lib/map-layout.ts` → `MapView.tsx` → `src/app/page.tsx`.
+
+**Options to unblock:**
+
+1. **Publish `umapper` to npm** and update `package.json` to use the npm version. Cleanest long-term solution.
+2. **Vendor `umapper` into this repo** — copy the source into `vendor/umapper/` and change `package.json` to `"file:./vendor/umapper"`. Vercel would then have access to it.
+3. **Move `umapper` into a sub-package** — make it a workspace package inside this monorepo.
+
+### What was learned about deployment
+
+- `vercel --prod` (CLI) uploads local files including gitignored `data/artifact/` ✓
+- `vercel build` uses `.vercel/project.json` for settings — run `vercel pull --yes` after dashboard changes
+- Vercel project Node.js version was set to 24.x (unsupported) — changed to 22.x in dashboard ✓
+- `instrumentation.ts` must split Node.js-only code into `instrumentation.node.ts` so the Edge bundler doesn't flag `fs`/`path` imports ✓
+- `MapView` (which uses `useSearchParams`) needs a `<Suspense>` wrapper at the root page ✓
+
 ## Deploy to Vercel
 
 ### 1. Install Vercel CLI
