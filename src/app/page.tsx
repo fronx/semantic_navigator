@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { VaultBrowser } from "@/components/VaultBrowser";
 import { ImportProgress, ImportProgressState } from "@/components/ImportProgress";
@@ -204,12 +204,14 @@ export default function Home() {
         )}
 
         {/* Map View */}
-        <MapView
-          searchQuery={searchQuery}
-          filterQuery={null}
-          synonymThreshold={synonymThreshold}
-          onKeywordClick={handleKeywordClick}
-        />
+        <Suspense>
+          <MapView
+            searchQuery={searchQuery}
+            filterQuery={null}
+            synonymThreshold={synonymThreshold}
+            onKeywordClick={handleKeywordClick}
+          />
+        </Suspense>
       </main>
     </div>
   );
