@@ -1,6 +1,10 @@
 import OpenAI from "openai";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+let _openai: OpenAI | null = null;
+function getOpenAI() {
+  if (!_openai) _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  return _openai;
+}
 
 export interface EmbeddingContext {
   type: "article-summary" | "keyword" | "chunk";
@@ -23,7 +27,7 @@ function formatContext(ctx: EmbeddingContext): string {
 export async function generateEmbedding(text: string, context?: EmbeddingContext): Promise<number[]> {
   const what = context ? formatContext(context) : `${text.length} chars`;
   console.log(`[OpenAI] Embedding ${what}`);
-  const response = await openai.embeddings.create({
+  const response = await getOpenAI().embeddings.create({
     model: "text-embedding-3-small",
     input: text,
   });
@@ -40,7 +44,7 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
 
   const totalChars = texts.reduce((sum, t) => sum + t.length, 0);
   console.log(`[OpenAI] Generating ${texts.length} embeddings for ${totalChars} chars total`);
-  const response = await openai.embeddings.create({
+  const response = await getOpenAI().embeddings.create({
     model: "text-embedding-3-small",
     input: texts,
   });

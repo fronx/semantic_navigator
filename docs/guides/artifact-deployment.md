@@ -52,6 +52,8 @@ Visit `http://localhost:3000/artifact` while the dev server is running. Verify:
 - Vercel project Node.js version was set to 24.x (unsupported) — changed to 22.x in dashboard ✓
 - `instrumentation.ts` must split Node.js-only code into `instrumentation.node.ts` so the Edge bundler doesn't flag `fs`/`path` imports ✓
 - `umapper` local dependency was removed by deleting MapView entirely (D3 renderer was legacy, R3F is the primary renderer) ✓
+- **Module-level client instantiation breaks build**: Next.js evaluates all imported modules during "Collecting page data". Any module that calls `new OpenAI()` or `createClient()` at the top level (outside a function) will throw if the API key env var is missing. Fix: use lazy singletons — defer instantiation to the first call. Fixed in `src/lib/supabase.ts` (removed unused module-level `supabase` export) and `src/lib/embeddings.ts` (`getOpenAI()` lazy getter). ✓
+- **`warmupVectorIndexes` in instrumentation must guard against missing credentials**: The function calls `createServerClient()` unconditionally. On artifact-only deployments with no Supabase env vars, this throws at server startup. Fixed with an early return when `NEXT_PUBLIC_SUPABASE_URL` is absent. ✓
 
 ## Deploy to Vercel
 

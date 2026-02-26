@@ -40,6 +40,11 @@ export async function checkArtifactData() {
 }
 
 export async function warmupVectorIndexes() {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    console.log("[warmup] Skipping — no Supabase credentials configured");
+    return;
+  }
+
   const { createServerClient } = await import("@/lib/supabase");
 
   const dummyEmbedding = new Array(1536).fill(0);
