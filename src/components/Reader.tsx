@@ -12,6 +12,7 @@ interface ReaderProps {
   chunkId: string | null;
   onClose: () => void;
   onActiveChunkChange?: (chunkId: string) => void;
+  apiBase?: string;
 }
 
 interface HistoryEntry {
@@ -27,7 +28,7 @@ function articleTitle(sourcePath: string | null): string {
 }
 
 
-export function Reader({ chunkId, onClose, onActiveChunkChange }: ReaderProps) {
+export function Reader({ chunkId, onClose, onActiveChunkChange, apiBase = "" }: ReaderProps) {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [activeArticleId, setActiveArticleId] = useState<string | null>(null);
   const [width, setWidth] = useState(() => {
@@ -39,7 +40,7 @@ export function Reader({ chunkId, onClose, onActiveChunkChange }: ReaderProps) {
   widthRef.current = width;
 
   // Hook only fetches when the external chunkId changes (canvas clicks)
-  const { data, loading } = useArticleReader(chunkId);
+  const { data, loading } = useArticleReader(chunkId, apiBase);
   const chunkRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   // When hook data arrives, cache it in history

@@ -10,6 +10,7 @@ export interface ChunkEmbeddingData {
   headingContext: string[] | null;
   chunkType: string | null;
   embedding: number[]; // 256-dim (first 256 of 1536 Matryoshka truncation)
+  color?: string; // Pre-computed hex color (artifact mode, when embedding is stripped)
 }
 
 const PAGE_SIZE = 1000;

@@ -9,6 +9,7 @@
 - [Clustering Systems](guides/clustering-systems.md) - Understanding the two clustering systems (MapView vs TopicsView), inspection tools, and maintenance
 - [Cluster Label Iteration](guides/cluster-label-iteration.md) - How to iterate on the LLM prompt for chunk cluster labels using the iteration script
 - [Local NPM Packages](guides/local-npm-packages.md) - Developing with locally checked-out packages (umapper)
+- [Artifact Deployment](guides/artifact-deployment.md) - Deploy a read-only, self-contained ChunksView as a public web page (no database or API keys needed)
 
 ## Patterns
 

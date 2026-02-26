@@ -8,6 +8,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import type { ChunkEmbeddingData } from "@/app/api/chunks/embeddings/route";
 import type { ChunksSettings, LabelFadeConfig } from "@/components/ChunksControlSidebar";
+import { CHUNKS_DEFAULTS } from "@/lib/chunks-defaults";
 import { useUmapLayout } from "@/hooks/useUmapLayout";
 import { usePersistedStore } from "@/hooks/usePersistedStore";
 import { useSearch } from "@/hooks/useSearch";
@@ -31,44 +32,19 @@ interface CachedLayout {
   createdAt: string;
 }
 
-const CHUNKS_DEFAULTS: ChunksSettings = {
-  nNeighbors: 15,
-  minDist: 0.1,
-  spread: 1.0,
-  colorSaturation: 0.6,
-  minSaturation: 0.45,
-  brightness: 1.0,
-  chunkColorMix: 0.4,
-  edgeThickness: 4,
-  edgeMidpoint: 0.6,
-  edgeCountPivot: 200,
-  edgeCountFloor: 0.3,
-  nodeSizeMin: 0.6,
-  nodeSizeMax: 2.0,
-  nodeSizePivot: 30,
-  hoverRadius: 70,
-  shapeMorphNear: 800,
-  shapeMorphFar: 3000,
-  coarseResolution: 0.3,
-  fineResolution: 1.5,
-  coarseFadeIn:  { start: 8000, full: 5000 },
-  coarseFadeOut: { start: 3000, full: 1500 },
-  fineFadeIn:    { start: 2500, full: 1500 },
-  fineFadeOut:   { start: 1000, full: 200  },
-  sidebarCollapsed: false,
-  sectionStates: {
-    UMAP: true,
-  },
-};
+// Verify CHUNKS_DEFAULTS satisfies ChunksSettings at compile time
+const _: ChunksSettings = CHUNKS_DEFAULTS;
 
 const MIN_SEARCH_OPACITY = 0.1;
 
 interface ChunksViewProps {
   chunks: ChunkEmbeddingData[];
   isStale?: boolean;
+  apiBase?: string;
+  hideSearch?: boolean;
 }
 
-export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
+export function ChunksView({ chunks, isStale = false, apiBase = "", hideSearch = false }: ChunksViewProps) {
   const store = usePersistedStore("chunks-umap-v3", CHUNKS_DEFAULTS, 300);
   const [started, setStarted] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -85,16 +61,17 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
 
   // Fetch cached layout on mount
   useEffect(() => {
-    fetch("/api/chunks/layout")
+    fetch(`${apiBase}/api/chunks/layout`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data: CachedLayout | null) => setCachedLayout(data))
       .catch(() => null)
       .finally(() => setIsLoadingCache(false));
   }, []);
 
+  // Skip UMAP when a pre-computed layout is loaded, or when chunks have no embeddings (artifact mode).
   const embeddings = useMemo(
-    () => chunks.map((c) => c.embedding),
-    [chunks]
+    () => (cachedLayout || !chunks[0]?.embedding ? [] : chunks.map((c) => c.embedding)),
+    [cachedLayout, chunks]
   );
 
   const {
@@ -132,7 +109,7 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
     }));
     const coarseResolution = coarseResolutionRef.current;
     const fineResolution = fineResolutionRef.current;
-    fetch("/api/chunks/layout", {
+    fetch(`${apiBase}/api/chunks/layout`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -165,7 +142,7 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
   useEffect(() => {
     if (!cachedLayoutRef.current) return;
     setIsReclustering(true);
-    fetch("/api/chunks/layout/recluster", {
+    fetch(`${apiBase}/api/chunks/layout/recluster`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -199,7 +176,7 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
   const handleRedoUmap = useCallback(() => {
     setCachedLayout(null);
     setUmapSeed((s) => s + 1);
-    fetch("/api/chunks/layout", { method: "DELETE" }).catch(console.error);
+    fetch(`${apiBase}/api/chunks/layout`, { method: "DELETE" }).catch(console.error);
   }, []);
 
   const { results: searchResults, loading: searchLoading } = useSearch(
@@ -267,13 +244,15 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
       <header className="flex-shrink-0 px-3 py-1.5 flex items-center gap-4 border-b bg-white dark:bg-zinc-900 dark:border-zinc-800">
         {/* Left: search + status indicators — flexible */}
         <div className="flex-1 min-w-0 flex items-center gap-4">
-          <input
-            type="text"
-            placeholder="Search chunks..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="flex-1 max-w-md px-3 py-1 text-sm rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
+          {!hideSearch && (
+            <input
+              type="text"
+              placeholder="Search chunks..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="flex-1 max-w-md px-3 py-1 text-sm rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          )}
 
           {searchLoading && (
             <span className="text-xs text-zinc-400">Searching...</span>
@@ -370,6 +349,7 @@ export function ChunksView({ chunks, isStale = false }: ChunksViewProps) {
           chunkId={selectedChunkIds.at(-1) ?? null}
           onClose={() => handleSelectChunk(null)}
           onActiveChunkChange={handleActiveChunkChange}
+          apiBase={apiBase}
         />
       </main>
     </div>

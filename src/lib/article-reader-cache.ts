@@ -2,6 +2,7 @@ import type { ArticleReaderData } from "@/hooks/useArticleReader";
 
 let byChunkId: Map<string, ArticleReaderData> | null = null;
 let loadPromise: Promise<void> | null = null;
+let configuredApiBase = "";
 
 export function getArticleByChunkId(chunkId: string): ArticleReaderData | undefined {
   return byChunkId?.get(chunkId);
@@ -11,6 +12,11 @@ export function isLoaded(): boolean {
   return byChunkId !== null;
 }
 
+/** Configure the API base path (e.g. "/artifact" for the static deployment). Must be called before loadAll(). */
+export function setApiBase(base: string) {
+  configuredApiBase = base;
+}
+
 /** Eagerly load all article reader data. Idempotent — safe to call multiple times. */
 export function loadAll(): Promise<void> {
   if (loadPromise) return loadPromise;
@@ -18,7 +24,7 @@ export function loadAll(): Promise<void> {
   loadPromise = (async () => {
     const t0 = performance.now();
     try {
-      const res = await fetch("/api/reader/articles");
+      const res = await fetch(`${configuredApiBase}/api/reader/articles`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const { articles, _meta } = await res.json() as {

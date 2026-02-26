@@ -15,7 +15,7 @@ export interface ArticleReaderData {
   chunks: ArticleChunk[];
 }
 
-export function useArticleReader(chunkId: string | null): {
+export function useArticleReader(chunkId: string | null, apiBase = ""): {
   data: ArticleReaderData | null;
   loading: boolean;
 } {
@@ -41,7 +41,7 @@ export function useArticleReader(chunkId: string | null): {
     setLoading(true);
 
     async function load() {
-      const chunkRes = await fetch(`/api/nodes/${chunkId}?similarK=0`);
+      const chunkRes = await fetch(`${apiBase}/api/nodes/${chunkId}?similarK=0`);
       if (cancelled) return;
       if (!chunkRes.ok) {
         setLoading(false);
@@ -56,7 +56,7 @@ export function useArticleReader(chunkId: string | null): {
         return;
       }
 
-      const articleRes = await fetch(`/api/nodes/${parent.id}?similarK=0`);
+      const articleRes = await fetch(`${apiBase}/api/nodes/${parent.id}?similarK=0`);
       if (cancelled) return;
       if (!articleRes.ok) {
         setLoading(false);

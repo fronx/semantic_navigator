@@ -238,8 +238,12 @@ export function ChunksScene({
   // Base colors at full saturation — desaturation is applied per-frame in useFrame
   // so zoom level can continuously modulate it without triggering useMemo.
   const chunkColors = useMemo(() => {
-    if (!pcaTransform) {
-      console.log("[ChunksScene] chunkColors: using fallback hash-HSL colors (PCA not yet loaded)");
+    // Pre-computed colors (artifact mode: embeddings stripped, colors baked in at chunkColorMix=0.4).
+    // chunkColorMix is intentionally ignored here — re-run generate-artifact-data.ts to change it.
+    if (chunks[0]?.color && !chunks[0]?.embedding) {
+      return chunks.map((chunk) => new THREE.Color(chunk.color));
+    }
+    if (!pcaTransform || !chunks[0]?.embedding) {
       return chunks.map((chunk) => new THREE.Color().setHSL(hashToHue(chunk.sourcePath), 0.7, 0.55));
     }
     const articleEmbeddings = new Map<string, number[][]>();

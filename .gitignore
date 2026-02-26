@@ -53,7 +53,3 @@ tests/screenshots/
 public/music/*
 
 .playwright-mcp/*
-# Offline data cache
-data/offline-cache/*.json
-data/offline-cache/manifest.json
-!data/offline-cache/README.md
